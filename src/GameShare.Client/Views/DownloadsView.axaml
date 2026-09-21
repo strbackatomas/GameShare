@@ -1,0 +1,74 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:GameShare.Client.ViewModels"
+             x:Class="GameShare.Client.Views.DownloadsView"
+             x:DataType="vm:DownloadsViewModel">
+
+    <ScrollViewer>
+        <StackPanel Margin="24,20,24,24" MaxWidth="980" HorizontalAlignment="Stretch">
+
+            <TextBlock Classes="muted" HorizontalAlignment="Center" Margin="0,40" TextAlignment="Center"
+                       IsVisible="{Binding !Downloads.Count}" Text="Nic se právě nestahuje." />
+
+            <ItemsControl ItemsSource="{Binding Downloads}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:DownloadViewModel">
+                        <Border Classes="card">
+                            <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto,Auto,Auto">
+
+                                <StackPanel Grid.Row="0" Grid.Column="0" Orientation="Horizontal" Spacing="10">
+                                    <TextBlock Text="{Binding Name}" Classes="title" />
+                                    <TextBlock Text="{Binding KindText}" Classes="muted" VerticalAlignment="Center" />
+                                    <Border Classes="chip" Background="{StaticResource AccentBrush}" IsVisible="{Binding IsRunning}"><TextBlock Text="{Binding StateText}" /></Border>
+                                    <Border Classes="chip" Background="{StaticResource WarnBrush}" IsVisible="{Binding IsPaused}"><TextBlock Text="{Binding StateText}" /></Border>
+                                    <Border Classes="chip" Background="{StaticResource SuccessBrush}" IsVisible="{Binding IsFinished}"><TextBlock Text="{Binding StateText}" /></Border>
+                                    <Border Classes="chip" Background="{StaticResource DangerBrush}" IsVisible="{Binding IsFailed}"><TextBlock Text="{Binding StateText}" /></Border>
+                                </StackPanel>
+
+                                <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                                    <Button Content="Pozastavit" Command="{Binding PauseCommand}" IsVisible="{Binding IsRunning}" />
+                                    <Button Classes="primary" Content="Pokračovat" Command="{Binding ResumeCommand}" IsVisible="{Binding IsPaused}" />
+                                    <Button Classes="primary" Content="Zkusit znovu" Command="{Binding ResumeCommand}" IsVisible="{Binding IsFailed}" />
+                                    <Button Classes="danger" Content="Zrušit" Command="{Binding CancelCommand}" IsVisible="{Binding HasProgress}" />
+                                    <Button Content="Skrýt" Command="{Binding CancelCommand}" IsVisible="{Binding IsFinished}" />
+                                </StackPanel>
+
+                                <StackPanel Grid.Row="1" Grid.ColumnSpan="2" Margin="0,12,0,0" Spacing="6" IsVisible="{Binding HasProgress}">
+                                    <ProgressBar Value="{Binding Percent}" Maximum="100" />
+                                    <Grid ColumnDefinitions="Auto,*,Auto">
+                                        <TextBlock Grid.Column="0" Text="{Binding PercentText}" FontWeight="SemiBold" />
+                                        <TextBlock Grid.Column="1" Text="{Binding SizeText}" Classes="muted" Margin="12,0,0,0" />
+                                        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="14">
+                                            <TextBlock Text="{Binding SpeedText}" FontWeight="SemiBold" />
+                                            <TextBlock Text="{Binding EtaText}" Classes="muted" />
+                                        </StackPanel>
+                                    </Grid>
+                                </StackPanel>
+
+                                <!-- Which PCs the data comes from and how fast, for example "PC01  2,5 GB/s". -->
+                                <ItemsControl Grid.Row="2" Grid.ColumnSpan="2" ItemsSource="{Binding Sources}" Margin="0,8,0,0">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:PeerSpeed">
+                                            <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,0,20,0">
+                                                <TextBlock Text="{Binding Name}" FontSize="12" />
+                                                <TextBlock Text="{Binding Speed}" Classes="muted" FontSize="12" />
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+
+                                <TextBlock Grid.Row="3" Grid.ColumnSpan="2" Text="{Binding Error}" Foreground="{StaticResource DangerBrush}"
+                                           IsVisible="{Binding IsFailed}" TextWrapping="Wrap" Margin="0,10,0,0" />
+                                <TextBlock Grid.Row="4" Grid.ColumnSpan="2" Text="{Binding Message}" IsVisible="{Binding HasMessage}"
+                                           Foreground="{StaticResource DangerBrush}" TextWrapping="Wrap" Margin="0,8,0,0" />
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

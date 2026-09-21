@@ -1,0 +1,88 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:GameShare.Client.ViewModels"
+             x:Class="GameShare.Client.Views.LibraryView"
+             x:DataType="vm:LibraryViewModel">
+
+    <ScrollViewer>
+        <StackPanel Margin="24,8,24,24" MaxWidth="980" HorizontalAlignment="Stretch">
+
+            <Grid ColumnDefinitions="*,Auto" Margin="0,14,0,0">
+                <TextBlock Grid.Column="0" Text="{Binding ScanText}" Classes="muted" VerticalAlignment="Center" TextWrapping="Wrap" />
+                <Button Grid.Column="1" Content="Prohledat složky" Command="{Binding ScanCommand}" IsEnabled="{Binding !IsScanning}" />
+            </Grid>
+
+            <TextBlock IsVisible="{Binding ShowEmptyHint}" Classes="muted" Margin="0,40" TextWrapping="Wrap" HorizontalAlignment="Center" TextAlignment="Center"
+                       Text="Zatím tu nejsou žádné hry. Přidej složku s hrami v Nastavení, nebo počkej, až se objeví ostatní PC v síti." />
+
+            <TextBlock Classes="section" Text="MOJE HRY" IsVisible="{Binding HasMyGames}" />
+            <ItemsControl ItemsSource="{Binding MyGames}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:GameCardViewModel">
+                        <Border Classes="card">
+                            <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto,Auto">
+
+                                <StackPanel Grid.Row="0" Grid.Column="0" Spacing="3">
+                                    <StackPanel Orientation="Horizontal" Spacing="10">
+                                        <TextBlock Text="{Binding Name}" Classes="title" />
+                                        <Border Classes="chip" Background="{StaticResource SuccessBrush}" IsVisible="{Binding IsInstalled}"><TextBlock Text="{Binding StateText}" /></Border>
+                                        <Border Classes="chip" Background="{StaticResource WarnBrush}" IsVisible="{Binding IsDamaged}"><TextBlock Text="{Binding StateText}" /></Border>
+                                        <Border Classes="chip" Background="{StaticResource AccentBrush}" IsVisible="{Binding IsDownloading}"><TextBlock Text="{Binding StateText}" /></Border>
+                                    </StackPanel>
+                                    <TextBlock Text="{Binding Details}" Classes="muted" />
+                                    <TextBlock Text="{Binding InstallPath}" Classes="muted" FontSize="11" TextTrimming="CharacterEllipsis" />
+                                </StackPanel>
+
+                                <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Top">
+                                    <Button Content="Zkontrolovat" Command="{Binding CheckCommand}" IsVisible="{Binding IsInstalled}" />
+                                    <Button Content="Zkontrolovat" Command="{Binding CheckCommand}" IsVisible="{Binding IsDamaged}" />
+                                    <Button Classes="primary" Content="Opravit" Command="{Binding RepairCommand}" IsVisible="{Binding IsDamaged}" />
+                                    <Button Content="Registrovat jako novou verzi" Command="{Binding RegisterCommand}" IsVisible="{Binding IsDamaged}" />
+                                </StackPanel>
+
+                                <StackPanel Grid.Row="1" Grid.ColumnSpan="2" Spacing="4" Margin="0,10,0,0" IsVisible="{Binding IsDownloading}">
+                                    <ProgressBar Value="{Binding Percent}" Maximum="100" />
+                                    <TextBlock Text="{Binding ProgressText}" Classes="muted" FontSize="12" />
+                                </StackPanel>
+
+                                <TextBlock Grid.Row="2" Grid.ColumnSpan="2" Text="{Binding Message}" IsVisible="{Binding HasMessage}" Margin="0,10,0,0" TextWrapping="Wrap" />
+
+                                <Grid Grid.Row="3" Grid.ColumnSpan="2" ColumnDefinitions="*,Auto" Margin="0,6,0,0" IsVisible="{Binding HasSuggestion}">
+                                    <TextBlock Grid.Column="0" Text="{Binding Suggestion}" Classes="muted" TextWrapping="Wrap" VerticalAlignment="Center" />
+                                    <Button Grid.Column="1" Content="Označit jako proměnné" Command="{Binding MarkVolatileCommand}" Margin="12,0,0,0" />
+                                </Grid>
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <TextBlock Classes="section" Text="NA LAN" IsVisible="{Binding HasLanGames}" />
+            <ItemsControl ItemsSource="{Binding LanGames}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:GameCardViewModel">
+                        <Border Classes="card">
+                            <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto">
+                                <StackPanel Grid.Row="0" Grid.Column="0" Spacing="3">
+                                    <StackPanel Orientation="Horizontal" Spacing="10">
+                                        <TextBlock Text="{Binding Name}" Classes="title" />
+                                        <Border Classes="chip" Background="{StaticResource AccentBrush}" IsVisible="{Binding CanUpdate}"><TextBlock Text="{Binding StateText}" /></Border>
+                                    </StackPanel>
+                                    <TextBlock Text="{Binding Details}" Classes="muted" />
+                                    <TextBlock Text="{Binding PeersText}" Classes="muted" FontSize="12" TextWrapping="Wrap" />
+                                </StackPanel>
+
+                                <StackPanel Grid.Row="0" Grid.Column="1" VerticalAlignment="Center">
+                                    <Button Classes="primary" Content="Instalovat" Command="{Binding InstallCommand}" IsVisible="{Binding CanInstall}" MinWidth="120" HorizontalContentAlignment="Center" />
+                                    <Button Classes="primary" Content="Aktualizovat" Command="{Binding UpdateCommand}" IsVisible="{Binding CanUpdate}" MinWidth="120" HorizontalContentAlignment="Center" />
+                                </StackPanel>
+
+                                <TextBlock Grid.Row="1" Grid.ColumnSpan="2" Text="{Binding Message}" IsVisible="{Binding HasMessage}" Margin="0,10,0,0" TextWrapping="Wrap" />
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

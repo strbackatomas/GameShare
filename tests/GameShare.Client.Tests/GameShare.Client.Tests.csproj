@@ -1,0 +1,39 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia.Headless.XUnit" Version="12.1.2" />
+    <PackageReference Include="Avalonia.Skia" Version="12.1.2" />
+    <PackageReference Include="coverlet.collector" Version="6.0.4" />
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.12" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+    <PackageReference Include="xunit.v3" Version="3.2.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+    <Using Include="GameShare.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The end to end tests run the real agent, which needs the web framework and the shared test helpers. -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <Compile Include="..\Shared\TestGame.cs" Link="TestGame.cs" />
+    <Compile Include="..\Shared\NoParallelization.cs" Link="NoParallelization.cs" />
+    <Compile Include="..\GameShare.Agent.Tests\TestAgent.cs" Link="TestAgent.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\GameShare.Client\GameShare.Client.csproj" />
+    <ProjectReference Include="..\..\src\GameShare.Agent\GameShare.Agent.csproj" />
+  </ItemGroup>
+
+</Project>

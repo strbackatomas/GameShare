@@ -1,0 +1,32 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:GameShare.Client.ViewModels"
+             x:Class="GameShare.Client.Views.NetworkView"
+             x:DataType="vm:NetworkViewModel">
+
+    <ScrollViewer>
+        <StackPanel Margin="24,20,24,24" MaxWidth="980" HorizontalAlignment="Stretch">
+
+            <TextBlock Classes="muted" HorizontalAlignment="Center" Margin="0,40" TextAlignment="Center" TextWrapping="Wrap"
+                       IsVisible="{Binding !Peers.Count}"
+                       Text="Žádné další PC s GameShare nebylo nalezeno. Zkontroluj, že na nich agent běží a že jsou ve stejné síti." />
+
+            <ItemsControl ItemsSource="{Binding Peers}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:PeerViewModel">
+                        <Border Classes="card">
+                            <Grid ColumnDefinitions="Auto,*,Auto">
+                                <Ellipse Grid.Column="0" Width="10" Height="10" Fill="{StaticResource SuccessBrush}" VerticalAlignment="Center" Margin="0,0,14,0" />
+                                <StackPanel Grid.Column="1" Spacing="2">
+                                    <TextBlock Text="{Binding Name}" Classes="title" />
+                                    <TextBlock Text="{Binding Address}" Classes="muted" FontSize="12" />
+                                </StackPanel>
+                                <TextBlock Grid.Column="2" Text="{Binding GamesText}" Classes="muted" VerticalAlignment="Center" />
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>
