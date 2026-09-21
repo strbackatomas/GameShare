@@ -27,8 +27,20 @@ public class AgentCareTests
         await target.WaitForGameAsync(g => g.ContentHash == hash && g.State == GameState.Installed, $"{target.Name} to list {hash[..8]} as installed");
     }
 
+    private static async Task<OfferedGameDto> WaitForPartialOfferAsync(TestAgent a, string hash)
+    {
+        OfferedGameDto? offer = null;
+        await Poll.UntilAsync(async () =>
+        {
+            var offers = await a.PeerApi.GetFromJsonAsync<List<OfferedGameDto>>("/peer/games", TestAgent.Json);
+            offer = offers!.FirstOrDefault(o => o.ContentHash == hash && !o.IsComplete && o.PercentIntact > 0);
+            return offer is not null;
+        }, $"{a.Name} to offer part of the game");
+        return offer!;
+    }
+
     [Fact]
-    public async Task A_game_that_changed_is_reported_damaged_and_withdrawn_from_the_lan()
+    public async Task A_game_that_changed_is_reported_damaged_but_keeps_offering_the_pieces_that_still_match()
     {
         int discovery = TestAgent.DiscoveryPort();
         await using var pc02 = await TestAgent.StartAsync("PC-02", discovery);
@@ -43,19 +55,99 @@ public class AgentCareTests
         Assert.False(changes.IsIntact);
         Assert.Equal(["content/big.pak"], changes.Modified);
         Assert.Empty(changes.Missing);
-        Assert.Equal(["content/**"], changes.SuggestedPatterns);
         var damaged = await pc01.WaitForGameAsync(g => g.State == GameState.Damaged, "the game to show as damaged");
         Assert.Equal(pc01.InstalledPath, damaged.InstallPath);
 
-        // Other PCs stop seeing it at once, nobody is handed data that no longer matches.
-        Assert.Empty((await pc01.PeerApi.GetFromJsonAsync<List<OfferedGameDto>>("/peer/games", TestAgent.Json))!);
-        await Poll.UntilAsync(async () => (await pc02.GamesAsync()).Count == 0, "PC-02 to lose the offer");
-        await Poll.UntilAsync(() => events.Names.Contains(GameShareEvents.GameRemoved), "GameRemoved event on PC-02");
+        // Not withdrawn. The seed was re-checked, so it offers the pieces that match and says how much that is.
+        var offer = await WaitForPartialOfferAsync(pc01, game.ContentHash);
+        Assert.InRange(offer.PercentIntact, 1, 99.9);
+
+        // While the files are being re-hashed the seed claims less than it will end up with, never more. Wait until it settles.
+        bool[] have = [];
+        await Poll.UntilAsync(async () =>
+        {
+            var pieces = await pc01.PeerApi.GetFromJsonAsync<PieceMapDto>($"/peer/games/{game.ContentHash}/pieces", TestAgent.Json);
+            have = PieceMapCodec.Unpack(pieces!);
+            return have.Count(h => !h) == 1;
+        }, "the re-check to finish with exactly one bad piece");
+        Assert.True(have.Count(h => h) > 1); // one flipped byte damages exactly one piece
+
+        // The other PC sees an offer that is only partly there, and is told the game cannot be installed yet.
+        var seen = await pc02.WaitForGameAsync(g => g.State == GameState.AvailableOnLan && g.PartialPeerNames.Count == 1, "PC-02 to see the partial offer");
+        Assert.Equal(["PC-01"], seen.PartialPeerNames);
+        Assert.False(seen.FullyAvailable);
+        Assert.InRange(seen.CoveragePercent!.Value, 1, 99.9);
+        var refused = await pc02.SendAsync(HttpMethod.Post, $"/api/games/{game.ContentHash}/install");
+        Assert.Equal(HttpStatusCode.Conflict, refused.StatusCode);
+        Assert.Contains("cannot be installed yet", await refused.Content.ReadAsStringAsync());
 
         // A scan keeps reporting it instead of registering a variant.
         var scan = await PostAsync<ScanResultDto>(pc01, "/api/games/scan");
         Assert.Equal([pc01.InstalledPath], scan.Damaged);
         Assert.Equal(0, scan.Added);
+    }
+
+    [Fact]
+    public async Task Two_damaged_copies_that_are_damaged_in_different_places_complete_a_third_pc_together()
+    {
+        int discovery = TestAgent.DiscoveryPort();
+        await using var pc01 = await TestAgent.StartAsync("PC-01", discovery, preloadGame: true);
+        var v1 = await InstalledGameAsync(pc01);
+        await using var pc02 = await TestAgent.StartAsync("PC-02", discovery);
+        await pc02.WaitForGameAsync(g => g.State == GameState.AvailableOnLan, "PC-02 to see the offer");
+        await InstallAsync(pc02, v1.ContentHash);
+        var pristine = TestGame.HashTree(pc01.InstalledPath);
+
+        // Everybody plays. Each copy is damaged, in a different piece.
+        TestGame.CorruptOneByteAt(Big(pc01), 0.25);
+        TestGame.CorruptOneByteAt(Big(pc02), 0.75);
+        await PostAsync<GameChangesDto>(pc01, $"/api/games/{v1.ContentHash}/check");
+        await PostAsync<GameChangesDto>(pc02, $"/api/games/{v1.ContentHash}/check");
+        await WaitForPartialOfferAsync(pc01, v1.ContentHash);
+        await WaitForPartialOfferAsync(pc02, v1.ContentHash);
+
+        // Neither has the whole game, but together they have all of it.
+        await using var pc03 = await TestAgent.StartAsync("PC-03", discovery);
+        var offered = await pc03.WaitForGameAsync(g => g.State == GameState.AvailableOnLan && g.PartialPeerNames.Count == 2, "PC-03 to see both partial offers");
+        Assert.Equal(["PC-01", "PC-02"], offered.PartialPeerNames);
+        Assert.True(offered.FullyAvailable, $"coverage was {offered.CoveragePercent}");
+        Assert.Null(offered.CoveragePercent);
+
+        await InstallAsync(pc03, v1.ContentHash);
+
+        Assert.Equal(pristine, TestGame.HashTree(pc03.InstalledPath)); // the original, assembled from two damaged copies
+        Assert.True((await PostAsync<GameChangesDto>(pc03, $"/api/games/{v1.ContentHash}/check")).IsIntact);
+    }
+
+    [Fact]
+    public async Task A_third_pc_waits_when_the_partial_copies_have_the_same_hole_and_installs_once_a_whole_copy_appears()
+    {
+        int discovery = TestAgent.DiscoveryPort();
+        await using var pc01 = await TestAgent.StartAsync("PC-01", discovery, preloadGame: true);
+        var v1 = await InstalledGameAsync(pc01);
+        await using var pc02 = await TestAgent.StartAsync("PC-02", discovery);
+        await pc02.WaitForGameAsync(g => g.State == GameState.AvailableOnLan, "PC-02 to see the offer");
+        await InstallAsync(pc02, v1.ContentHash);
+
+        TestGame.CorruptOneByteAt(Big(pc01), 0.5);
+        TestGame.CorruptOneByteAt(Big(pc02), 0.5); // the very same piece is lost on both
+        await PostAsync<GameChangesDto>(pc01, $"/api/games/{v1.ContentHash}/check");
+        await PostAsync<GameChangesDto>(pc02, $"/api/games/{v1.ContentHash}/check");
+        await WaitForPartialOfferAsync(pc01, v1.ContentHash);
+        await WaitForPartialOfferAsync(pc02, v1.ContentHash);
+
+        await using var pc03 = await TestAgent.StartAsync("PC-03", discovery);
+        var stuck = await pc03.WaitForGameAsync(g => g.State == GameState.AvailableOnLan && g.PartialPeerNames.Count == 2 && !g.FullyAvailable, "PC-03 to see that the game is not complete");
+        Assert.InRange(stuck.CoveragePercent!.Value, 90, 99.9);
+        Assert.Equal(HttpStatusCode.Conflict, (await pc03.SendAsync(HttpMethod.Post, $"/api/games/{v1.ContentHash}/install")).StatusCode);
+
+        // PC-01 puts the original byte back and checks again. It is whole once more, and PC-03 can install.
+        TestGame.CorruptOneByteAt(Big(pc01), 0.5);
+        await PostAsync<GameChangesDto>(pc01, $"/api/games/{v1.ContentHash}/check");
+        var ready = await pc03.WaitForGameAsync(g => g.State == GameState.AvailableOnLan && g.FullyAvailable && g.PeerNames.Count >= 1, "PC-03 to see a whole copy");
+        Assert.Null(ready.CoveragePercent);
+        await InstallAsync(pc03, v1.ContentHash);
+        Assert.True((await PostAsync<GameChangesDto>(pc03, $"/api/games/{v1.ContentHash}/check")).IsIntact);
     }
 
     [Fact]

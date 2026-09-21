@@ -424,4 +424,64 @@ public class GameCareTests
 
         Assert.Null((await pc.Db.ListInstallationsAsync()).Single().ResumeData);
     }
+
+    // ---------------- damaged games keep offering what still matches ----------------
+
+    [Fact]
+    public async Task A_damaged_game_keeps_seeding_only_the_pieces_that_still_match_and_is_whole_again_when_fixed()
+    {
+        await using var pc = await PcWithGameAsync();
+        await pc.Seeds.StartAllAsync();
+        var stored = (await pc.Library.ListAsync()).Single().Stored;
+        var hash = stored.Manifest.ContentHash;
+        var big = Path.Combine(pc.GameDir, "content", "big.pak");
+        await pc.Engine.Transfers.Single().WaitForCompletionAsync(TimeSpan.FromSeconds(30));
+        Assert.True(pc.Seeds.GetOffer(stored)!.IsComplete);
+
+        TestGame.CorruptOneByte(big);
+        await pc.Library.CheckAsync(hash);
+        await pc.Seeds.RecheckAsync((await pc.Db.ListInstallationsAsync()).Single());
+
+        await Poll.UntilAsync(() => Task.FromResult(pc.Seeds.GetPiecesHave(stored)!.Count(h => !h) == 1), "the re-check to settle on one bad piece", 30_000);
+        var offer = pc.Seeds.GetOffer(stored)!;
+        Assert.False(offer.IsComplete);
+        Assert.InRange(offer.PercentIntact, 1, 99.9);
+        Assert.True(pc.Engine.Transfers.Single().UploadOnly); // it serves, it never writes
+        Assert.Equal(InstallationState.Invalid, (await pc.Db.ListInstallationsAsync()).Single().State);
+
+        TestGame.CorruptOneByte(big); // the byte goes back
+        await pc.Library.CheckAsync(hash);
+        await pc.Seeds.RecheckAsync((await pc.Db.ListInstallationsAsync()).Single());
+
+        await Poll.UntilAsync(() => Task.FromResult(pc.Seeds.GetOffer(stored)!.IsComplete), "the seed to be whole again", 30_000);
+        Assert.Equal(100, pc.Seeds.GetOffer(stored)!.PercentIntact);
+    }
+
+    [Fact]
+    public async Task A_seed_never_takes_over_the_transfer_of_a_repair_that_is_running()
+    {
+        await using var source = await PcWithGameAsync();
+        await source.Seeds.StartAllAsync();
+        var offer = (await source.Library.ListAsync()).Single().Stored;
+
+        await using var player = await Pc.StartAsync();
+        var install = await player.Downloads.StartInstallAsync(offer.Manifest, offer.TorrentBytes!, player.GamesRoot);
+        await Poll.DownloadStateAsync(player, install.Id, DownloadState.Completed);
+        TestGame.CorruptOneByte(Path.Combine(player.GameDir, "content", "big.pak"));
+        await player.Library.CheckAsync(offer.Manifest.ContentHash);
+        var inst = (await player.Db.ListInstallationsAsync()).Single();
+        player.Engine.SetLimits(null, 400_000); // one piece at 0.4 MB/s keeps the repair running for a couple of seconds
+
+        var repair = await player.Downloads.StartRepairAsync(inst.Id);
+
+        // Everything that could ask a seed to start or re-check runs while the repair is working.
+        Assert.False(await player.Seeds.StartAsync(inst));
+        await player.Seeds.RecheckAsync(inst);
+        Assert.False(player.Engine.Transfers.Single().UploadOnly, "the repair transfer was turned upload-only and can no longer download");
+
+        player.Engine.SetLimits(null, null);
+        await Poll.DownloadStateAsync(player, repair.Id, DownloadState.Completed);
+        Assert.Equal(InstallationState.Installed, (await player.Db.ListInstallationsAsync()).Single().State);
+        Assert.True(player.Engine.Transfers.Single().UploadOnly); // and once finished it is a seed again
+    }
 }

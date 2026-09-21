@@ -9,9 +9,15 @@ public enum SeedEventKind { Started, Stopped }
 
 public sealed record SeedEvent(SeedEventKind Kind, Installation Installation, string GameName);
 
+/// <summary>What this PC can hand out of an installed game right now.</summary>
+/// <param name="IsComplete">Every piece is present and verified.</param>
+/// <param name="PercentIntact">Share of the game's data that is present and verified, 0 to 100.</param>
+public sealed record SeedOffer(bool IsComplete, double PercentIntact);
+
 /// <summary>
-/// Offers verified installed games to other PCs. Only installations in the Installed state are ever seeded,
-/// so a half-written or corrupted game is never served.
+/// Offers installed games to other PCs. A complete game is offered whole. A game whose files changed, for example because it
+/// was played, is still offered, but only the pieces that still match their hashes: the transfer is upload-only, so it never
+/// writes, and it never claims a piece it cannot prove. Several damaged copies can therefore complete a third PC together.
 /// </summary>
 public sealed class SeedManager
 {
@@ -34,12 +40,12 @@ public sealed class SeedManager
     /// </summary>
     public bool Enabled { get; set; } = true;
 
-    /// <summary>Starts seeding every verified installation that has seeding enabled. Call once at agent start.</summary>
+    /// <summary>Starts seeding every installation that has seeding enabled, damaged ones too. Call once at agent start.</summary>
     public async Task StartAllAsync(CancellationToken ct = default)
     {
         foreach (var inst in await _db.ListInstallationsAsync(ct).ConfigureAwait(false))
         {
-            if (inst.State != InstallationState.Installed || !inst.Seeding) continue;
+            if (!inst.Seeding) continue;
             try { await StartAsync(inst, ct).ConfigureAwait(false); }
             catch (Exception ex) when (ex is IOException or InvalidDataException or InvalidOperationException)
             {
@@ -50,15 +56,16 @@ public sealed class SeedManager
     }
 
     /// <summary>Starts, or confirms, seeding of one installation. Data is read from where the game is installed.</summary>
+    /// <returns>False when nothing was started: seeding is off, or a repair or update is working on the game.</returns>
     public async Task<bool> StartAsync(Installation installation, CancellationToken ct = default)
     {
-        if (installation.State != InstallationState.Installed)
-            throw new InvalidOperationException($"Only verified installations can be seeded, {installation.InstallPath} is {installation.State}.");
         if (!Enabled)
         {
             await StopAsync(installation, ct).ConfigureAwait(false);
             return false;
         }
+        // A repair or update owns the transfer of that game and must be allowed to write. Never make it upload-only.
+        if (await HasActiveDownloadAsync(installation, ct).ConfigureAwait(false)) return false;
 
         var stored = await _db.GetManifestAsync(installation.ContentHash, ct).ConfigureAwait(false)
             ?? throw new InvalidOperationException($"No manifest stored for {installation.ContentHash}.");
@@ -83,6 +90,44 @@ public sealed class SeedManager
         SeedEventRaised?.Invoke(this, new SeedEvent(SeedEventKind.Started, installation, stored.Manifest.Name));
         return true;
     }
+
+    /// <summary>
+    /// The game's files changed. Re-hashes them so the seed stops claiming pieces that no longer match, and keeps offering the rest.
+    /// A running seed does not notice a change on disk by itself, so without this it would keep advertising stale pieces.
+    /// </summary>
+    public async Task RecheckAsync(Installation installation, CancellationToken ct = default)
+    {
+        if (!Enabled || await HasActiveDownloadAsync(installation, ct).ConfigureAwait(false)) return;
+
+        var stored = await _db.GetManifestAsync(installation.ContentHash, ct).ConfigureAwait(false);
+        var transfer = FindTransfer(stored);
+        if (transfer is null)
+        {
+            await StartAsync(installation, ct).ConfigureAwait(false); // adding it checks the files
+            return;
+        }
+        transfer.UploadOnly = true;
+        transfer.ForceRecheck();
+        _log.LogInformation("Seed re-checked after the files of {Name} changed", stored!.Manifest.Name);
+    }
+
+    /// <summary>What can be handed out of this game right now, or null when it is not being seeded.</summary>
+    public SeedOffer? GetOffer(StoredManifest stored)
+    {
+        var transfer = FindTransfer(stored);
+        if (transfer is null) return null;
+        var s = transfer.GetStatus();
+        return new SeedOffer(s.IsComplete, Math.Round(Math.Clamp(s.Progress, 0, 1) * 100, 1));
+    }
+
+    /// <summary>Which pieces of the game this PC has and can prove, or null when it is not being seeded.</summary>
+    public bool[]? GetPiecesHave(StoredManifest stored) => FindTransfer(stored)?.GetPiecesHave();
+
+    private TorrentTransfer? FindTransfer(StoredManifest? stored) =>
+        _engine.Transfers.FirstOrDefault(t => string.Equals(t.InfoHash, stored?.Manifest.TorrentInfoHash, StringComparison.OrdinalIgnoreCase));
+
+    private async Task<bool> HasActiveDownloadAsync(Installation installation, CancellationToken ct) =>
+        (await _db.ListDownloadsAsync(ct).ConfigureAwait(false)).Any(d => d.IsActive && d.InstallationId == installation.Id);
 
     /// <summary>
     /// Stores resume data of every complete seed, so the next start does not have to re-hash the whole library.
@@ -110,11 +155,11 @@ public sealed class SeedManager
         }
     }
 
-    /// <summary>Stops offering every installed game, for example when the user turns seeding off. Downloads keep running.</summary>
+    /// <summary>Stops offering every game, for example when the user turns seeding off. Downloads keep running.</summary>
     public async Task StopAllAsync(CancellationToken ct = default)
     {
         foreach (var inst in await _db.ListInstallationsAsync(ct).ConfigureAwait(false))
-            if (inst.State == InstallationState.Installed) await StopAsync(inst, ct).ConfigureAwait(false);
+            if (!await HasActiveDownloadAsync(inst, ct).ConfigureAwait(false)) await StopAsync(inst, ct).ConfigureAwait(false);
     }
 
     /// <summary>Stops offering the game. Files are never touched.</summary>

@@ -48,11 +48,15 @@ public sealed class GameView
                     : GameState.Unavailable,
             };
 
+            var (fully, coverage) = _catalog.Availability(m.ContentHash);
             result[m.ContentHash] = new GameDto(
                 m.ContentHash, m.GameId, m.Name, m.Version, m.TotalSize, state,
                 g.Installation?.InstallPath, peerNames, download?.Id, m.Definition)
             {
                 UpdatesContentHash = g.Installation is null && installedByGame.TryGetValue(m.GameId, out var installed) ? installed : null,
+                PartialPeerNames = PartialNames(offers[m.ContentHash]),
+                FullyAvailable = fully,
+                CoveragePercent = coverage,
             };
         }
 
@@ -60,11 +64,15 @@ public sealed class GameView
         foreach (var group in offers.Where(g => !result.ContainsKey(g.Key)))
         {
             var o = group.First().Game;
+            var (fully, coverage) = _catalog.Availability(o.ContentHash);
             result[o.ContentHash] = new GameDto(
                 o.ContentHash, o.GameId, o.Name, o.Version, o.TotalSize, GameState.AvailableOnLan,
                 null, PeerNames(group), null, null)
             {
                 UpdatesContentHash = installedByGame.TryGetValue(o.GameId, out var installed) ? installed : null,
+                PartialPeerNames = PartialNames(group),
+                FullyAvailable = fully,
+                CoveragePercent = coverage,
             };
         }
 
@@ -98,6 +106,10 @@ public sealed class GameView
     }
 
     public static SeedDto ToDto(SeedEvent e, string contentHash) => new(contentHash, e.GameName, e.Installation.InstallPath);
+
+    private static IReadOnlyList<string> PartialNames(IEnumerable<RemoteOffer> offers) =>
+        offers.Where(o => !o.Game.IsComplete).Select(o => o.Peer.MachineName).Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(n => n, StringComparer.OrdinalIgnoreCase).ToList();
 
     private IReadOnlyList<string> PeerNames(IEnumerable<RemoteOffer> offers) =>
         offers.Select(o => o.Peer.MachineName).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(n => n, StringComparer.OrdinalIgnoreCase).ToList();

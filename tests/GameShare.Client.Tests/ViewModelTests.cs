@@ -171,6 +171,55 @@ public class LibraryTests
     }
 
     [Fact]
+    public async Task Partial_sources_are_named_and_installing_waits_until_the_parts_add_up()
+    {
+        var (main, _, _, _) = await StartAsync(
+            Game(A, "BeamNG.drive", GameState.AvailableOnLan, peers: ["PC-01", "PC-04"]) with
+            {
+                PartialPeerNames = ["PC-01", "PC-04"], FullyAvailable = false, CoveragePercent = 96.5,
+            });
+
+        var card = main.Library.LanGames.Single();
+
+        Assert.Contains("(každé jen část hry)", card.PeersText);
+        Assert.False(card.CanInstall);
+        Assert.True(card.IsWaitingForParts);
+        Assert.Equal("Zatím nekompletní", card.StateText);
+        Assert.Contains("96,5 %", card.CoverageText);
+        Assert.Contains("dat hry", card.CoverageText);
+    }
+
+    [Fact]
+    public async Task A_game_that_some_pc_has_whole_is_installable_even_if_other_pcs_only_have_part_of_it()
+    {
+        var (main, _, _, _) = await StartAsync(
+            Game(A, "BeamNG.drive", GameState.AvailableOnLan, peers: ["PC-01", "PC-04"]) with { PartialPeerNames = ["PC-04"] });
+
+        var card = main.Library.LanGames.Single();
+
+        Assert.Contains("(jen část: PC-04)", card.PeersText);
+        Assert.True(card.CanInstall);
+        Assert.False(card.IsWaitingForParts);
+        Assert.Equal("", card.CoverageText);
+    }
+
+    [Fact]
+    public async Task Parts_that_add_up_make_the_game_installable_when_the_agent_says_so()
+    {
+        var (main, _, _, events) = await StartAsync(
+            Game(A, "BeamNG.drive", GameState.AvailableOnLan, peers: ["PC-01"]) with { PartialPeerNames = ["PC-01"], FullyAvailable = false, CoveragePercent = 90 });
+        var card = main.Library.LanGames.Single();
+        Assert.False(card.CanInstall);
+
+        events.Raise(GameShareEvents.GameUpdated,
+            Game(A, "BeamNG.drive", GameState.AvailableOnLan, peers: ["PC-01", "PC-04"]) with { PartialPeerNames = ["PC-01", "PC-04"], FullyAvailable = true });
+
+        Assert.Same(card, main.Library.LanGames.Single()); // same row, updated in place
+        Assert.True(card.CanInstall);
+        Assert.Equal("Dostupné na LAN", card.StateText);
+    }
+
+    [Fact]
     public async Task Events_move_a_game_between_the_lists_add_new_ones_and_remove_gone_ones()
     {
         var (main, _, _, events) = await StartAsync(Game(A, "BeamNG.drive", GameState.AvailableOnLan, peers: ["PC-01"]));

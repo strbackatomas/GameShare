@@ -56,6 +56,7 @@ public static partial class LocalApi
             if (!settings.IsConfiguredRoot(root))
                 throw new ArgumentException($"'{root}' is not one of the configured game folders: {string.Join(", ", settings.Current.GameRoots)}.");
 
+            RequireFullyAvailable(catalog, contentHash);
             var (manifest, torrent) = await ResolveAsync(contentHash, db, catalog, ct);
 
             var status = await downloads.StartInstallAsync(manifest, torrent, root, ct);
@@ -64,7 +65,7 @@ public static partial class LocalApi
 
         // ---- looking after a game that is already installed ----
 
-        // Full verification. Says what changed and brings the recorded state in line: damaged games stop being offered.
+        // Full verification. Says what changed and brings the recorded state in line: a damaged game is still offered, but only its intact pieces.
         api.MapPost("/games/{contentHash}/check", async (string contentHash, GameLibrary library, CancellationToken ct) =>
         {
             RequireHash(contentHash);
@@ -109,6 +110,7 @@ public static partial class LocalApi
             string contentHash, GameShareDb db, PeerCatalog catalog, DownloadManager downloads, GameView view, CancellationToken ct) =>
         {
             RequireHash(contentHash);
+            RequireFullyAvailable(catalog, contentHash);
             var (manifest, torrent) = await ResolveAsync(contentHash, db, catalog, ct);
 
             var installs = new List<Installation>();
@@ -156,6 +158,19 @@ public static partial class LocalApi
     private static async Task<Installation> RequireInstallationAsync(string contentHash, GameShareDb db, CancellationToken ct) =>
         (await db.ListInstallationsAsync(ct)).FirstOrDefault(i => i.ContentHash == contentHash)
         ?? throw new KeyNotFoundException($"Game {contentHash} is not installed on this PC.");
+
+    /// <summary>
+    /// Installing needs every piece from somewhere. If the PCs that are online have only parts of the game and those parts do not add up,
+    /// the download would stall, so say so now and let the user wait for the PC that has the rest.
+    /// </summary>
+    private static void RequireFullyAvailable(PeerCatalog catalog, string contentHash)
+    {
+        var (fully, coverage) = catalog.Availability(contentHash);
+        if (!fully)
+            throw new InvalidOperationException(
+                $"Only {coverage:0.#} % of this game is available on the LAN right now, so it cannot be installed yet. " +
+                "The PCs that have it were used to play it and have only parts of it. It works as soon as a PC with the missing parts is online.");
+    }
 
     private static void RequireHash(string contentHash)
     {

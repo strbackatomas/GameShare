@@ -189,7 +189,7 @@ public sealed class GameLibrary
 
     /// <summary>
     /// Fully verifies an installed game and reports what differs. Also brings the recorded state in line with the result,
-    /// so a game with changed content stops being offered and an intact one starts being offered again.
+    /// so a game with changed content shows as damaged (it still offers its intact pieces) and an intact one shows as installed again.
     /// </summary>
     public async Task<GameChanges> CheckAsync(string contentHash, CancellationToken ct = default)
     {

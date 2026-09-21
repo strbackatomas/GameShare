@@ -51,6 +51,16 @@ internal sealed class TestGame : IDisposable
         }
     }
 
+    /// <summary>Flips one byte at <paramref name="fraction"/> of the way through a file, so different copies can be damaged in different pieces.</summary>
+    public static void CorruptOneByteAt(string path, double fraction)
+    {
+        using var fs = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.ReadWrite);
+        fs.Position = (long)(fs.Length * fraction);
+        int b = fs.ReadByte();
+        fs.Position = (long)(fs.Length * fraction);
+        fs.WriteByte((byte)(b ^ 0xFF));
+    }
+
     public static void CopyDirectory(string source, string destination)
     {
         Directory.CreateDirectory(destination);

@@ -103,6 +103,21 @@ public sealed class TorrentTransfer
             s.PeerCount, s.SeedCount, s.BytesDownloaded, s.BytesUploaded);
     }
 
+    /// <summary>Number of pieces the torrent is made of.</summary>
+    public int PieceCount => _manager.PieceCount;
+
+    /// <summary>
+    /// For each piece, whether this transfer has it and it matched its hash. An upload-only seed of a game that changed on disk
+    /// knows exactly which pieces are still good, and offers only those.
+    /// </summary>
+    public bool[] GetPiecesHave()
+    {
+        var map = _manager.GetPieceMap();
+        var have = new bool[map.Length];
+        for (int i = 0; i < map.Length; i++) have[i] = map[i] != 0;
+        return have;
+    }
+
     public IReadOnlyList<PeerSnapshot> GetPeers() =>
         _manager.GetPeers().Select(p => new PeerSnapshot(p.Address, p.DownloadRate, p.UploadRate, p.IsSeed)).ToList();
 

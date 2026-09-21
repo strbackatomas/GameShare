@@ -26,11 +26,12 @@ Needs the .NET 10 SDK.
 
 ```
 dotnet build
-dotnet test
+dotnet test -m:1
 ```
 
 The integration tests start real agents that discover each other over real sockets. They run one at a time on purpose,
-so the whole run takes several minutes.
+so the whole run takes several minutes. `-m:1` matters: without it `dotnet test` runs test projects side by side,
+and two projects hosting libtorrent sessions at once can crash each other's test host. Each project passes when run alone.
 
 ## Run for development
 
@@ -86,7 +87,8 @@ Saves, settings and caches inside a game folder must not count as game content. 
 ```
 
 Or let the client find them: **Zkontrolovat** on a game shows which files changed since install and offers to mark them.
-A game whose files changed is shown as damaged and is not offered to others until it is repaired or registered again.
+A game whose files changed is shown as damaged until it is repaired or registered again. It still offers the parts that are unchanged,
+so other PCs can use it as a source, and PCs that were played on differently can complete each other.
 
 ## Not done yet, and not tried
 

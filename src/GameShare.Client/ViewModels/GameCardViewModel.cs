@@ -34,6 +34,13 @@ public sealed partial class GameCardViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(CanInstall), nameof(CanUpdate))]
     public partial string? UpdatesContentHash { get; set; }
 
+    /// <summary>False when the PCs that are online do not have all of the game between them, so installing would stall.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanInstall), nameof(CanUpdate), nameof(IsWaitingForParts), nameof(StateText))]
+    public partial bool FullyAvailable { get; set; } = true;
+
+    [ObservableProperty] public partial string CoverageText { get; set; } = "";
+
     /// <summary>0 to 100, only meaningful while the game is being downloaded.</summary>
     [ObservableProperty] public partial double Percent { get; set; }
     [ObservableProperty] public partial string ProgressText { get; set; } = "";
@@ -55,8 +62,11 @@ public sealed partial class GameCardViewModel : ViewModelBase
     public bool IsDamaged => State == GameState.Damaged;
     public bool IsDownloading => State == GameState.Downloading;
     public bool IsAvailable => State == GameState.AvailableOnLan;
-    public bool CanInstall => IsAvailable && UpdatesContentHash is null;
-    public bool CanUpdate => IsAvailable && UpdatesContentHash is not null;
+    public bool CanInstall => IsAvailable && FullyAvailable && UpdatesContentHash is null;
+    public bool CanUpdate => IsAvailable && FullyAvailable && UpdatesContentHash is not null;
+
+    /// <summary>Offered by PCs that were used to play it, and the missing parts are not among the PCs that are online.</summary>
+    public bool IsWaitingForParts => IsAvailable && !FullyAvailable;
     public bool CanAct => !IsBusy;
     public bool HasMessage => !string.IsNullOrEmpty(Message);
     public bool HasSuggestion => !string.IsNullOrEmpty(Suggestion);
@@ -66,6 +76,7 @@ public sealed partial class GameCardViewModel : ViewModelBase
         GameState.Installed => "Nainstalováno",
         GameState.Damaged => "Soubory se změnily",
         GameState.Downloading => "Stahuje se",
+        GameState.AvailableOnLan when !FullyAvailable => "Zatím nekompletní",
         GameState.AvailableOnLan => UpdatesContentHash is null ? "Dostupné na LAN" : "Nová verze na LAN",
         _ => "Nedostupné",
     };
@@ -77,9 +88,23 @@ public sealed partial class GameCardViewModel : ViewModelBase
         InstallPath = g.InstallPath;
         UpdatesContentHash = g.UpdatesContentHash;
         Details = string.IsNullOrEmpty(g.Version) ? Format.Size(g.TotalSize) : $"{g.Version} · {Format.Size(g.TotalSize)}";
-        PeersText = g.State == GameState.AvailableOnLan && g.PeerNames.Count > 0 ? $"Nabízí {Format.PcCount(g.PeerNames.Count)}: {string.Join(", ", g.PeerNames)}" : "";
+        PeersText = g.State == GameState.AvailableOnLan && g.PeerNames.Count > 0 ? DescribePeers(g) : "";
+        FullyAvailable = g.FullyAvailable;
+        CoverageText = g.State == GameState.AvailableOnLan && !g.FullyAvailable
+            ? $"Dohromady je k dispozici jen {Format.Percent(g.CoveragePercent ?? 0)} dat hry. Instalace půjde, až se objeví PC s chybějícími částmi."
+            : "";
         if (g.State != GameState.Downloading) { Percent = 0; ProgressText = ""; }
         // The message and the suggestion belong to the last check, so a refresh of the game must not wipe them.
+    }
+
+    /// <summary>"Nabízí 3 PC: PC-01, PC-04, PC-08 (jen část: PC-04)". A PC that was used to play the game has only part of it.</summary>
+    private static string DescribePeers(GameDto g)
+    {
+        var text = $"Nabízí {Format.PcCount(g.PeerNames.Count)}: {string.Join(", ", g.PeerNames)}";
+        if (g.PartialPeerNames.Count == 0) return text;
+        return g.PartialPeerNames.Count == g.PeerNames.Count
+            ? text + " (každé jen část hry)"
+            : text + $" (jen část: {string.Join(", ", g.PartialPeerNames)})";
     }
 
     public void ApplyProgress(DownloadDto d)
@@ -113,7 +138,7 @@ public sealed partial class GameCardViewModel : ViewModelBase
                 _lastCheck = await _app.Client.CheckAsync(ContentHash);
                 if (_lastCheck.IsIntact) { Message = "Vše je v pořádku."; return; }
 
-                Message = $"Změněno souborů: {_lastCheck.Modified.Count}, chybí: {_lastCheck.Missing.Count}. Hra se teď nenabízí ostatním.";
+                Message = $"Změněno souborů: {_lastCheck.Modified.Count}, chybí: {_lastCheck.Missing.Count}. Nezměněné části se dál nabízejí ostatním.";
                 if (_lastCheck.SuggestedPatterns.Count > 0)
                     Suggestion = "Pokud je hra mění při hraní (nastavení, savy), označ je jako proměnné: " + string.Join(", ", _lastCheck.SuggestedPatterns);
             }, m => Message = m).ConfigureAwait(true);

@@ -81,17 +81,25 @@ public sealed class AgentWorker : BackgroundService
         }
     }
 
-    /// <summary>A game that got damaged is withdrawn at once, one that recovered or was registered again is offered.</summary>
+    /// <summary>
+    /// A game whose files changed is not withdrawn. Its seed is re-checked so it stops claiming pieces that no longer match,
+    /// and it keeps offering the ones that do. A game registered again with other content replaces the old seed.
+    /// </summary>
     private void OnInstallationChanged(object? sender, InstallationChange change)
     {
         _ = Task.Run(async () =>
         {
             try
             {
-                if (change.Kind == InstallationChangeKind.Replaced && change.Previous is not null)
-                    await _seeds.StopAsync(change.Previous).ConfigureAwait(false); // its torrent no longer matches the files
-                if (change.Current.State == InstallationState.Installed) await _seeds.StartAsync(change.Current).ConfigureAwait(false);
-                else await _seeds.StopAsync(change.Current).ConfigureAwait(false);
+                if (change.Kind == InstallationChangeKind.Replaced)
+                {
+                    if (change.Previous is not null) await _seeds.StopAsync(change.Previous).ConfigureAwait(false); // its torrent no longer matches the files
+                    await _seeds.StartAsync(change.Current).ConfigureAwait(false);
+                }
+                else
+                {
+                    await _seeds.RecheckAsync(change.Current).ConfigureAwait(false); // damaged or recovered, either way the files were looked at again
+                }
             }
             catch (Exception ex) { _log.LogWarning(ex, "Could not update seeding for {Path}", change.Current.InstallPath); }
         });

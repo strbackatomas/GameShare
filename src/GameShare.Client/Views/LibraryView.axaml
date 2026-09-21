@@ -31,6 +31,8 @@
                                     </StackPanel>
                                     <TextBlock Text="{Binding Details}" Classes="muted" />
                                     <TextBlock Text="{Binding InstallPath}" Classes="muted" FontSize="11" TextTrimming="CharacterEllipsis" />
+                                    <TextBlock IsVisible="{Binding IsDamaged}" Classes="muted" FontSize="12" TextWrapping="Wrap"
+                                               Text="Nezměněné části hry se dál nabízejí ostatním PC." />
                                 </StackPanel>
 
                                 <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Top">
@@ -67,9 +69,11 @@
                                     <StackPanel Orientation="Horizontal" Spacing="10">
                                         <TextBlock Text="{Binding Name}" Classes="title" />
                                         <Border Classes="chip" Background="{StaticResource AccentBrush}" IsVisible="{Binding CanUpdate}"><TextBlock Text="{Binding StateText}" /></Border>
+                                        <Border Classes="chip" Background="{StaticResource WarnBrush}" IsVisible="{Binding IsWaitingForParts}"><TextBlock Text="{Binding StateText}" /></Border>
                                     </StackPanel>
                                     <TextBlock Text="{Binding Details}" Classes="muted" />
                                     <TextBlock Text="{Binding PeersText}" Classes="muted" FontSize="12" TextWrapping="Wrap" />
+                                    <TextBlock Text="{Binding CoverageText}" IsVisible="{Binding IsWaitingForParts}" Foreground="{StaticResource WarnBrush}" FontSize="12" TextWrapping="Wrap" />
                                 </StackPanel>
 
                                 <StackPanel Grid.Row="0" Grid.Column="1" VerticalAlignment="Center">

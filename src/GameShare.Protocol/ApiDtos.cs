@@ -6,7 +6,7 @@ public enum GameState
 {
     /// <summary>Complete and verified on this PC.</summary>
     Installed,
-    /// <summary>Installed here, but its files changed or went missing. Not offered to other PCs until repaired or registered again.</summary>
+    /// <summary>Installed here, but its files changed or went missing. Repair it or register it again. Its unchanged pieces are still offered to other PCs.</summary>
     Damaged,
     /// <summary>Being installed right now.</summary>
     Downloading,
@@ -29,6 +29,18 @@ public sealed record GameDto(
     long? DownloadId,
     GameDefinition? Definition)
 {
+    /// <summary>The PCs among <see cref="PeerNames"/> that have only part of the game, for example because it was played there.</summary>
+    public IReadOnlyList<string> PartialPeerNames { get; init; } = [];
+
+    /// <summary>
+    /// False when no PC has the whole game and the PCs that are online do not have all of it between them.
+    /// Installing then would stall, so clients should wait. True when unknown or not relevant.
+    /// </summary>
+    public bool FullyAvailable { get; init; } = true;
+
+    /// <summary>Share of the game's data that the PCs online have between them, when no single PC has it all.</summary>
+    public double? CoveragePercent { get; init; }
+
     /// <summary>
     /// Set on a version that is not installed here while another version of the same game is. It is the content hash of that
     /// installed version, so the client can offer "update" instead of "install".
@@ -84,7 +96,17 @@ public sealed record StatusDto(string MachineId, string MachineName, string Vers
 public sealed record PeerHelloDto(string MachineId, string MachineName, int ProtocolVersion);
 
 /// <summary>A game this PC is willing to serve: installed, verified and seeding.</summary>
-public sealed record OfferedGameDto(string ContentHash, string GameId, string Name, string? Version, long TotalSize);
+public sealed record OfferedGameDto(string ContentHash, string GameId, string Name, string? Version, long TotalSize)
+{
+    /// <summary>False for a game whose files changed here. Only the pieces that still match are served.</summary>
+    public bool IsComplete { get; init; } = true;
+
+    /// <summary>Share of the game's data this PC can serve, 0 to 100.</summary>
+    public double PercentIntact { get; init; } = 100;
+}
+
+/// <summary>Which pieces of a game a PC can serve. <see cref="Bitfield"/> is base64 of the pieces packed 8 per byte, first piece in the lowest bit.</summary>
+public sealed record PieceMapDto(int PieceCount, string Bitfield);
 
 /// <summary>Names of the SignalR events pushed to the GUI. The payload type of each is noted.</summary>
 public static class GameShareEvents

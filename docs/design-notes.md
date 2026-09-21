@@ -57,12 +57,13 @@ and a retry repairs the folder by re-checking it. A folder that a download is wr
 
 ## Looking after an installed game
 
-A game is either **Installed** (verified, offered to others) or **Invalid** (shown as damaged, not offered).
+A game is either **Installed** (verified) or **Invalid** (shown as damaged). Both are offered to others: a damaged game still
+serves every piece that matches its recorded hash, see "Damaged games keep sharing" below.
 Nothing changes that state behind the user's back in the direction of "new version". What happens:
 
 | Situation | What GameShare does |
 |---|---|
-| A scan finds a content file missing or with another size | Marks the game damaged and stops offering it. It does **not** register a new version, or every PC that plays would end up with its own variant. |
+| A scan finds a content file missing or with another size | Marks the game damaged. It keeps offering the pieces that still match. It does **not** register a new version, or every PC that plays would end up with its own variant. |
 | A game rewrote a file and kept its size | A scan cannot see it. **Check** (full verification) reports it, marks the game damaged and suggests volatile patterns. |
 | A damaged game looks fine again | A scan runs a full check before putting it back in service. Sizes alone prove nothing. |
 | An installed folder is gone, for example an unplugged drive | Marked damaged. Comes back after a full check when the folder returns. |
@@ -74,6 +75,20 @@ Nothing changes that state behind the user's back in the direction of "new versi
 Repair and update take the game out of service first, so nobody is handed files while they are rewritten.
 Repair is the only thing that overwrites changed content files, and it is always an explicit request.
 Cancelling a repair or update never deletes an installed game, whatever it is asked to do.
+
+### Damaged games keep sharing
+
+A game that was played on may have a few changed files, yet most of it is still exactly the original. Hiding it would waste that.
+So a damaged game stays seeded, upload-only, and serves only the pieces whose hash still matches (libtorrent checks each piece
+before it is served). What that means on the network:
+
+- `/peer/games` marks each offer with `IsComplete` and `PercentIntact`. Offers with nothing intact are left out.
+- `/peer/games/{hash}/pieces` returns the piece map, one bit per piece (`PieceMapCodec`). A complete copy answers "everything".
+- Every PC keeps the maps of its peers. A game is **fully available** when some PC has a complete copy, or when the union of the
+  partial maps covers every piece. Otherwise the client shows "Zatím nekompletní" and how much is covered, and install and update
+  are refused with 409 until the missing parts appear. Peers with the same hole cannot complete each other, so nothing starts and stalls.
+- Two PCs damaged in different places complete a third one together. Repair works the same way and can use damaged copies as sources.
+- A running repair or download of the same folder is never taken over by the seed (`SeedManager.HasActiveDownloadAsync`).
 
 ### Volatile files
 
@@ -147,7 +162,7 @@ over the LAN swarm and update by fetching only changed pieces. Not built yet. Tw
 
 - **Integrity strength.** Pieces are SHA-1, which is fine against accidents on a trusted LAN. The manifest adds SHA-256 per file and a full check re-verifies it. A game is only "installed" when a full verification passed.
 - **Volatile patterns cannot be removed.** They only accumulate. Deleting the game's record is the way back.
-- **Repair needs another PC that has the game.** With no source it waits and can be cancelled. The game stays damaged.
+- **Repair needs PCs that have the missing parts.** With no source it waits and can be cancelled. The game stays damaged.
 - **Discovery and the transfer engine do not talk to each other.** Each finds peers on its own multicast. The shorter announce interval makes a lost datagram cost seconds, not minutes, but it is not a real nudge.
 - **IPv4 only.** Keeps the LAN filter simple.
 - **No launcher.** Nothing starts games. The definition file has the fields, the client has no Play button.

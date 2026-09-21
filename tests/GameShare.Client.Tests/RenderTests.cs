@@ -50,6 +50,10 @@ public class RenderTests
             Game(D, "Assetto Corsa", GameState.AvailableOnLan, version: "1.16", size: 45_000_000_000, peers: ["PC-01", "PC-04", "PC-08", "PC-10"]),
             Game("e" + new string('e', 63), "Farming Simulator 25", GameState.AvailableOnLan, version: "1.4", size: 60_000_000_000, peers: ["PC-04"]),
             Game("f" + new string('f', 63), "BeamNG.drive", GameState.AvailableOnLan, version: "0.39", size: 71_000_000_000, peers: ["PC-01", "PC-04"], updates: A, gameId: "beamng"),
+            Game("9" + new string('9', 63), "Forza Horizon", GameState.AvailableOnLan, version: "5.0", size: 110_000_000_000, peers: ["PC-01", "PC-04"]) with
+            {
+                PartialPeerNames = ["PC-01", "PC-04"], FullyAvailable = false, CoveragePercent = 96.5,
+            },
         ],
         Peers = [Peer("p1", "PC-01", 3), Peer("p4", "PC-04", 4), Peer("p8", "PC-08", 1), Peer("p10", "PC-10", 0)],
         Downloads =
@@ -98,7 +102,7 @@ public class RenderTests
         Assert.True(frame.PixelSize.Width >= 1000);
         Assert.True(DistinctColours(frame) > 200, "the library rendered as an almost blank image");
         Assert.Equal(3, main.Library.MyGames.Count);
-        Assert.Equal(3, main.Library.LanGames.Count);
+        Assert.Equal(4, main.Library.LanGames.Count);
     }
 
     [AvaloniaFact]

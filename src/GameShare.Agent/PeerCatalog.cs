@@ -26,7 +26,8 @@ public sealed partial class PeerCatalog
     [GeneratedRegex("^[0-9a-f]{64}$")]
     private static partial Regex Sha256Hex();
 
-    private sealed record PeerState(PeerInfo Peer, IReadOnlyList<OfferedGameDto> Offers, int Failures);
+    /// <param name="Pieces">For offers that are not complete: which pieces that PC has. Best effort, may be missing.</param>
+    private sealed record PeerState(PeerInfo Peer, IReadOnlyList<OfferedGameDto> Offers, IReadOnlyDictionary<string, bool[]> Pieces, int Failures);
 
     private readonly DiscoveryService _discovery;
     private readonly IHttpClientFactory _http;
@@ -102,11 +103,15 @@ public sealed partial class PeerCatalog
         try
         {
             var offers = await GetOffersAsync(peer, ct).ConfigureAwait(false);
-            _peers[peer.MachineId] = new PeerState(peer, offers, 0);
+            var pieces = await GetPiecesAsync(peer, offers, ct).ConfigureAwait(false);
+            var after = new PeerState(peer, offers, pieces, 0);
+            _peers[peer.MachineId] = after;
 
-            var oldHashes = before?.Offers.Select(o => o.ContentHash).ToHashSet() ?? [];
-            var newHashes = offers.Select(o => o.ContentHash).ToHashSet();
-            var changed = oldHashes.Union(newHashes).Where(h => oldHashes.Contains(h) != newHashes.Contains(h)).ToList();
+            // A version is "changed" when it appeared, vanished, or when what this PC can serve of it changed.
+            var oldSig = Signatures(before);
+            var newSig = Signatures(after);
+            var changed = oldSig.Keys.Union(newSig.Keys)
+                .Where(h => !oldSig.TryGetValue(h, out var a) || !newSig.TryGetValue(h, out var b) || a != b).ToList();
             if (before is null) _log.LogInformation("Peer {Peer} offers {Count} games", peer.MachineName, offers.Count);
             if (changed.Count > 0) Raise(changed);
         }
@@ -144,10 +149,62 @@ public sealed partial class PeerCatalog
         foreach (var o in offers)
         {
             if (!Sha256Hex().IsMatch(o.ContentHash) || !GameDefinitionFile.IsValidGameId(o.GameId) || string.IsNullOrWhiteSpace(o.Name)
-                || o.Name.Length > 200 || o.TotalSize < 0)
+                || o.Name.Length > 200 || o.TotalSize < 0 || o.PercentIntact is < 0 or > 100)
                 throw new InvalidDataException($"peer sent a malformed offer for '{o.Name}'");
         }
+        if (offers.Select(o => o.ContentHash).Distinct().Count() != offers.Count)
+            throw new InvalidDataException("peer offered the same game version twice");
         return offers;
+    }
+
+    /// <summary>Asks a PC which pieces it has of the games it only has part of. A PC that does not answer is simply counted as unknown.</summary>
+    private async Task<IReadOnlyDictionary<string, bool[]>> GetPiecesAsync(PeerInfo peer, IReadOnlyList<OfferedGameDto> offers, CancellationToken ct)
+    {
+        var result = new Dictionary<string, bool[]>();
+        foreach (var offer in offers.Where(o => !o.IsComplete))
+        {
+            try
+            {
+                using var client = _http.CreateClient("peer");
+                using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                timeout.CancelAfter(TimeSpan.FromSeconds(5));
+                using var response = await client.GetAsync(Url(peer, $"/peer/games/{offer.ContentHash}/pieces"), HttpCompletionOption.ResponseHeadersRead, timeout.Token).ConfigureAwait(false);
+                response.EnsureSuccessStatusCode();
+                var json = await ReadLimitedAsync(response, 2 << 20, timeout.Token).ConfigureAwait(false);
+                result[offer.ContentHash] = PieceMapCodec.Unpack(GameShareJson.Deserialize<PieceMapDto>(System.Text.Encoding.UTF8.GetString(json)));
+            }
+            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or InvalidDataException or System.Text.Json.JsonException)
+            {
+                _log.LogDebug("No piece map from {Peer} for {Hash}: {Reason}", peer.MachineName, offer.ContentHash[..12], ex.Message);
+            }
+        }
+        return result;
+    }
+
+    private static Dictionary<string, string> Signatures(PeerState? state) =>
+        state is null ? [] : state.Offers.ToDictionary(
+            o => o.ContentHash,
+            o => $"{o.IsComplete}|{o.PercentIntact}|{(state.Pieces.TryGetValue(o.ContentHash, out var p) ? p.Count(x => x) : -1)}");
+
+    /// <summary>
+    /// Whether the PCs that are online can supply the whole game, and how much of it they have between them.
+    /// A PC with the complete game settles it. Otherwise the pieces of the partial copies are combined.
+    /// When that cannot be told, for example because a PC did not answer, the game is treated as available rather than blocked.
+    /// </summary>
+    /// <returns><c>Coverage</c> is only set when the answer is "not everything".</returns>
+    public (bool FullyAvailable, double? Coverage) Availability(string contentHash)
+    {
+        var holders = _peers.Values.Where(p => p.Offers.Any(o => o.ContentHash == contentHash)).ToList();
+        if (holders.Count == 0) return (true, null);
+        if (holders.Any(p => p.Offers.First(o => o.ContentHash == contentHash).IsComplete)) return (true, null);
+
+        var maps = holders.Select(p => p.Pieces.GetValueOrDefault(contentHash)).Where(m => m is not null).Select(m => m!).ToList();
+        if (maps.Count < holders.Count) return (true, null); // somebody's map is unknown, do not claim a shortage we cannot prove
+
+        int length = maps.Max(m => m.Length);
+        int have = Enumerable.Range(0, length).Count(i => maps.Any(m => i < m.Length && m[i]));
+        double percent = length == 0 ? 0 : Math.Round(have * 100.0 / length, 1);
+        return have >= length ? (true, null) : (false, percent);
     }
 
     /// <summary>Downloads a manifest and its torrent from any peer that offers the version. Both are validated.</summary>
