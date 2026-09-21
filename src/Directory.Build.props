@@ -1,0 +1,6 @@
+<Project>
+  <!-- Applies to production code only. Test projects keep the SDK defaults. -->
+  <PropertyGroup>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+</Project>

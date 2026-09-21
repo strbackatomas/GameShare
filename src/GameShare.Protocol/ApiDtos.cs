@@ -1,0 +1,114 @@
+namespace GameShare.Protocol;
+
+// Contracts shared by the agent's HTTP APIs, its SignalR events and the client. Plain data, no behaviour.
+
+public enum GameState
+{
+    /// <summary>Complete and verified on this PC.</summary>
+    Installed,
+    /// <summary>Installed here, but its files changed or went missing. Not offered to other PCs until repaired or registered again.</summary>
+    Damaged,
+    /// <summary>Being installed right now.</summary>
+    Downloading,
+    /// <summary>Not on this PC but at least one other PC offers it.</summary>
+    AvailableOnLan,
+    /// <summary>Known from an earlier scan or download but nobody offers it right now.</summary>
+    Unavailable,
+}
+
+/// <summary>One game version. <see cref="ContentHash"/> is its identity and the id used in URLs.</summary>
+public sealed record GameDto(
+    string ContentHash,
+    string GameId,
+    string Name,
+    string? Version,
+    long TotalSize,
+    GameState State,
+    string? InstallPath,
+    IReadOnlyList<string> PeerNames,
+    long? DownloadId,
+    GameDefinition? Definition)
+{
+    /// <summary>
+    /// Set on a version that is not installed here while another version of the same game is. It is the content hash of that
+    /// installed version, so the client can offer "update" instead of "install".
+    /// </summary>
+    public string? UpdatesContentHash { get; init; }
+}
+
+public sealed record PeerDto(string MachineId, string MachineName, string Address, int Port, int GameCount, DateTimeOffset LastSeen);
+
+public sealed record DownloadPeerDto(string Name, string Address, long DownloadRate, long UploadRate);
+
+/// <summary>A download, also used as the payload of every download event. Rates are bytes per second.</summary>
+public sealed record DownloadDto(
+    long Id,
+    string ContentHash,
+    string GameName,
+    string State,
+    long BytesDone,
+    long BytesTotal,
+    double Percent,
+    long SpeedBytesPerSecond,
+    int Peers,
+    double? EtaSeconds,
+    string? Error,
+    IReadOnlyList<DownloadPeerDto> PeerDetails)
+{
+    /// <summary>Install, Repair or Update.</summary>
+    public string Kind { get; init; } = "Install";
+}
+
+public sealed record SeedDto(string ContentHash, string GameName, string InstallPath);
+
+public sealed record InstallRequest(string? TargetRoot);
+
+public sealed record ScanResultDto(
+    int Added, int Unchanged, int Skipped, IReadOnlyList<string> Errors, IReadOnlyList<string> MissingRoots, IReadOnlyList<string> Damaged);
+
+/// <summary>What differs between an installed game and its manifest, from a full verification.</summary>
+/// <param name="SuggestedPatterns">Volatile patterns that would make the changed and added files stop counting. Suggestions only.</param>
+public sealed record GameChangesDto(
+    bool IsIntact, IReadOnlyList<string> Modified, IReadOnlyList<string> Missing, IReadOnlyList<string> Added, IReadOnlyList<string> SuggestedPatterns);
+
+/// <param name="Patterns">Path patterns such as "saves/**" or "*.ini", relative to the game folder.</param>
+public sealed record AddVolatileRequest(IReadOnlyList<string> Patterns);
+
+/// <param name="MaxUploadMBps">Megabytes (10^6 bytes) per second, null for unlimited.</param>
+public sealed record SettingsDto(IReadOnlyList<string> GameRoots, bool SeedingEnabled, int? MaxUploadMBps, int? MaxDownloadMBps);
+
+public sealed record StatusDto(string MachineId, string MachineName, string Version, int PeerCount, int GameCount, int ActiveDownloads);
+
+// ---- Agent to agent API, served to other PCs on the LAN ----
+
+public sealed record PeerHelloDto(string MachineId, string MachineName, int ProtocolVersion);
+
+/// <summary>A game this PC is willing to serve: installed, verified and seeding.</summary>
+public sealed record OfferedGameDto(string ContentHash, string GameId, string Name, string? Version, long TotalSize);
+
+/// <summary>Names of the SignalR events pushed to the GUI. The payload type of each is noted.</summary>
+public static class GameShareEvents
+{
+    public const string HubPath = "/hub/events";
+
+    /// <summary>PeerDto. Also sent when a known peer changes address, so clients should upsert.</summary>
+    public const string PeerConnected = nameof(PeerConnected);
+    /// <summary>PeerDto.</summary>
+    public const string PeerDisconnected = nameof(PeerDisconnected);
+    /// <summary>GameDto. A game version seen for the first time, locally or on the LAN.</summary>
+    public const string GameDiscovered = nameof(GameDiscovered);
+    /// <summary>GameDto. State, peers or installation of a known game changed.</summary>
+    public const string GameUpdated = nameof(GameUpdated);
+    /// <summary>GameDto, the last state seen. A version that is neither installed here nor offered by any PC any more.</summary>
+    public const string GameRemoved = nameof(GameRemoved);
+    /// <summary>DownloadDto for all Download* events.</summary>
+    public const string DownloadStarted = nameof(DownloadStarted);
+    public const string DownloadProgress = nameof(DownloadProgress);
+    public const string DownloadPaused = nameof(DownloadPaused);
+    public const string DownloadCompleted = nameof(DownloadCompleted);
+    public const string DownloadFailed = nameof(DownloadFailed);
+    public const string DownloadCancelled = nameof(DownloadCancelled);
+    /// <summary>SeedDto.</summary>
+    public const string SeedStarted = nameof(SeedStarted);
+    public const string SeedStopped = nameof(SeedStopped);
+}
