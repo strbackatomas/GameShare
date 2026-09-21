@@ -14,14 +14,18 @@ public sealed partial class AppModel : ViewModelBase, IAsyncDisposable
     private readonly IEventStream _events;
     private readonly IUiDispatcher _ui;
 
-    public AppModel(IAgentClient client, IEventStream events, IUiDispatcher ui)
+    public AppModel(IAgentClient client, IEventStream events, IUiDispatcher ui, IGameStarter? starter = null)
     {
         Client = client;
         _events = events;
         _ui = ui;
+        Starter = starter ?? new ProcessGameStarter();
     }
 
     public IAgentClient Client { get; }
+
+    /// <summary>What starts a game once the agent has said it may be started.</summary>
+    public IGameStarter Starter { get; }
 
     public ObservableCollection<GameCardViewModel> Games { get; } = [];
     public ObservableCollection<DownloadViewModel> Downloads { get; } = [];

@@ -29,6 +29,12 @@ public sealed record GameDto(
     long? DownloadId,
     GameDefinition? Definition)
 {
+    /// <summary>Whether the game can be started from the client. Only for a game that is installed here.</summary>
+    public LaunchState Launch { get; init; } = LaunchState.None;
+
+    /// <summary>A program of this game is running on this PC right now. Its files are not rewritten and its seed steps aside meanwhile.</summary>
+    public bool IsRunning { get; init; }
+
     /// <summary>What the administrator's signed list says about this version. <see cref="TrustVerdict.NotChecked"/> when checking is off or there is no list.</summary>
     public TrustVerdict Trust { get; init; } = TrustVerdict.NotChecked;
 
@@ -100,6 +106,21 @@ public sealed record AddVolatileRequest(IReadOnlyList<string> Patterns);
 
 /// <param name="MaxUploadMBps">Megabytes (10^6 bytes) per second, null for unlimited.</param>
 public sealed record SettingsDto(IReadOnlyList<string> GameRoots, bool SeedingEnabled, int? MaxUploadMBps, int? MaxDownloadMBps);
+
+public enum LaunchState
+{
+    /// <summary>Nothing to start: not installed here, or the game has no program to start.</summary>
+    None,
+    Ready,
+    /// <summary>The game does not say which program starts it. The player picks one of its programs.</summary>
+    NeedsExecutable,
+}
+
+/// <summary>What the client starts. Checked by the agent: a program of the game, still as it was verified, inside the game folder.</summary>
+public sealed record LaunchInfoDto(string ExecutablePath, string? Arguments, string WorkingDirectory);
+
+/// <summary>The player's pick of the program to start, for this PC.</summary>
+public sealed record LauncherChoiceRequest(string Executable, string? Arguments = null);
 
 /// <summary>How strictly this PC follows the administrator's signed list of verified games.</summary>
 public enum TrustMode

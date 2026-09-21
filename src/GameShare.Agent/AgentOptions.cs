@@ -62,6 +62,15 @@ public sealed class AgentOptions
     /// </summary>
     public int OpenFileLimit { get; set; } = 8;
 
+    /// <summary>How often the PC is looked at for games that are running.</summary>
+    public TimeSpan RunningCheckInterval { get; set; } = TimeSpan.FromSeconds(5);
+
+    /// <summary>
+    /// While a game is running its seed stops sending. The disk and the network are the game's, and a game can save into files that
+    /// are not held open. Other PCs cannot install that game from this one until it is closed.
+    /// </summary>
+    public bool PauseSeedWhilePlaying { get; set; } = true;
+
     /// <summary>A seed that has uploaded nothing for this long lets go of its files. Null turns it off.</summary>
     public TimeSpan? SeedIdleRelease { get; set; } = TimeSpan.FromSeconds(20);
 

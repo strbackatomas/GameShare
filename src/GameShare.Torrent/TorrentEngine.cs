@@ -273,10 +273,10 @@ public sealed class TorrentEngine : IDisposable
         if (t.Releasing)
         {
             t.Releasing = false;
-            t.Start();
+            if (!t.Suspended) t.Start(); // a game may have started meanwhile, then the seed stays stopped
             return;
         }
-        if (_idleReleaseAfter is not { } idleAfter || !t.UploadOnly || t.IsStopped) return;
+        if (_idleReleaseAfter is not { } idleAfter || !t.UploadOnly || t.IsStopped || t.Suspended) return;
         if (status.State is TransferState.Checking or TransferState.Error) return;
 
         // The upload rate is a moving average that stays above zero for a long time after the last byte, so count the bytes.

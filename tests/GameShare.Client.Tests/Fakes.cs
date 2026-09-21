@@ -64,6 +64,15 @@ internal sealed class FakeAgent : IAgentClient
     public Task<GameDto?> AddVolatileAsync(string contentHash, IReadOnlyList<string> patterns, CancellationToken ct = default) =>
         Do<GameDto?>($"AddVolatile({contentHash}|{string.Join(";", patterns)})", () => null);
 
+    public LaunchInfoDto LaunchInfo { get; set; } = new(@"D:\Games\BeamNG\Game.exe", "-windowed", @"D:\Games\BeamNG");
+    public List<string> Executables { get; set; } = [];
+
+    public Task<LaunchInfoDto> LaunchAsync(string contentHash, CancellationToken ct = default) => Do($"Launch({contentHash})", () => LaunchInfo);
+    public Task<IReadOnlyList<string>> GetExecutablesAsync(string contentHash, CancellationToken ct = default) =>
+        Do<IReadOnlyList<string>>($"GetExecutables({contentHash})", () => [.. Executables]);
+    public Task<GameDto?> ChooseExecutableAsync(string contentHash, string executable, string? arguments, CancellationToken ct = default) =>
+        Do<GameDto?>($"ChooseExecutable({contentHash}|{executable}|{arguments})", () => null);
+
     public Task<DownloadDto> PauseAsync(long downloadId, CancellationToken ct = default) => Do($"Pause({downloadId})", () => Downloads.First(d => d.Id == downloadId));
     public Task<DownloadDto> ResumeAsync(long downloadId, CancellationToken ct = default) => Do($"Resume({downloadId})", () => Downloads.First(d => d.Id == downloadId));
     public Task CancelAsync(long downloadId, bool deleteFiles, CancellationToken ct = default) => Do($"Cancel({downloadId}|{deleteFiles})", () => (object?)null);
@@ -72,6 +81,19 @@ internal sealed class FakeAgent : IAgentClient
     {
         var d = Downloads.Count + 1;
         return new DownloadDto(d, hash, "Game", "Downloading", 0, 1000, 0, 0, 0, null, null, []) { Kind = kind };
+    }
+}
+
+/// <summary>Records what the client would have started, and can refuse the way the shell does.</summary>
+internal sealed class FakeStarter : IGameStarter
+{
+    public List<LaunchInfoDto> Started { get; } = [];
+    public AgentException? Failure { get; set; }
+
+    public void Start(LaunchInfoDto info)
+    {
+        if (Failure is not null) throw Failure;
+        Started.Add(info);
     }
 }
 

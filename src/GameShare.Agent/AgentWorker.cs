@@ -12,6 +12,7 @@ public sealed class AgentWorker : BackgroundService
     private readonly SeedManager _seeds;
     private readonly GameChangeTracker _changes;
     private readonly TrustService _trust;
+    private readonly RunningGames _running;
     private readonly GameLibrary _library;
     private readonly ScanService _scan;
     private readonly DiscoveryService _discovery;
@@ -22,13 +23,14 @@ public sealed class AgentWorker : BackgroundService
     private readonly ILogger<AgentWorker> _log;
 
     public AgentWorker(
-        DownloadManager downloads, SeedManager seeds, GameChangeTracker changes, TrustService trust, GameLibrary library, ScanService scan, DiscoveryService discovery,
+        DownloadManager downloads, SeedManager seeds, GameChangeTracker changes, TrustService trust, RunningGames running, GameLibrary library, ScanService scan, DiscoveryService discovery,
         PeerCatalog catalog, SettingsService settings, TorrentEngine engine, AgentOptions options, ILogger<AgentWorker> log)
     {
         _downloads = downloads;
         _seeds = seeds;
         _changes = changes;
         _trust = trust;
+        _running = running;
         _library = library;
         _scan = scan;
         _discovery = discovery;
@@ -47,6 +49,7 @@ public sealed class AgentWorker : BackgroundService
         _library.InstallationChanged += OnInstallationChanged;
         _changes.Changed += OnTrackedChange;
         _downloads.DownloadEventRaised += OnDownloadEvent;
+        _running.Changed += OnRunningChanged;
         try
         {
             await _downloads.RecoverAsync(ct).ConfigureAwait(false);
@@ -63,6 +66,7 @@ public sealed class AgentWorker : BackgroundService
                 SeedResumeLoopAsync(ct),
                 _changes.RunAsync(_options.ChangeWatchSyncInterval, ct),
                 _trust.RunAsync(ct),
+                _running.RunAsync(ct),
                 DamagedSeedRecheckLoopAsync(ct)).ConfigureAwait(false);
         }
         catch (OperationCanceledException) { /* shutting down */ }
@@ -73,6 +77,7 @@ public sealed class AgentWorker : BackgroundService
             _library.InstallationChanged -= OnInstallationChanged;
             _changes.Changed -= OnTrackedChange;
             _downloads.DownloadEventRaised -= OnDownloadEvent;
+            _running.Changed -= OnRunningChanged;
 
             // So the next start can skip re-hashing the library. Bounded, shutdown must not hang on it.
             using var limit = new CancellationTokenSource(TimeSpan.FromSeconds(15));
@@ -90,6 +95,21 @@ public sealed class AgentWorker : BackgroundService
             catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
             catch (Exception ex) { _log.LogWarning(ex, "Could not store seed resume data"); }
         }
+    }
+
+    /// <summary>A game that is played does not have to share the disk and the network with a seed of itself.</summary>
+    private void OnRunningChanged(object? sender, RunningChange change)
+    {
+        if (!_options.PauseSeedWhilePlaying) return;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                if (change.Running) await _seeds.SuspendAsync(change.Installation).ConfigureAwait(false);
+                else await _seeds.ResumeAsync(change.Installation).ConfigureAwait(false);
+            }
+            catch (Exception ex) { _log.LogWarning(ex, "Could not change the seed of {Path} for a game that started or stopped", change.Installation.InstallPath); }
+        });
     }
 
     /// <summary>A finished install, repair or update is a game folder to watch, or one that changed under the watcher.</summary>

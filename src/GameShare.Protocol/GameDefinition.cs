@@ -14,7 +14,10 @@ public sealed record GameDefinition
     public string? DisplayName { get; init; }
     public string? Version { get; init; }
 
-    /// <summary>Executable path relative to the game root. Only used by the future launcher.</summary>
+    /// <summary>
+    /// The program that starts the game, relative to the game root. It has to be a .exe that is one of the game's own files.
+    /// This comes from another PC together with the manifest, so anything else is refused when the game is started.
+    /// </summary>
     public string? Executable { get; init; }
     public string? Arguments { get; init; }
     public string WorkingDirectory { get; init; } = ".";

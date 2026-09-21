@@ -73,11 +73,13 @@ public class LibraryTests
     {
         var agent = new FakeAgent { Games = [.. games] };
         var events = new FakeEvents();
-        var app = new AppModel(agent, events, new ImmediateDispatcher());
+        var app = new AppModel(agent, events, new ImmediateDispatcher(), new FakeStarter());
         var main = new MainViewModel(app);
         await app.StartAsync();
         return (main, app, agent, events);
     }
+
+    private static FakeStarter StarterOf(AppModel app) => (FakeStarter)app.Starter;
 
     [Fact]
     public async Task Games_are_split_into_mine_and_on_the_lan_and_sorted_by_name()
@@ -333,6 +335,133 @@ public class LibraryTests
         Assert.Contains($"AddVolatile({A}|saves/**)", agent.Calls);
         Assert.False(card.HasSuggestion);
         Assert.Contains("Označeno", card.Message);
+    }
+
+    // ---- starting games ----
+
+    private static GameDto Installed(GameState state = GameState.Installed, LaunchState launch = LaunchState.Ready, bool running = false) =>
+        Game(A, "BeamNG.drive", state, installPath: @"D:\Games\BeamNG") with { Launch = launch, IsRunning = running };
+
+    [Theory]
+    [InlineData(GameState.Installed, LaunchState.Ready, false, true)]
+    [InlineData(GameState.Damaged, LaunchState.Ready, false, true)]      // playing changes files, that is what marks a game
+    [InlineData(GameState.Installed, LaunchState.Ready, true, false)]    // it is running already
+    [InlineData(GameState.Installed, LaunchState.None, false, false)]    // nothing to start
+    [InlineData(GameState.Installed, LaunchState.NeedsExecutable, false, false)]
+    public async Task Play_is_offered_for_a_game_that_can_be_started_and_is_not_running(GameState state, LaunchState launch, bool running, bool canPlay)
+    {
+        var (main, _, _, _) = await StartAsync(Installed(state, launch, running));
+
+        Assert.Equal(canPlay, main.Library.MyGames.Single().CanPlay);
+    }
+
+    [Fact]
+    public async Task A_game_that_is_only_on_the_lan_cannot_be_played()
+    {
+        var (main, _, _, _) = await StartAsync(Game(A, "BeamNG.drive", GameState.AvailableOnLan, peers: ["PC-01"]) with { Launch = LaunchState.Ready });
+
+        Assert.False(main.Library.LanGames.Single().CanPlay);
+    }
+
+    [Fact]
+    public async Task Play_asks_the_agent_and_starts_what_the_agent_says()
+    {
+        var (main, app, agent, _) = await StartAsync(Installed());
+        agent.LaunchInfo = new LaunchInfoDto(@"D:\Games\BeamNG\Bin64\Game.exe", "-windowed", @"D:\Games\BeamNG");
+
+        await main.Library.MyGames.Single().PlayCommand.ExecuteAsync(null);
+
+        Assert.Contains($"Launch({A})", agent.Calls);
+        Assert.Equal(agent.LaunchInfo, Assert.Single(StarterOf(app).Started));
+        Assert.Contains("spouští", main.Library.MyGames.Single().Message);
+    }
+
+    [Fact]
+    public async Task When_the_agent_refuses_to_start_a_game_nothing_is_started_and_the_reason_is_shown()
+    {
+        var (main, app, agent, _) = await StartAsync(Installed());
+        agent.FailNext["Launch"] = new AgentException("The program Game.exe is not what it was when the game was verified, so it is not started. Repair the game first.", 409);
+
+        await main.Library.MyGames.Single().PlayCommand.ExecuteAsync(null);
+
+        Assert.Empty(StarterOf(app).Started);
+        Assert.Contains("Repair the game first", main.Library.MyGames.Single().Message);
+        Assert.True(main.Library.MyGames.Single().CanPlay); // and it can be tried again
+    }
+
+    [Fact]
+    public async Task When_windows_will_not_start_the_program_the_player_is_told()
+    {
+        var (main, app, _, _) = await StartAsync(Installed());
+        StarterOf(app).Failure = new AgentException("Hru se nepodařilo spustit: Operace vyžaduje zvýšení oprávnění.");
+
+        await main.Library.MyGames.Single().PlayCommand.ExecuteAsync(null);
+
+        Assert.Contains("nepodařilo spustit", main.Library.MyGames.Single().Message);
+        Assert.False(main.Library.MyGames.Single().IsBusy);
+    }
+
+    [Fact]
+    public async Task While_a_game_runs_it_cannot_be_repaired_updated_or_registered_and_it_can_be_again_when_it_is_closed()
+    {
+        var (main, _, _, events) = await StartAsync(Installed(GameState.Damaged, running: true));
+        var card = main.Library.MyGames.Single();
+
+        Assert.False(card.CanModify);
+        Assert.False(card.RepairCommand.CanExecute(null));
+        Assert.False(card.RegisterCommand.CanExecute(null));
+        Assert.False(card.UpdateCommand.CanExecute(null));
+        Assert.True(card.CheckCommand.CanExecute(null)); // looking is fine
+
+        events.Raise(GameShareEvents.GameUpdated, Installed(GameState.Damaged, running: false));
+
+        Assert.Same(card, main.Library.MyGames.Single());
+        Assert.True(card.CanModify);
+        Assert.True(card.RepairCommand.CanExecute(null));
+        Assert.True(card.RegisterCommand.CanExecute(null));
+        Assert.True(card.CanPlay);
+    }
+
+    [Fact]
+    public async Task A_game_that_does_not_say_which_program_starts_it_lets_the_player_pick_one()
+    {
+        var (main, _, agent, _) = await StartAsync(Installed(launch: LaunchState.NeedsExecutable));
+        agent.Executables = ["Launcher.exe", "Bin64/Game.exe"];
+        var card = main.Library.MyGames.Single();
+        Assert.True(card.NeedsExecutable);
+        Assert.False(card.CanPlay);
+
+        await card.ChooseExecutableCommand.ExecuteAsync(null);
+
+        Assert.True(card.IsChoosingExecutable);
+        Assert.Equal(["Launcher.exe", "Bin64/Game.exe"], card.Executables);
+        Assert.Equal("Launcher.exe", card.SelectedExecutable);
+
+        card.SelectedExecutable = "Bin64/Game.exe";
+        agent.Games = [Installed()]; // the agent now says it can be started
+        await card.SaveExecutableCommand.ExecuteAsync(null);
+
+        Assert.Contains($"ChooseExecutable({A}|Bin64/Game.exe|)", agent.Calls);
+        Assert.False(card.IsChoosingExecutable);
+        Assert.True(card.CanPlay);
+    }
+
+    [Fact]
+    public async Task Choosing_can_be_cancelled_and_a_game_without_any_program_says_so()
+    {
+        var (main, _, agent, _) = await StartAsync(Installed(launch: LaunchState.NeedsExecutable));
+        var card = main.Library.MyGames.Single();
+        agent.Executables = ["Game.exe"];
+
+        await card.ChooseExecutableCommand.ExecuteAsync(null);
+        card.CancelChoosingExecutableCommand.Execute(null);
+        Assert.False(card.IsChoosingExecutable);
+        Assert.True(card.NeedsExecutable); // the button to choose is back
+
+        agent.Executables = [];
+        await card.ChooseExecutableCommand.ExecuteAsync(null);
+        Assert.False(card.IsChoosingExecutable);
+        Assert.Contains("žádný program", card.Message);
     }
 
     [Fact]

@@ -159,6 +159,39 @@ public class AgentClientTests
     }
 
     [Fact]
+    public async Task Starting_a_game_and_choosing_its_program_use_the_endpoints_the_agent_offers()
+    {
+        var (client, handler) = Create((req, _) => req.RequestUri!.AbsolutePath switch
+        {
+            var p when p.EndsWith("/launch") => Json("""{"executablePath":"D:\\Games\\BeamNG\\Game.exe","arguments":"-windowed","workingDirectory":"D:\\Games\\BeamNG"}"""),
+            var p when p.EndsWith("/executables") => Json("""["Launcher.exe","Bin64/Game.exe"]"""),
+            _ => Json("null"),
+        });
+
+        var info = await client.LaunchAsync(Data.A);
+        var programs = await client.GetExecutablesAsync(Data.A);
+        await client.ChooseExecutableAsync(Data.A, "Bin64/Game.exe", "-windowed");
+
+        Assert.Equal(("-windowed", @"D:\Games\BeamNG"), (info.Arguments, info.WorkingDirectory));
+        Assert.Equal(["Launcher.exe", "Bin64/Game.exe"], programs);
+        Assert.Equal(
+            [(HttpMethod.Post, $"/api/games/{Data.A}/launch"), (HttpMethod.Get, $"/api/games/{Data.A}/executables"), (HttpMethod.Put, $"/api/games/{Data.A}/launcher")],
+            handler.Requests.Select(r => (r.Method, r.Url)));
+        Assert.Contains("Bin64/Game.exe", handler.Requests[2].Body);
+    }
+
+    [Fact]
+    public async Task A_game_carries_whether_it_can_be_started_and_whether_it_runs()
+    {
+        var (client, _) = Create((_, _) => Json(
+            $$"""[{"contentHash":"{{Data.A}}","gameId":"g","name":"BeamNG.drive","version":"0.38","totalSize":1,"state":"Installed","installPath":"D:/Games","peerNames":[],"downloadId":null,"definition":null,"launch":"NeedsExecutable","isRunning":true}]"""));
+
+        var game = Assert.Single(await client.GetGamesAsync());
+
+        Assert.Equal((LaunchState.NeedsExecutable, true), (game.Launch, game.IsRunning));
+    }
+
+    [Fact]
     public async Task The_trust_status_is_read_and_refreshing_asks_the_agent_to_load_the_list_again()
     {
         var (client, handler) = Create((_, _) => Json(

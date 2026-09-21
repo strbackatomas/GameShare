@@ -78,18 +78,40 @@ public static partial class LocalApi
             return new GameChangesDto(c.IsIntact, c.Modified, c.Missing, c.Added, c.SuggestedPatterns);
         });
 
+        // What the client starts, after the agent has checked it: a program of the game, still as verified, and not a withdrawn version.
+        api.MapPost("/games/{contentHash}/launch", async (string contentHash, LaunchService launch, CancellationToken ct) =>
+        {
+            RequireHash(contentHash);
+            return await launch.PrepareAsync(contentHash, ct);
+        });
+
+        // The programs of the game the player can choose from, for a game that does not say which one starts it.
+        api.MapGet("/games/{contentHash}/executables", async (string contentHash, LaunchService launch, CancellationToken ct) =>
+        {
+            RequireHash(contentHash);
+            return await launch.CandidatesAsync(contentHash, ct);
+        });
+
+        api.MapPut("/games/{contentHash}/launcher", async (string contentHash, LauncherChoiceRequest request, LaunchService launch, GameView view, CancellationToken ct) =>
+        {
+            RequireHash(contentHash);
+            await launch.ChooseAsync(contentHash, request?.Executable ?? "", request?.Arguments, ct);
+            return await view.GetGameAsync(contentHash, ct);
+        });
+
         // Accept the files as they are now as the game's new version. After deliberately patching a game.
-        api.MapPost("/games/{contentHash}/register", async (string contentHash, GameShareDb db, GameLibrary library, GameView view, CancellationToken ct) =>
+        api.MapPost("/games/{contentHash}/register", async (string contentHash, GameShareDb db, GameLibrary library, GameView view, RunningGames running, CancellationToken ct) =>
         {
             RequireHash(contentHash);
             var inst = await RequireInstallationAsync(contentHash, db, ct);
+            await RequireNotRunningAsync(running, inst, ct);
             var game = await library.RescanAsync(inst.InstallPath, ct: ct);
             return await view.GetGameAsync(game.Stored.Manifest.ContentHash, ct);
         });
 
         // Tell GameShare which files this game rewrites while it is played. They stop counting as game content.
         api.MapPost("/games/{contentHash}/volatile", async (
-            string contentHash, AddVolatileRequest request, GameShareDb db, GameLibrary library, GameView view, CancellationToken ct) =>
+            string contentHash, AddVolatileRequest request, GameShareDb db, GameLibrary library, GameView view, RunningGames running, CancellationToken ct) =>
         {
             RequireHash(contentHash);
             if (request?.Patterns is not { Count: > 0 }) throw new ArgumentException("Send at least one pattern, for example \"saves/**\".");
@@ -97,22 +119,24 @@ public static partial class LocalApi
             try { Storage.VolatileMatcher.Create(request.Patterns); }
             catch (InvalidDataException ex) { throw new ArgumentException(ex.Message, ex); }
             var inst = await RequireInstallationAsync(contentHash, db, ct);
+            await RequireNotRunningAsync(running, inst, ct);
             var game = await library.RescanAsync(inst.InstallPath, request.Patterns, ct);
             return await view.GetGameAsync(game.Stored.Manifest.ContentHash, ct);
         });
 
         // Restore the installed files to what the manifest says, from other PCs. The only thing that overwrites changed files.
-        api.MapPost("/games/{contentHash}/repair", async (string contentHash, GameShareDb db, DownloadManager downloads, GameView view, CancellationToken ct) =>
+        api.MapPost("/games/{contentHash}/repair", async (string contentHash, GameShareDb db, DownloadManager downloads, GameView view, RunningGames running, CancellationToken ct) =>
         {
             RequireHash(contentHash);
             var inst = await RequireInstallationAsync(contentHash, db, ct);
+            await RequireNotRunningAsync(running, inst, ct);
             var status = await downloads.StartRepairAsync(inst.Id, ct);
             return Results.Accepted($"/api/downloads/{status.Id}", view.ToDto(status));
         });
 
         // Bring the installed version of a game to this version, fetching only what differs.
         api.MapPost("/games/{contentHash}/update", async (
-            string contentHash, GameShareDb db, PeerCatalog catalog, DownloadManager downloads, GameView view, TrustService trust, CancellationToken ct) =>
+            string contentHash, GameShareDb db, PeerCatalog catalog, DownloadManager downloads, GameView view, TrustService trust, RunningGames running, CancellationToken ct) =>
         {
             RequireHash(contentHash);
             RequireFullyAvailable(catalog, contentHash);
@@ -124,6 +148,7 @@ public static partial class LocalApi
                 if ((await db.GetManifestAsync(i.ContentHash, ct))?.Manifest.GameId == manifest.GameId) installs.Add(i);
             if (installs.Count == 0) throw new InvalidOperationException($"{manifest.Name} is not installed on this PC, so there is nothing to update. Install it instead.");
             if (installs.Count > 1) throw new InvalidOperationException($"{manifest.Name} is installed in {installs.Count} places, GameShare cannot tell which one to update.");
+            await RequireNotRunningAsync(running, installs[0], ct);
 
             var status = await downloads.StartUpdateAsync(installs[0].Id, manifest, torrent, ct);
             return Results.Accepted($"/api/downloads/{status.Id}", view.ToDto(status));
@@ -176,6 +201,13 @@ public static partial class LocalApi
             throw new InvalidOperationException(
                 $"Only {coverage:0.#} % of this game is available on the LAN right now, so it cannot be installed yet. " +
                 "The PCs that have it were used to play it and have only parts of it. It works as soon as a PC with the missing parts is online.");
+    }
+
+    /// <summary>A repair, an update or registering rewrites or reads every file. Not under a game that is running and holding them.</summary>
+    private static async Task RequireNotRunningAsync(RunningGames running, Installation installation, CancellationToken ct)
+    {
+        if (await running.IsRunningNowAsync(installation, ct))
+            throw new InvalidOperationException("The game is running. Close it first, then try again.");
     }
 
     private static void RequireHash(string contentHash)

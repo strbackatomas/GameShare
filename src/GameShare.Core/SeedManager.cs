@@ -34,6 +34,44 @@ public sealed class SeedManager
 
     public event EventHandler<SeedEvent>? SeedEventRaised;
 
+    // Installations whose game is being played. Their seed is stopped, so it neither reads the files nor holds them open.
+    private readonly HashSet<long> _playing = [];
+    // Files of a game that is played changed. Its seed is checked again when it steps back in.
+    private readonly HashSet<long> _stale = [];
+
+    private bool IsPlaying(Installation installation) { lock (_playing) return _playing.Contains(installation.Id); }
+
+    /// <summary>
+    /// The game is being played. While it is, its seed does not send, does not read the folder and does not keep its files open,
+    /// so the game can save into them. Nothing else about the game changes: it is still listed and offered as before.
+    /// </summary>
+    public async Task SuspendAsync(Installation installation, CancellationToken ct = default)
+    {
+        lock (_playing) _playing.Add(installation.Id);
+        var transfer = FindTransfer(await _db.GetManifestAsync(installation.ContentHash, ct).ConfigureAwait(false));
+        if (transfer is null) return;
+        transfer.Suspend();
+        _log.LogInformation("Seed of {Path} stepped aside, the game is running", installation.InstallPath);
+    }
+
+    /// <summary>The game was closed. The seed sends again, after a check when the files changed meanwhile.</summary>
+    public async Task ResumeAsync(Installation installation, CancellationToken ct = default)
+    {
+        bool stale;
+        lock (_playing) { _playing.Remove(installation.Id); stale = _stale.Remove(installation.Id); }
+        if (!Enabled) return;
+
+        var transfer = FindTransfer(await _db.GetManifestAsync(installation.ContentHash, ct).ConfigureAwait(false));
+        if (transfer is null)
+        {
+            await StartAsync(installation, ct).ConfigureAwait(false);
+            return;
+        }
+        transfer.Resume();
+        if (stale) transfer.ForceRecheck();
+        _log.LogInformation("Seed of {Path} sends again{Checked}", installation.InstallPath, stale ? ", after a check" : "");
+    }
+
     /// <summary>
     /// Global switch. While false nothing is offered to other PCs: <see cref="StartAsync"/> stops the game's transfer
     /// instead of starting it, which also covers a download that has just finished.
@@ -66,6 +104,7 @@ public sealed class SeedManager
         }
         // A repair or update owns the transfer of that game and must be allowed to write. Never make it upload-only.
         if (await HasActiveDownloadAsync(installation, ct).ConfigureAwait(false)) return false;
+        if (IsPlaying(installation)) return false; // it starts when the game is closed
 
         var stored = await _db.GetManifestAsync(installation.ContentHash, ct).ConfigureAwait(false)
             ?? throw new InvalidOperationException($"No manifest stored for {installation.ContentHash}.");
@@ -98,6 +137,11 @@ public sealed class SeedManager
     public async Task RecheckAsync(Installation installation, CancellationToken ct = default)
     {
         if (!Enabled || await HasActiveDownloadAsync(installation, ct).ConfigureAwait(false)) return;
+        if (IsPlaying(installation))
+        {
+            lock (_playing) _stale.Add(installation.Id); // reading the folder now would hold its files open under the game
+            return;
+        }
 
         var stored = await _db.GetManifestAsync(installation.ContentHash, ct).ConfigureAwait(false);
         var transfer = FindTransfer(stored);

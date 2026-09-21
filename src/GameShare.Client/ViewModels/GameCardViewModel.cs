@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using GameShare.Client.Services;
@@ -33,7 +34,7 @@ public sealed partial class GameCardViewModel : ViewModelBase
     [ObservableProperty] public partial string? InstallPath { get; set; }
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsInstalled), nameof(IsDamaged), nameof(IsDownloading), nameof(IsAvailable), nameof(CanInstall), nameof(CanUpdate), nameof(StateText))]
+    [NotifyPropertyChangedFor(nameof(IsInstalled), nameof(IsDamaged), nameof(IsDownloading), nameof(IsAvailable), nameof(CanInstall), nameof(CanUpdate), nameof(StateText), nameof(CanPlay), nameof(NeedsExecutable))]
     public partial GameState State { get; set; }
 
     [ObservableProperty]
@@ -46,6 +47,26 @@ public sealed partial class GameCardViewModel : ViewModelBase
     public partial bool FullyAvailable { get; set; } = true;
 
     [ObservableProperty] public partial string CoverageText { get; set; } = "";
+
+    /// <summary>Ready: it can be started. NeedsExecutable: the player picks which program starts it. Only for a game installed here.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanPlay), nameof(NeedsExecutable))]
+    public partial LaunchState Launch { get; set; }
+
+    /// <summary>A program of the game is running on this PC. Its files are then not rewritten, so repairing and updating wait.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanPlay), nameof(CanModify))]
+    [NotifyCanExecuteChangedFor(nameof(UpdateCommand), nameof(RepairCommand), nameof(RegisterCommand))]
+    public partial bool IsRunning { get; set; }
+
+    /// <summary>The programs of the game to choose from, once the player asked to choose.</summary>
+    public ObservableCollection<string> Executables { get; } = [];
+
+    [ObservableProperty] public partial string? SelectedExecutable { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanPlay))]
+    public partial bool IsChoosingExecutable { get; set; }
 
     /// <summary>What the administrator's signed list says about this version. Nothing is shown when checking is off.</summary>
     [ObservableProperty]
@@ -61,7 +82,9 @@ public sealed partial class GameCardViewModel : ViewModelBase
 
     /// <summary>An operation on this game is running, so its buttons are off.</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(CanAct))]
+    [NotifyPropertyChangedFor(nameof(CanAct), nameof(CanModify))]
+    [NotifyCanExecuteChangedFor(nameof(PlayCommand), nameof(ChooseExecutableCommand), nameof(SaveExecutableCommand), nameof(InstallCommand), nameof(UpdateCommand),
+        nameof(RepairCommand), nameof(CheckCommand), nameof(MarkVolatileCommand), nameof(RegisterCommand))]
     public partial bool IsBusy { get; set; }
 
     [ObservableProperty]
@@ -94,6 +117,13 @@ public sealed partial class GameCardViewModel : ViewModelBase
         _ => "",
     };
 
+    /// <summary>A damaged game can be played too: playing changes files, which is what marks it. Whether the program itself is intact is the agent's call.</summary>
+    public bool CanPlay => (IsInstalled || IsDamaged) && Launch == LaunchState.Ready && !IsRunning && !IsChoosingExecutable;
+    public bool NeedsExecutable => (IsInstalled || IsDamaged) && Launch == LaunchState.NeedsExecutable && !IsChoosingExecutable;
+
+    /// <summary>Repairing, updating and registering rewrite the files, which a running game holds.</summary>
+    public bool CanModify => !IsBusy && !IsRunning;
+
     public bool CanAct => !IsBusy;
     public bool HasMessage => !string.IsNullOrEmpty(Message);
     public bool HasSuggestion => !string.IsNullOrEmpty(Suggestion);
@@ -116,6 +146,8 @@ public sealed partial class GameCardViewModel : ViewModelBase
         UpdatesContentHash = g.UpdatesContentHash;
         Details = string.IsNullOrEmpty(g.Version) ? Format.Size(g.TotalSize) : $"{g.Version} · {Format.Size(g.TotalSize)}";
         PeersText = g.State == GameState.AvailableOnLan && g.PeerNames.Count > 0 ? DescribePeers(g) : "";
+        Launch = g.Launch;
+        IsRunning = g.IsRunning;
         Trust = g.Trust;
         TrustNote = g.TrustNote;
         FullyAvailable = g.FullyAvailable;
@@ -149,13 +181,73 @@ public sealed partial class GameCardViewModel : ViewModelBase
         ProgressText = string.Join(" · ", new[] { Format.Percent(d.Percent), speed, eta }.Where(s => s.Length > 0));
     }
 
+    /// <summary>The agent checks the game and says what to start, the client starts it. A refusal is shown as the agent worded it.</summary>
+    [RelayCommand(CanExecute = nameof(CanAct))]
+    private async Task PlayAsync()
+    {
+        IsBusy = true;
+        Message = null;
+        try
+        {
+            await TryAsync(async () =>
+            {
+                var info = await _app.Client.LaunchAsync(ContentHash);
+                _app.Starter.Start(info);
+                Message = "Hra se spouští…";
+            }, m => Message = m).ConfigureAwait(true);
+        }
+        finally { IsBusy = false; }
+    }
+
+    /// <summary>For a game that does not say which program starts it: lists the programs of the game to pick from.</summary>
+    [RelayCommand(CanExecute = nameof(CanAct))]
+    private async Task ChooseExecutableAsync()
+    {
+        IsBusy = true;
+        Message = null;
+        try
+        {
+            await TryAsync(async () =>
+            {
+                var programs = await _app.Client.GetExecutablesAsync(ContentHash);
+                Executables.Clear();
+                foreach (var p in programs) Executables.Add(p);
+                SelectedExecutable = Executables.FirstOrDefault();
+                IsChoosingExecutable = Executables.Count > 0;
+                if (Executables.Count == 0) Message = "Hra neobsahuje žádný program, který by šel spustit.";
+            }, m => Message = m).ConfigureAwait(true);
+        }
+        finally { IsBusy = false; }
+    }
+
+    [RelayCommand(CanExecute = nameof(CanAct))]
+    private async Task SaveExecutableAsync()
+    {
+        if (string.IsNullOrEmpty(SelectedExecutable)) return;
+        IsBusy = true;
+        try
+        {
+            await TryAsync(async () =>
+            {
+                await _app.Client.ChooseExecutableAsync(ContentHash, SelectedExecutable, null);
+                IsChoosingExecutable = false;
+                Message = "Uloženo. Hru teď spustíš tlačítkem Hrát.";
+            }, m => Message = m).ConfigureAwait(true);
+        }
+        finally { IsBusy = false; }
+        await _app.RefreshGamesAsync().ConfigureAwait(true);
+    }
+
+    [RelayCommand]
+    private void CancelChoosingExecutable() => IsChoosingExecutable = false;
+
     [RelayCommand(CanExecute = nameof(CanAct))]
     private Task InstallAsync() => Run(() => _app.Client.InstallAsync(ContentHash), "Instalace začala.");
 
-    [RelayCommand(CanExecute = nameof(CanAct))]
+    [RelayCommand(CanExecute = nameof(CanModify))]
     private Task UpdateAsync() => Run(() => _app.Client.UpdateAsync(ContentHash), "Aktualizace začala.");
 
-    [RelayCommand(CanExecute = nameof(CanAct))]
+    [RelayCommand(CanExecute = nameof(CanModify))]
     private Task RepairAsync() => Run(() => _app.Client.RepairAsync(ContentHash), "Oprava začala.");
 
     /// <summary>Verifies every file, which takes a while on a large game, and says what differs.</summary>
@@ -204,7 +296,7 @@ public sealed partial class GameCardViewModel : ViewModelBase
     }
 
     /// <summary>After deliberately patching a game: the files as they are now become its new version.</summary>
-    [RelayCommand(CanExecute = nameof(CanAct))]
+    [RelayCommand(CanExecute = nameof(CanModify))]
     private async Task RegisterAsync()
     {
         IsBusy = true;

@@ -32,9 +32,24 @@ public interface IAgentClient
     Task<GameDto?> RegisterAsync(string contentHash, CancellationToken ct = default);
     Task<GameDto?> AddVolatileAsync(string contentHash, IReadOnlyList<string> patterns, CancellationToken ct = default);
 
+    /// <summary>The agent checks the game and says what to start. It refuses, with the reason, when the game must not be started.</summary>
+    Task<LaunchInfoDto> LaunchAsync(string contentHash, CancellationToken ct = default);
+    Task<IReadOnlyList<string>> GetExecutablesAsync(string contentHash, CancellationToken ct = default);
+    Task<GameDto?> ChooseExecutableAsync(string contentHash, string executable, string? arguments, CancellationToken ct = default);
+
     Task<DownloadDto> PauseAsync(long downloadId, CancellationToken ct = default);
     Task<DownloadDto> ResumeAsync(long downloadId, CancellationToken ct = default);
     Task CancelAsync(long downloadId, bool deleteFiles, CancellationToken ct = default);
+}
+
+/// <summary>
+/// Starts a game on the player's desktop. The agent cannot, it runs as a service without one, so the client does it
+/// with what the agent has checked.
+/// </summary>
+public interface IGameStarter
+{
+    /// <exception cref="AgentException">The game could not be started. The message says why.</exception>
+    void Start(LaunchInfoDto info);
 }
 
 /// <summary>One event pushed by the agent. <see cref="Payload"/> is the DTO documented for that event name in <see cref="GameShareEvents"/>.</summary>

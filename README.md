@@ -1,3 +1,4 @@
+
 # GameShare
 
 Shares game files between PCs on one LAN over BitTorrent, without a server. A game that is on one PC can be installed
@@ -71,7 +72,7 @@ The one request that may leave the LAN is the optional download of the administr
 ## Local API
 
 `GET /api/status`, `GET|PUT /api/settings`, `GET /api/peers`, `GET /api/games`, `GET /api/games/{contentHash}`,
-`GET /api/trust`, `POST /api/trust/refresh`, `POST /api/games/scan`, `POST /api/games/{contentHash}/install`, `.../update`, `.../repair`, `.../check`, `.../register`, `.../volatile`,
+`GET /api/trust`, `POST /api/trust/refresh`, `POST /api/games/{contentHash}/launch`, `GET .../executables`, `PUT .../launcher`, `POST /api/games/scan`, `POST /api/games/{contentHash}/install`, `.../update`, `.../repair`, `.../check`, `.../register`, `.../volatile`,
 `GET /api/downloads`, `GET /api/downloads/{id}`, `POST /api/downloads/{id}/pause`, `.../resume`, `DELETE /api/downloads/{id}?deleteFiles=false`.
 
 Live events arrive on the SignalR hub at `/hub/events`: `PeerConnected`, `PeerDisconnected`, `GameDiscovered`, `GameUpdated`,
@@ -85,13 +86,26 @@ A game is identified by its content hash, not by the name of its folder.
 Saves, settings and caches inside a game folder must not count as game content. List them in `gameshare.json` in the game folder:
 
 ```json
-{ "gameId": "beamng", "name": "BeamNG.drive", "version": "0.38", "volatile": ["saves/**", "*.ini"] }
+{ "gameId": "beamng", "name": "BeamNG.drive", "version": "0.38", "executable": "Bin64/BeamNG.drive.x64.exe", "volatile": ["saves/**", "*.ini"] }
 ```
 
 Or let GameShare find them. While a game is played the agent notices which of its files are rewritten and the game shows as changed,
 with suggested patterns and a button that marks them. **Zkontrolovat** does the same on demand for every file. Nothing is marked without a click.
 A game whose files changed is shown as damaged until it is repaired or registered again. It still offers the parts that are unchanged,
 so other PCs can use it as a source, and PCs that were played on differently can complete each other.
+
+## Playing
+
+A game that says which program starts it (`executable` in `gameshare.json`, a `.exe` that is one of the game's own files) has a **Hrát** button.
+For a game that does not say, the client lists the programs of the game and the player picks one, which is remembered on that PC.
+
+- The agent is a Windows service without a desktop, so it cannot start a game the player can see. It checks, and the client starts.
+  The agent refuses when the program is not one of the game's files, when it is not the file that was verified (a game changing its settings is
+  fine, its program changing is not), when the administrator withdrew that version, or when the game is already running.
+- A game is recognised as running when a program from its folder runs, however it was started. A game that starts its real program from
+  somewhere else, such as a store client, is not recognised.
+- While a game runs, a repair, an update and registering wait, and its seed stops sending. Files the seed holds open would keep the game from saving,
+  and the disk and network are the game's. Other PCs cannot install that game from this PC until it is closed (`Agent:PauseSeedWhilePlaying`).
 
 ## Verified games (optional)
 
@@ -123,7 +137,8 @@ scripts\install-agent.ps1 -GameRoots D:\Games -TrustMode Warn -TrustListSource h
 
 ## Not done yet, and not tried
 
-- **The launcher.** Nothing starts games and there is no Play button. The models are prepared.
+- **Starting a real game.** The launcher was tested by starting a program that lives in a game folder, not with a real game. A game that
+  starts its real program from a store client, or one that needs the administrator prompt, is untested.
 - **Real hardware.** Everything ran on one machine. Several PCs, real switches and firewalls, multicast on your network
   and speed on 2.5 or 10 GbE are untested.
 - **The service installer.** The scripts were syntax checked but never run, they need an elevated session.

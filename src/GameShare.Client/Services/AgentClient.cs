@@ -48,6 +48,15 @@ public sealed class AgentClient : IAgentClient
     public Task<GameDto?> AddVolatileAsync(string contentHash, IReadOnlyList<string> patterns, CancellationToken ct = default) =>
         SendAsync<GameDto?>(HttpMethod.Post, $"/api/games/{contentHash}/volatile", new AddVolatileRequest(patterns), Slow, ct);
 
+    public Task<LaunchInfoDto> LaunchAsync(string contentHash, CancellationToken ct = default) =>
+        SendAsync<LaunchInfoDto>(HttpMethod.Post, $"/api/games/{contentHash}/launch", null, Slow, ct);
+
+    public Task<IReadOnlyList<string>> GetExecutablesAsync(string contentHash, CancellationToken ct = default) =>
+        ListAsync<string>($"/api/games/{contentHash}/executables", ct);
+
+    public Task<GameDto?> ChooseExecutableAsync(string contentHash, string executable, string? arguments, CancellationToken ct = default) =>
+        SendAsync<GameDto?>(HttpMethod.Put, $"/api/games/{contentHash}/launcher", new LauncherChoiceRequest(executable, arguments), Quick, ct);
+
     public Task<DownloadDto> PauseAsync(long downloadId, CancellationToken ct = default) =>
         SendAsync<DownloadDto>(HttpMethod.Post, $"/api/downloads/{downloadId}/pause", null, Quick, ct);
 

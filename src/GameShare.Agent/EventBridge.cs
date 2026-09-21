@@ -24,6 +24,7 @@ public sealed class EventBridge : IHostedService
     private readonly SeedManager _seeds;
     private readonly GameChangeTracker _changes;
     private readonly TrustService _trust;
+    private readonly RunningGames _running;
     private readonly GameView _view;
     private readonly ILogger<EventBridge> _log;
     private readonly Channel<Func<Task<(string Name, object Payload)?>>> _queue =
@@ -36,8 +37,9 @@ public sealed class EventBridge : IHostedService
 
     public EventBridge(
         IHubContext<EventsHub> hub, DiscoveryService discovery, PeerCatalog catalog, GameLibrary library,
-        DownloadManager downloads, SeedManager seeds, GameChangeTracker changes, TrustService trust, GameView view, ILogger<EventBridge> log)
+        DownloadManager downloads, SeedManager seeds, GameChangeTracker changes, TrustService trust, RunningGames running, GameView view, ILogger<EventBridge> log)
     {
+        _running = running;
         _changes = changes;
         _trust = trust;
         _hub = hub;
@@ -63,6 +65,7 @@ public sealed class EventBridge : IHostedService
         _seeds.SeedEventRaised += OnSeed;
         _changes.Changed += OnTrackedChange;
         _trust.Changed += OnTrustChanged;
+        _running.Changed += OnRunningChanged;
         return Task.CompletedTask;
     }
 
@@ -76,6 +79,7 @@ public sealed class EventBridge : IHostedService
         _seeds.SeedEventRaised -= OnSeed;
         _changes.Changed -= OnTrackedChange;
         _trust.Changed -= OnTrustChanged;
+        _running.Changed -= OnRunningChanged;
 
         _queue.Writer.TryComplete();
         if (_sender is not null)
@@ -121,6 +125,10 @@ public sealed class EventBridge : IHostedService
 
     /// <summary>What the game changed while it was in use is part of its card: how many files, and which patterns would hide them.</summary>
     private void OnTrackedChange(object? sender, TrackedChange change) =>
+        Enqueue(() => GameChangedAsync(change.Installation.ContentHash));
+
+    /// <summary>The card of a game that started or stopped running changes its buttons.</summary>
+    private void OnRunningChanged(object? sender, RunningChange change) =>
         Enqueue(() => GameChangedAsync(change.Installation.ContentHash));
 
     /// <summary>A new list can change the badge of every game.</summary>

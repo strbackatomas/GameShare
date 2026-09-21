@@ -9,7 +9,7 @@
 | Torrent metadata | Torrent | Transport only. Deterministic from the same scan. Never shown to the user. | No, derived |
 | Installation | Core, SQLite | Local: install path, which version, installed or damaged, seeding on or off. | - |
 | Download | Core, SQLite | Local: an install, repair or update in progress, with resume data. | - |
-| Launch | future launcher | Uses Definition and Installation. | - |
+| Launch | Agent, Client | The agent checks what may be started, the client starts it. Uses Definition, Manifest and Installation. | Local choice of program, per game id |
 
 `InstallPath` is deliberately not part of GameDefinition, because it differs on every PC.
 `gameshare.json` is excluded from the content scan, so editing launch settings never creates a new version.
@@ -134,6 +134,24 @@ The signed list adds the missing piece: *which* content hashes the administrator
 What it does not protect against, so nobody assumes it does: the administrator adding a game from a PC that was already infected, a stolen private key,
 a first start of a PC with no stored list where someone serves an old list that was once valid and has no `validUntil`, and a game that a PC modifies after the install (that is the damaged state, not this).
 
+## Launcher
+
+- **The client starts, the agent decides.** The agent is a service in session 0 and cannot show a window on the player's desktop. So `POST /games/{hash}/launch` checks
+  everything and returns the program, arguments and working directory, and the client starts that with the shell (so an administrator prompt works).
+- **The definition is untrusted.** It arrives from another PC in the manifest. The program must be a `.exe` that is one of the manifest's own files (matched case-insensitively, the manifest's spelling is used),
+  the path must stay inside the game folder (a UNC path, a drive letter, `..` and alternate streams are refused), the working directory must be a folder of the game, and the arguments are limited in length with no control characters.
+  A file dropped into the game folder later is not in the manifest and is not started.
+- **The program that runs is the program that was verified.** Its SHA-256 is compared with the manifest just before it is handed out. Other files may have changed, that is what playing does,
+  and a damaged game can be played. A withdrawn version (see Verified games) is never started, and a game that already runs is not started twice.
+- **Choosing a program.** A game without `executable` shows the programs of the game (nearest the root first) and the player picks one. It is stored per game id on this PC and checked again against every version.
+  A choice that is no longer valid, for example after an update removed the file, falls back to asking.
+- **What counts as running.** `RunningGames` looks every 5 s (and on demand before a decision) for a process whose program lives inside a game folder, with a trailing separator so
+  `TestGameTwo` is not `TestGame`. A protected system process that cannot be inspected is ignored.
+- **While it runs.** Repair, update, register and marking volatile are refused with "The game is running", because they rewrite or re-hash every file. The seed of that game is suspended:
+  it does not send, does not re-check (a check is remembered and done when the game closes) and, because a paused seed closes its files, the game can save into them.
+  That closes the limit noted under the transfer library for games started on this PC. Tested by mutation: without the re-check guard the test that watches the piece map fails.
+- **Commands and their buttons.** The toolkit does not re-evaluate a command when the property behind its CanExecute changes, so the card names the commands to re-evaluate. Before, buttons stayed enabled while a card was busy.
+
 ## Speed limits
 
 The library ignores its own global speed limits for peers on the local network, and every peer here is on the local network.
@@ -172,8 +190,8 @@ Found by tests that failed or by measuring, kept here so nobody rediscovers them
   with a user-mapped section open". Measured: while a seed checked its files, while it uploaded, and afterwards, every served file refused it.
   Disk I/O modes and the mapping cutoff changed nothing. What helps: the file pool is limited to 8 files (a transfer of 3000 small files was not slower
   with 2, 4 or 16 files than with the default), and a seed that uploaded nothing for 20 s is paused and resumed one tick later, which closes its files.
-  Resuming does not re-check it and it keeps seeding, tested by installing from it afterwards. While a peer is downloading, the files being served are
-  still open, so a game that saves in that moment can be refused. That is a limit of this design, not solved. Agent settings: `OpenFileLimit`, `SeedIdleRelease`.
+  Resuming does not re-check it and it keeps seeding, tested by installing from it afterwards. While a peer is downloading a game nobody plays here, its files being served are
+  still open; a game that is played is different, see Launcher: its seed is stopped. A game started outside GameShare and not recognised as running has the old limit. Agent settings: `OpenFileLimit`, `SeedIdleRelease`.
   The upload rate the library reports is a moving average that stays above zero long after the last byte, so idleness is judged by bytes uploaded.
 - **Removal is asynchronous.** Adding the same torrent right after removing it fails with "already attached". `RemoveAsync` waits for the library's notification and `AddAsync` retries briefly if it is late.
 - **Saving resume data can hang.** While a torrent is checking or being removed the library may never answer. Every save has a timeout, a failed save never fails a pause or a shutdown, and the next start simply re-checks the files. A save that is still in flight when a torrent is removed keeps the library holding on to it, so saves and removal are ordered per download.
@@ -203,8 +221,7 @@ over the LAN swarm and update by fetching only changed pieces. Not built yet. Tw
 - **Repair needs PCs that have the missing parts.** With no source it waits and can be cancelled. The game stays damaged.
 - **Discovery and the transfer engine do not talk to each other.** Each finds peers on its own multicast. The shorter announce interval makes a lost datagram cost seconds, not minutes, but it is not a real nudge.
 - **IPv4 only.** Keeps the LAN filter simple.
-- **No launcher.** Nothing starts games. The definition file has the fields, the client has no Play button.
-- **Seeding while someone plays.** Seeds read the game folder from disk. A "seed while gaming" switch needs to know whether a game runs, which belongs with the launcher.
+- **Games that start through another program.** A game is running when a program from its folder runs. One that hands over to a store client is not seen, so its seed keeps sending and a repair is not held back.
 - **Discovery source address.** A PC with two adapters on the same LAN would be seen from two addresses and reported as changing address. Rare, not handled.
 - **No pause state in the binding.** `TorrentTransfer.IsStopped` is tracked by us. Real transfer errors, such as a full disk, are not reported by the status either, a download would just stall.
 - **Hashing is single threaded.** One pass computes SHA-256 and SHA-1 together. Fine to start, optimise if scanning a 100 GB game is too slow.

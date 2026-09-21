@@ -44,9 +44,9 @@ public class RenderTests
         MachineName = "PC-07",
         Games =
         [
-            Game(A, "BeamNG.drive", GameState.Installed, version: "0.38", size: 70_264_000_000, installPath: @"D:\Games\BeamNG") with { Trust = TrustVerdict.Verified },
+            Game(A, "BeamNG.drive", GameState.Installed, version: "0.38", size: 70_264_000_000, installPath: @"D:\Games\BeamNG") with { Trust = TrustVerdict.Verified, Launch = LaunchState.Ready },
             Game(B, "Grand Theft Auto V", GameState.Downloading, version: null, size: 118_111_600_640),
-            Game(C, "Euro Truck Simulator 2", GameState.Damaged, version: "1.53", size: 28_000_000_000, installPath: @"D:\Games\ETS2"),
+            Game(C, "Euro Truck Simulator 2", GameState.Damaged, version: "1.53", size: 28_000_000_000, installPath: @"D:\Games\ETS2") with { Launch = LaunchState.Ready, IsRunning = true },
             Game(D, "Assetto Corsa", GameState.AvailableOnLan, version: "1.16", size: 45_000_000_000, peers: ["PC-01", "PC-04", "PC-08", "PC-10"]) with { Trust = TrustVerdict.Unknown },
             Game("e" + new string('e', 63), "Farming Simulator 25", GameState.AvailableOnLan, version: "1.4", size: 60_000_000_000, peers: ["PC-04"]) with { Trust = TrustVerdict.Revoked, TrustNote = "Obsahuje upravený spustitelný soubor." },
             Game("f" + new string('f', 63), "BeamNG.drive", GameState.AvailableOnLan, version: "0.39", size: 71_000_000_000, peers: ["PC-01", "PC-04"], updates: A, gameId: "beamng"),

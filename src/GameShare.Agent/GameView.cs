@@ -13,9 +13,15 @@ public sealed class GameView
     private readonly DiscoveryService _discovery;
     private readonly GameChangeTracker _changes;
     private readonly TrustService _trust;
+    private readonly LaunchService _launch;
+    private readonly RunningGames _running;
 
-    public GameView(GameLibrary library, DownloadManager downloads, PeerCatalog catalog, DiscoveryService discovery, GameChangeTracker changes, TrustService trust)
+    public GameView(
+        GameLibrary library, DownloadManager downloads, PeerCatalog catalog, DiscoveryService discovery, GameChangeTracker changes, TrustService trust,
+        LaunchService launch, RunningGames running)
     {
+        _launch = launch;
+        _running = running;
         _changes = changes;
         _trust = trust;
         _library = library;
@@ -65,6 +71,8 @@ public sealed class GameView
                 SuggestedPatterns = seen.SuggestedPatterns,
                 Trust = trust,
                 TrustNote = trustNote,
+                Launch = await _launch.StateAsync(m, g.Installation, ct).ConfigureAwait(false),
+                IsRunning = g.Installation is not null && _running.IsRunning(g.Installation),
                 UpdatesContentHash = g.Installation is null && installedByGame.TryGetValue(m.GameId, out var installed) ? installed : null,
                 PartialPeerNames = PartialNames(offers[m.ContentHash]),
                 FullyAvailable = fully,

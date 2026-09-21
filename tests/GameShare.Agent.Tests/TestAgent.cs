@@ -23,6 +23,9 @@ internal sealed class TestAgent : IAsyncDisposable
 
     public string Name { get; }
     public string Dir { get; }
+
+    /// <summary>The agent's own services, for a test that has to look at what the API does not show.</summary>
+    public IServiceProvider Services => _app.Services;
     public string GamesRoot { get; }
     public int LocalPort { get; }
     public int PeerPort { get; }
@@ -65,13 +68,15 @@ internal sealed class TestAgent : IAsyncDisposable
     /// <param name="preloadGame">Put a fake game in the game folder before the agent starts, so its first scan finds it.</param>
     public static async Task<TestAgent> StartAsync(
         string name, int discoveryPort, bool preloadGame = false, long bigFileBytes = 20_000_000, string? existingDir = null,
-        Action<AgentOptions>? tweak = null)
+        Action<AgentOptions>? tweak = null, Action<string>? customiseGame = null)
     {
         var agent = new TestAgent(name, existingDir ?? TestGame.NewTempDir(), discoveryPort, tweak);
         if (preloadGame)
         {
             using var template = new TestGame(largeFileBytes: bigFileBytes);
-            TestGame.CopyDirectory(template.GameDir, Path.Combine(agent.GamesRoot, "TestGame"));
+            var target = Path.Combine(agent.GamesRoot, "TestGame");
+            TestGame.CopyDirectory(template.GameDir, target);
+            customiseGame?.Invoke(target); // for example a program to start, and a definition that names it
         }
         await agent.BootAsync();
         return agent;

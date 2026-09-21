@@ -91,6 +91,13 @@ public sealed class TorrentTransfer
     public void Start() { _manager.Start(); IsStopped = false; }
     public void Stop() { _manager.Stop(); IsStopped = true; }
 
+    /// <summary>True while the seed steps aside for a game that is being played. Nothing may start it until <see cref="Resume"/>.</summary>
+    public bool Suspended { get; private set; }
+
+    /// <summary>Stops sending, which also closes the files, so the game can save into them.</summary>
+    public void Suspend() { Suspended = true; Stop(); }
+    public void Resume() { Suspended = false; Start(); }
+
     /// <summary>Re-hashes every file on disk and re-downloads pieces that no longer match. Used for repair.</summary>
     public void ForceRecheck() => _manager.ForceRecheck();
 

@@ -106,6 +106,8 @@ public static class AgentHost
         services.AddSingleton<PeerCatalog>();
         services.AddSingleton<GameView>();
         services.AddSingleton<ScanService>();
+        services.AddSingleton<RunningGames>();
+        services.AddSingleton<LaunchService>();
 
         // The only request that may leave the LAN: a small download of the administrator's signed list. It carries nothing about this PC,
         // and the list is only used when its signature verifies. Off unless the administrator turned it on.
