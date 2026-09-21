@@ -69,12 +69,17 @@ public static class AgentHost
             ListenPort = options.TorrentPort,
             LanOnly = options.LanOnly,
             AllowMultipleConnectionsPerIp = options.AllowMultipleConnectionsPerIp,
+            OpenFileLimit = options.OpenFileLimit,
+            IdleReleaseAfter = options.SeedIdleRelease,
             MaxUploadBytesPerSecond = SettingsService.ToBytesPerSecond(settings.Current.MaxUploadMBps),
             MaxDownloadBytesPerSecond = SettingsService.ToBytesPerSecond(settings.Current.MaxDownloadMBps),
         }, sp.GetRequiredService<ILogger<TorrentEngine>>()));
 
         services.AddSingleton<GameLibrary>();
         services.AddSingleton<SeedManager>();
+        services.AddSingleton(sp => new GameChangeTracker(
+            sp.GetRequiredService<GameShareDb>(), sp.GetRequiredService<GameLibrary>(), sp.GetRequiredService<ILogger<GameChangeTracker>>(),
+            options.ChangeQuietPeriod));
         services.AddSingleton(sp => new DownloadManager(
             sp.GetRequiredService<TorrentEngine>(), sp.GetRequiredService<GameShareDb>(), sp.GetRequiredService<SeedManager>(),
             sp.GetRequiredService<ILogger<DownloadManager>>(),

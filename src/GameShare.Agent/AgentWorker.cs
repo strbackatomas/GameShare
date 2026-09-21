@@ -10,6 +10,7 @@ public sealed class AgentWorker : BackgroundService
 {
     private readonly DownloadManager _downloads;
     private readonly SeedManager _seeds;
+    private readonly GameChangeTracker _changes;
     private readonly GameLibrary _library;
     private readonly ScanService _scan;
     private readonly DiscoveryService _discovery;
@@ -20,11 +21,12 @@ public sealed class AgentWorker : BackgroundService
     private readonly ILogger<AgentWorker> _log;
 
     public AgentWorker(
-        DownloadManager downloads, SeedManager seeds, GameLibrary library, ScanService scan, DiscoveryService discovery,
+        DownloadManager downloads, SeedManager seeds, GameChangeTracker changes, GameLibrary library, ScanService scan, DiscoveryService discovery,
         PeerCatalog catalog, SettingsService settings, TorrentEngine engine, AgentOptions options, ILogger<AgentWorker> log)
     {
         _downloads = downloads;
         _seeds = seeds;
+        _changes = changes;
         _library = library;
         _scan = scan;
         _discovery = discovery;
@@ -41,6 +43,8 @@ public sealed class AgentWorker : BackgroundService
         _settings.Changed += OnSettingsChanged;
         _library.GameDiscovered += OnGameDiscovered;
         _library.InstallationChanged += OnInstallationChanged;
+        _changes.Changed += OnTrackedChange;
+        _downloads.DownloadEventRaised += OnDownloadEvent;
         try
         {
             await _downloads.RecoverAsync(ct).ConfigureAwait(false);
@@ -54,7 +58,9 @@ public sealed class AgentWorker : BackgroundService
                 _discovery.RunAsync(ct),
                 _catalog.RunAsync(ct),
                 ScanLoopAsync(ct),
-                SeedResumeLoopAsync(ct)).ConfigureAwait(false);
+                SeedResumeLoopAsync(ct),
+                _changes.RunAsync(_options.ChangeWatchSyncInterval, ct),
+                DamagedSeedRecheckLoopAsync(ct)).ConfigureAwait(false);
         }
         catch (OperationCanceledException) { /* shutting down */ }
         finally
@@ -62,6 +68,8 @@ public sealed class AgentWorker : BackgroundService
             _settings.Changed -= OnSettingsChanged;
             _library.GameDiscovered -= OnGameDiscovered;
             _library.InstallationChanged -= OnInstallationChanged;
+            _changes.Changed -= OnTrackedChange;
+            _downloads.DownloadEventRaised -= OnDownloadEvent;
 
             // So the next start can skip re-hashing the library. Bounded, shutdown must not hang on it.
             using var limit = new CancellationTokenSource(TimeSpan.FromSeconds(15));
@@ -78,6 +86,41 @@ public sealed class AgentWorker : BackgroundService
             try { await _seeds.SaveResumeDataAsync(ct).ConfigureAwait(false); }
             catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
             catch (Exception ex) { _log.LogWarning(ex, "Could not store seed resume data"); }
+        }
+    }
+
+    /// <summary>A finished install, repair or update is a game folder to watch, or one that changed under the watcher.</summary>
+    private void OnDownloadEvent(object? sender, DownloadEvent e)
+    {
+        if (e.Kind == DownloadEventKind.Completed) _changes.RequestSync();
+    }
+
+    // Damaged games that changed further since their seed was last checked. The seed still claims pieces that no longer match.
+    private readonly Dictionary<long, Installation> _seedStale = [];
+
+    /// <summary>
+    /// A damaged game that keeps changing is re-checked now and then, not at every change, so a game that writes all the time
+    /// does not make the disk read the whole game over and over. The first damage already re-checked it.
+    /// </summary>
+    private void OnTrackedChange(object? sender, TrackedChange change)
+    {
+        if (change.BecameDamaged) return;
+        lock (_seedStale) _seedStale[change.Installation.Id] = change.Installation;
+    }
+
+    private async Task DamagedSeedRecheckLoopAsync(CancellationToken ct)
+    {
+        using var timer = new PeriodicTimer(_options.DamagedSeedRecheckInterval);
+        while (await timer.WaitForNextTickAsync(ct).ConfigureAwait(false))
+        {
+            Installation[] stale;
+            lock (_seedStale) { stale = [.. _seedStale.Values]; _seedStale.Clear(); }
+            foreach (var inst in stale)
+            {
+                try { await _seeds.RecheckAsync(inst, ct).ConfigureAwait(false); }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+                catch (Exception ex) { _log.LogWarning(ex, "Could not re-check the seed of {Path}", inst.InstallPath); }
+            }
         }
     }
 

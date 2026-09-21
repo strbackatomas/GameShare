@@ -102,6 +102,15 @@ Many games write into their folder: settings, saves, shader caches, logs. Those 
 - Only the resulting file list is identity. Two PCs with different pattern lists agree when the remaining files are the same, and they share one swarm.
 - Patterns only accumulate. A file once excluded never re-enters the content, which would flip the game's identity.
 - Unsafe patterns are refused with a message: empty, `..`, drive letters, and anything that would match every file.
+- **Suggested automatically.** `GameChangeTracker` watches every installed game folder. Once the folder has been quiet for a moment
+  (10 s, then only the touched files are looked at, a size check first and a hash only when the size is the same), a content file
+  that really differs marks the game damaged and the game card lists the suggested patterns, without anyone running a check.
+  New files the game created are recorded too. Nothing is applied by itself: the user accepts the suggestion, which registers the patterns.
+- Suggestions are deliberately narrow. Folders that games are known to write to (`saves`, `cache`, `logs`, `config`, `profile`, ...) become a folder pattern
+  at the level where they were found, four or more changed files in one other folder become that folder, anything else stays the one file.
+  A folder pattern for `content/` because one file in it changed would hide the game itself.
+- Files that are being written by a repair or an update are not the game changing and are ignored. Too many events, or a lost watcher,
+  fall back to one full check. A damaged game that keeps changing has its seed re-checked every 5 minutes at most.
 - A file that must ship with initial values and is rewritten later is a separate case, left for later. The game can normally create its own defaults.
 
 ## Speed limits
@@ -117,7 +126,7 @@ gets less than 16 KiB/s. Tests measure real transfer rates, because storing the 
 One process, two HTTP listeners with different trust, plus discovery and the transfer port. See the README for the port table.
 
 - The control API and the event hub are bound to loopback and refuse any request that arrived on another port.
-- The peer API answers only private addresses, offers only games that are installed, verified and seeding, and never reveals paths.
+- The peer API answers only private addresses, offers only games that are installed here and seeding (a damaged one with the pieces that are still intact), and never reveals paths.
 - Everything a peer sends is validated before use: offer lists, manifests and torrents have size limits, hashes and paths are checked, and a manifest must match its torrent before a byte is written.
 - The GUI may only install into folders that are configured in the settings.
 - Events reach the GUI through one ordered queue, so a slow client cannot block downloads or discovery.
@@ -137,6 +146,14 @@ An Avalonia desktop app. It holds no BitTorrent logic, it only calls the agent's
 
 Found by tests that failed or by measuring, kept here so nobody rediscovers them.
 
+- **Served files cannot be rewritten by the game.** On Windows the library memory-maps the files it reads. A program that replaces such a file by
+  truncating it, which is how most games save their settings (`File.WriteAllText`, `fopen("w")`), gets "the requested operation cannot be performed on a file
+  with a user-mapped section open". Measured: while a seed checked its files, while it uploaded, and afterwards, every served file refused it.
+  Disk I/O modes and the mapping cutoff changed nothing. What helps: the file pool is limited to 8 files (a transfer of 3000 small files was not slower
+  with 2, 4 or 16 files than with the default), and a seed that uploaded nothing for 20 s is paused and resumed one tick later, which closes its files.
+  Resuming does not re-check it and it keeps seeding, tested by installing from it afterwards. While a peer is downloading, the files being served are
+  still open, so a game that saves in that moment can be refused. That is a limit of this design, not solved. Agent settings: `OpenFileLimit`, `SeedIdleRelease`.
+  The upload rate the library reports is a moving average that stays above zero long after the last byte, so idleness is judged by bytes uploaded.
 - **Removal is asynchronous.** Adding the same torrent right after removing it fails with "already attached". `RemoveAsync` waits for the library's notification and `AddAsync` retries briefly if it is late.
 - **Saving resume data can hang.** While a torrent is checking or being removed the library may never answer. Every save has a timeout, a failed save never fails a pause or a shutdown, and the next start simply re-checks the files. A save that is still in flight when a torrent is removed keeps the library holding on to it, so saves and removal are ordered per download.
 - **A seed repairs what it sees as damaged.** Left alone, a seed downloads the original of any file a game changed and overwrites it. Seeds are upload-only.

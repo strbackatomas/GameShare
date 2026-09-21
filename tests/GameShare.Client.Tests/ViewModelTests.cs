@@ -324,7 +324,7 @@ public class LibraryTests
         await card.CheckCommand.ExecuteAsync(null);
 
         Assert.Contains("Změněno souborů: 2", card.Message);
-        Assert.Contains("nenabízí", card.Message);
+        Assert.Contains("dál nabízejí", card.Message); // the unchanged parts of a damaged game are still shared
         Assert.True(card.HasSuggestion);
         Assert.Contains("saves/**", card.Suggestion);
 
@@ -333,6 +333,46 @@ public class LibraryTests
         Assert.Contains($"AddVolatile({A}|saves/**)", agent.Calls);
         Assert.False(card.HasSuggestion);
         Assert.Contains("Označeno", card.Message);
+    }
+
+    [Fact]
+    public async Task Files_the_agent_noticed_a_game_rewriting_are_offered_as_patterns_without_running_a_check()
+    {
+        var (main, _, agent, events) = await StartAsync(Game(A, "BeamNG.drive", GameState.Installed, installPath: @"D:\Games\BeamNG"));
+        var card = main.Library.MyGames.Single();
+        Assert.False(card.HasSuggestion);
+
+        events.Raise(GameShareEvents.GameUpdated,
+            Game(A, "BeamNG.drive", GameState.Damaged, installPath: @"D:\Games\BeamNG") with { ChangedFileCount = 3, SuggestedPatterns = ["saves/**", "settings.ini"] });
+
+        Assert.True(card.HasSuggestion);
+        Assert.Contains("3 soubory", card.Suggestion);
+        Assert.Contains("saves/**, settings.ini", card.Suggestion);
+
+        await card.MarkVolatileCommand.ExecuteAsync(null);
+
+        Assert.Contains($"AddVolatile({A}|saves/**;settings.ini)", agent.Calls);
+        Assert.False(card.HasSuggestion);
+    }
+
+    [Fact]
+    public async Task What_the_agent_noticed_goes_away_when_the_game_is_intact_again_but_a_checks_result_survives_a_refresh()
+    {
+        var (main, _, agent, events) = await StartAsync(Game(A, "BeamNG.drive", GameState.Damaged, installPath: @"D:\Games\BeamNG") with { ChangedFileCount = 1, SuggestedPatterns = ["a.ini"] });
+        var card = main.Library.MyGames.Single();
+        Assert.True(card.HasSuggestion);
+
+        events.Raise(GameShareEvents.GameUpdated, Game(A, "BeamNG.drive", GameState.Installed, installPath: @"D:\Games\BeamNG"));
+        Assert.False(card.HasSuggestion);
+
+        // A check the user ran explains more than the watcher did, and a refresh of the card must not wipe that.
+        agent.CheckResult = new GameChangesDto(false, ["saves/slot1.sav"], [], [], ["saves/**"]);
+        await card.CheckCommand.ExecuteAsync(null);
+        events.Raise(GameShareEvents.GameUpdated,
+            Game(A, "BeamNG.drive", GameState.Damaged, installPath: @"D:\Games\BeamNG") with { ChangedFileCount = 1, SuggestedPatterns = ["other.ini"] });
+
+        Assert.Contains("saves/**", card.Suggestion);
+        Assert.DoesNotContain("other.ini", card.Suggestion);
     }
 
     [Fact]

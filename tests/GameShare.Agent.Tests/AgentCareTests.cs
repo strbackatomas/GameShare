@@ -172,6 +172,40 @@ public class AgentCareTests
         Assert.Equal(GameState.Installed, (await pc.GamesAsync()).Single().State);
     }
 
+    [Fact]
+    public async Task A_game_that_rewrites_its_own_file_is_noticed_without_a_check_and_the_suggested_pattern_fixes_it()
+    {
+        await using var pc = await TestAgent.StartAsync("PC-01", TestAgent.DiscoveryPort(), preloadGame: true, tweak: o =>
+        {
+            o.ChangeQuietPeriod = TimeSpan.FromMilliseconds(300);
+            o.SeedIdleRelease = TimeSpan.FromSeconds(1); // the seed lets go of the files quickly, so the "game" can save
+        });
+        var game = await InstalledGameAsync(pc);
+
+        // The game saves its settings: same size, other content. Nobody runs a check.
+        // A game saves again and again, and so does this: a save can fail while the seed still has the file open, and one made
+        // in the first moments after the game was found can come before anything is watching it.
+        var settings = Path.Combine(pc.InstalledPath, "content", "sub", "tiny.txt");
+        GameDto? damaged = null;
+        for (int save = 0; save < 40 && damaged is null; save++)
+        {
+            try { await File.WriteAllTextAsync(settings, save % 2 == 0 ? "settings=changed!" : "settings=CHANGED!"); }
+            catch (IOException) { await Task.Delay(250); continue; }
+
+            try { damaged = await pc.WaitForGameAsync(g => g.State == GameState.Damaged && g.SuggestedPatterns.Count > 0, "the agent to notice the changed file", timeoutMs: 2_000); }
+            catch (TimeoutException) { /* save again */ }
+        }
+        Assert.NotNull(damaged);
+        Assert.Equal(1, damaged.ChangedFileCount);
+        Assert.Equal(["content/sub/tiny.txt"], damaged.SuggestedPatterns);
+
+        // Accepting the suggestion is all it takes. The file stops being game content, so the game is a new, intact version.
+        await PostAsync<GameDto>(pc, $"/api/games/{game.ContentHash}/volatile", new AddVolatileRequest(damaged.SuggestedPatterns));
+        var intact = await pc.WaitForGameAsync(g => g.State == GameState.Installed && g.ContentHash != game.ContentHash, "the game to be installed again");
+        Assert.Equal(0, intact.ChangedFileCount);
+        Assert.Empty(intact.SuggestedPatterns);
+    }
+
     [Theory]
     [InlineData("""{"patterns":["../evil"]}""", "../evil")]
     [InlineData("""{"patterns":["**"]}""", "every file")]

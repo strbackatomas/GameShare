@@ -209,6 +209,19 @@ public sealed class GameLibrary
         return changes;
     }
 
+    /// <summary>
+    /// Marks an installed game damaged because something saw its files change, without hashing the whole game.
+    /// </summary>
+    /// <returns>False when the game was not installed, or already damaged.</returns>
+    public async Task<bool> MarkDamagedAsync(string contentHash, CancellationToken ct = default)
+    {
+        var inst = (await _db.ListInstallationsAsync(ct).ConfigureAwait(false)).FirstOrDefault(i => i.ContentHash == contentHash);
+        if (inst is not { State: InstallationState.Installed }) return false;
+        await MarkAsync(inst, InstallationState.Invalid, ct).ConfigureAwait(false);
+        _log.LogWarning("Game files changed while the game was in use, marked as damaged: {Path}", inst.InstallPath);
+        return true;
+    }
+
     private async Task MarkAsync(Installation inst, InstallationState state, CancellationToken ct)
     {
         await _db.SetInstallationStateAsync(inst.Id, state, ct).ConfigureAwait(false);

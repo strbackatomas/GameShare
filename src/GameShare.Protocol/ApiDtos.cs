@@ -29,6 +29,12 @@ public sealed record GameDto(
     long? DownloadId,
     GameDefinition? Definition)
 {
+    /// <summary>Files of this game that were seen changing while it was in use, and new files it created. Only for a damaged game installed here.</summary>
+    public int ChangedFileCount { get; init; }
+
+    /// <summary>Volatile patterns that would make the files behind <see cref="ChangedFileCount"/> stop counting. Suggestions only.</summary>
+    public IReadOnlyList<string> SuggestedPatterns { get; init; } = [];
+
     /// <summary>The PCs among <see cref="PeerNames"/> that have only part of the game, for example because it was played there.</summary>
     public IReadOnlyList<string> PartialPeerNames { get; init; } = [];
 

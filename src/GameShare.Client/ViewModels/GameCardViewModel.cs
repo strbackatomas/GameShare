@@ -11,6 +11,12 @@ public sealed partial class GameCardViewModel : ViewModelBase
     private readonly AppModel _app;
     private GameChangesDto? _lastCheck;
 
+    /// <summary>What the agent noticed the game changing while it was played, before anyone asked for a check.</summary>
+    private IReadOnlyList<string> _noticedPatterns = [];
+
+    /// <summary>The patterns to offer: the result of a check the user ran wins over what the agent noticed by itself.</summary>
+    private IReadOnlyList<string> SuggestedPatterns => _lastCheck?.SuggestedPatterns ?? _noticedPatterns;
+
     public GameCardViewModel(GameDto game, AppModel app)
     {
         _app = app;
@@ -94,7 +100,12 @@ public sealed partial class GameCardViewModel : ViewModelBase
             ? $"Dohromady je k dispozici jen {Format.Percent(g.CoveragePercent ?? 0)} dat hry. Instalace půjde, až se objeví PC s chybějícími částmi."
             : "";
         if (g.State != GameState.Downloading) { Percent = 0; ProgressText = ""; }
-        // The message and the suggestion belong to the last check, so a refresh of the game must not wipe them.
+        // The message and the suggestion of a check the user ran must survive a refresh of the game.
+        // What the agent noticed by itself follows the game: it appears while the game is played and goes when the game is intact again.
+        _noticedPatterns = g.State == GameState.Damaged ? g.SuggestedPatterns : [];
+        if (_lastCheck is null)
+            Suggestion = _noticedPatterns.Count == 0 ? null
+                : $"Hra při hraní změnila {Format.FileCount(g.ChangedFileCount)}. Pokud jsou to nastavení nebo savy, označ je jako proměnné: {string.Join(", ", _noticedPatterns)}";
     }
 
     /// <summary>"Nabízí 3 PC: PC-01, PC-04, PC-08 (jen část: PC-04)". A PC that was used to play the game has only part of it.</summary>
@@ -151,8 +162,8 @@ public sealed partial class GameCardViewModel : ViewModelBase
     [RelayCommand(CanExecute = nameof(CanAct))]
     private async Task MarkVolatileAsync()
     {
-        var patterns = _lastCheck?.SuggestedPatterns;
-        if (patterns is not { Count: > 0 }) return;
+        var patterns = SuggestedPatterns;
+        if (patterns.Count == 0) return;
         IsBusy = true;
         try
         {
@@ -162,6 +173,7 @@ public sealed partial class GameCardViewModel : ViewModelBase
                 Message = "Označeno. Tyto soubory se už nepočítají do hry.";
                 Suggestion = null;
                 _lastCheck = null;
+                _noticedPatterns = [];
             }, m => Message = m).ConfigureAwait(true);
         }
         finally { IsBusy = false; }

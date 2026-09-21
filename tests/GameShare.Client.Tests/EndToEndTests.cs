@@ -86,7 +86,7 @@ public class EndToEndTests
         await ui.UntilAsync(() => mine.IsDamaged, "the game to show as changed");
         Assert.Contains("Změněno souborů: 1", mine.Message);
         Assert.True(mine.HasSuggestion);
-        Assert.Contains("content/**", mine.Suggestion);
+        Assert.Contains("content/big.pak", mine.Suggestion);
 
         // Repair, then everything is as before.
         await mine.RepairCommand.ExecuteAsync(null);

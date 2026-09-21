@@ -27,6 +27,20 @@ public sealed record TorrentEngineOptions
     /// <summary>Normally off. Needed only when several peers share one IP address, as in single-machine tests.</summary>
     public bool AllowMultipleConnectionsPerIp { get; init; }
 
+    /// <summary>
+    /// How many files the library keeps open at once. On Windows an open file is memory-mapped, and a program that replaces such a file
+    /// by truncating it, which is how most games save their settings, is refused. A game must never notice that its files are shared,
+    /// so only a few files are held open, and see <see cref="IdleReleaseAfter"/> for the rest.
+    /// Measured with 3000 small files: the transfer was not slower with 2, 4 or 16 than with the default.
+    /// </summary>
+    public int OpenFileLimit { get; init; } = 8;
+
+    /// <summary>
+    /// A seed that has not uploaded anything for this long lets go of its files, so a game can rewrite them.
+    /// Null turns it off. Pausing and resuming a seed does not re-check it and it announces itself again straight away.
+    /// </summary>
+    public TimeSpan? IdleReleaseAfter { get; init; } = TimeSpan.FromSeconds(20);
+
     /// <summary>Address ranges allowed when <see cref="LanOnly"/> is on. Null means the private ranges. Mainly for tests.</summary>
     public IReadOnlyList<IpRange>? AllowedRanges { get; init; }
 }
@@ -56,6 +70,7 @@ public sealed class TorrentEngine : IDisposable
     private readonly ConcurrentDictionary<string, TaskCompletionSource> _removals = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, DateTimeOffset> _recentlyRemoved = new(StringComparer.OrdinalIgnoreCase);
     private readonly CancellationTokenSource _stopBalancer = new();
+    private readonly TimeSpan? _idleReleaseAfter;
     private volatile int _maxUpload;    // bytes per second, 0 means unlimited
     private volatile int _maxDownload;
 
@@ -72,6 +87,7 @@ public sealed class TorrentEngine : IDisposable
 
         var pack = new SettingsPack()
             .Set(new ListenInterfaces($"0.0.0.0:{options.ListenPort}")) // IPv4 only, keeps the LAN filter simple
+            .Set(new FilePoolSize(Math.Max(1, options.OpenFileLimit)))
             .Set(new EnableLsd(true))
             // Each torrent announces itself on the LAN once per interval, five minutes by default. A single lost multicast
             // datagram, easy on Wi-Fi, would leave a new download without peers for minutes. Announcements are tiny.
@@ -92,6 +108,7 @@ public sealed class TorrentEngine : IDisposable
                 _client.AddIpFilterRule(range.First, range.Last, blocked: false);
         }
 
+        _idleReleaseAfter = options.IdleReleaseAfter;
         _maxUpload = options.MaxUploadBytesPerSecond ?? 0;
         _maxDownload = options.MaxDownloadBytesPerSecond ?? 0;
         _ = Task.Run(() => BalanceLoopAsync(_stopBalancer.Token));
@@ -231,14 +248,51 @@ public sealed class TorrentEngine : IDisposable
         int? upShare = EvenShare(up, uploading);
         int? downShare = EvenShare(down, downloading);
 
-        foreach (var (t, _) in states)
+        var now = DateTime.UtcNow;
+        foreach (var (t, status) in states)
         {
-            try { t.SetRateLimits(upShare, downShare); }
+            try
+            {
+                t.SetRateLimits(upShare, downShare);
+                if (status is not null) ReleaseIdleFiles(t, status, now);
+            }
             catch (Exception ex) when (ex is ObjectDisposedException or InvalidOperationException)
             {
                 _log.LogDebug("Could not set limits on {Name}, it is being removed: {Reason}", t.Name, ex.Message);
             }
         }
+    }
+
+    /// <summary>
+    /// A seed that stopped uploading keeps a few files open, and an open file cannot be replaced by a game that saves by truncating it.
+    /// Once it has been idle for a while it is paused and, a tick later, resumed, which closes them. Once per idle period, not over and over.
+    /// The pause takes a moment to close the files: resuming at once cancels it.
+    /// </summary>
+    private void ReleaseIdleFiles(TorrentTransfer t, TransferStatus status, DateTime now)
+    {
+        if (t.Releasing)
+        {
+            t.Releasing = false;
+            t.Start();
+            return;
+        }
+        if (_idleReleaseAfter is not { } idleAfter || !t.UploadOnly || t.IsStopped) return;
+        if (status.State is TransferState.Checking or TransferState.Error) return;
+
+        // The upload rate is a moving average that stays above zero for a long time after the last byte, so count the bytes.
+        if (status.SessionUploaded != t.LastUploaded)
+        {
+            t.LastUploaded = status.SessionUploaded;
+            t.LastActivity = now;
+            t.FilesReleased = false;
+            return;
+        }
+        if (t.FilesReleased || now - t.LastActivity < idleAfter) return;
+
+        t.FilesReleased = true;
+        t.Releasing = true;
+        t.Stop(); // resumed on the next tick
+        _log.LogDebug("Seed {Name} was idle, its files are being released", t.Name);
     }
 
     private TorrentManager GetManagerFor(TorrentTransfer transfer) =>

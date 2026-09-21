@@ -132,11 +132,66 @@ public class VolatileMatcherTests
     }
 
     [Fact]
-    public void Suggestions_group_files_in_folders_and_keep_root_files_by_name()
+    public void Suggestions_use_folders_that_games_are_known_to_write_to_and_keep_other_files_by_name()
     {
         var s = VolatileRules.Suggest(["saves/slot1.sav", "saves/slot2.sav", "profile/a/b.dat", "settings.ini"]);
 
         Assert.Equal(["profile/**", "saves/**", "settings.ini"], s);
+    }
+
+    [Fact]
+    public void A_changed_content_file_is_suggested_by_itself_never_as_its_whole_folder()
+    {
+        // The folder pattern would have hidden all of content/ from the game.
+        Assert.Equal(["content/big.pak"], VolatileRules.Suggest(["content/big.pak"]));
+        Assert.Equal(["Game/Data/a.pak", "Game/Data/b.pak"], VolatileRules.Suggest(["Game/Data/b.pak", "Game/Data/a.pak"]));
+    }
+
+    [Fact]
+    public void Known_folders_are_found_at_any_depth_and_stay_anchored_where_they_were_found()
+    {
+        var s = VolatileRules.Suggest(["Documents/MyGame/Saves/slot1.dat", "Engine/Cache/a.bin", "Engine/Cache/deep/b.bin"]);
+
+        Assert.Equal(["Documents/MyGame/Saves/**", "Engine/Cache/**"], s);
+    }
+
+    [Fact]
+    public void A_file_called_like_a_known_folder_does_not_count_as_that_folder()
+    {
+        Assert.Equal(["Bin/cache"], VolatileRules.Suggest(["Bin/cache"]));
+    }
+
+    [Fact]
+    public void Many_changed_files_in_one_unknown_folder_collapse_into_the_folder_but_a_few_do_not()
+    {
+        var many = Enumerable.Range(0, 4).Select(i => $"Game/Data/block{i}.bin");
+        Assert.Equal(["Game/Data/**"], VolatileRules.Suggest(many));
+        Assert.Equal(3, VolatileRules.Suggest(many.Take(3)).Count);
+    }
+
+    [Fact]
+    public void Files_in_the_root_are_never_collapsed()
+    {
+        var s = VolatileRules.Suggest(Enumerable.Range(0, 6).Select(i => $"file{i}.dat"));
+        Assert.Equal(6, s.Count);
+    }
+
+    [Fact]
+    public void A_single_file_inside_a_suggested_folder_is_not_listed_again()
+    {
+        var many = Enumerable.Range(0, 4).Select(i => $"Game/Data/block{i}.bin");
+
+        Assert.Equal(["Game/Data/**"], VolatileRules.Suggest(many.Append("Game/Data/sub/x.bin")));
+    }
+
+    [Fact]
+    public void Every_suggestion_is_a_valid_pattern_that_matches_the_file_it_came_from()
+    {
+        string[] changed = ["saves/slot1.sav", "Game/Data/a.pak", "settings.ini", "Documents/My Game/Saves/x.dat"];
+
+        var matcher = VolatileMatcher.Create(VolatileRules.Suggest(changed));
+
+        Assert.All(changed, p => Assert.True(matcher.IsMatch(p), p));
     }
 }
 

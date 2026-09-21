@@ -40,6 +40,24 @@ public sealed class AgentOptions
     public TimeSpan DownloadTickInterval { get; set; } = TimeSpan.FromMilliseconds(500);
     public TimeSpan ResumeSaveInterval { get; set; } = TimeSpan.FromSeconds(10);
 
+    /// <summary>
+    /// How many game files the transfer engine keeps open at once. An open file cannot be replaced by a game that saves by truncating it,
+    /// so this is kept low. See TorrentEngineOptions.OpenFileLimit.
+    /// </summary>
+    public int OpenFileLimit { get; set; } = 8;
+
+    /// <summary>A seed that has uploaded nothing for this long lets go of its files. Null turns it off.</summary>
+    public TimeSpan? SeedIdleRelease { get; set; } = TimeSpan.FromSeconds(20);
+
+    /// <summary>How long a game folder must be still before the files a game touched are looked at.</summary>
+    public TimeSpan ChangeQuietPeriod { get; set; } = TimeSpan.FromSeconds(10);
+
+    /// <summary>How often the folders that are watched for changes are brought in line with the installed games.</summary>
+    public TimeSpan ChangeWatchSyncInterval { get; set; } = TimeSpan.FromMinutes(1);
+
+    /// <summary>A seed of a damaged game is re-checked at most this often while the game keeps changing.</summary>
+    public TimeSpan DamagedSeedRecheckInterval { get; set; } = TimeSpan.FromMinutes(5);
+
     /// <summary>How often resume data of seeded games is stored, so a restart does not re-hash the whole library.</summary>
     public TimeSpan SeedResumeInterval { get; set; } = TimeSpan.FromMinutes(5);
 

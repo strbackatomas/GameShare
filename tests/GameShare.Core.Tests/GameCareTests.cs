@@ -72,7 +72,7 @@ public class GameCareTests
         var changes = await pc.Library.CheckAsync(hash);
         Assert.Equal(["content/big.pak"], changes.Modified);
         Assert.Empty(changes.Missing);
-        Assert.Equal(["content/**"], changes.SuggestedPatterns);
+        Assert.Equal(["content/big.pak"], changes.SuggestedPatterns);
         Assert.Equal(InstallationState.Invalid, (await pc.Db.ListInstallationsAsync()).Single().State);
 
         // The bug this guards against: the next scan sees matching sizes and quietly puts the game back in service.

@@ -54,6 +54,12 @@ public sealed class TorrentTransfer
         TotalSize = totalSize;
     }
 
+    // Bookkeeping of the engine's idle release, see TorrentEngine.
+    internal long LastUploaded;
+    internal DateTime LastActivity = DateTime.UtcNow;
+    internal bool FilesReleased;
+    internal bool Releasing;
+
     public string InfoHash { get; }
     public string Name { get; }
     public long TotalSize { get; }

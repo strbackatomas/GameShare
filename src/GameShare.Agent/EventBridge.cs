@@ -22,6 +22,7 @@ public sealed class EventBridge : IHostedService
     private readonly GameLibrary _library;
     private readonly DownloadManager _downloads;
     private readonly SeedManager _seeds;
+    private readonly GameChangeTracker _changes;
     private readonly GameView _view;
     private readonly ILogger<EventBridge> _log;
     private readonly Channel<Func<Task<(string Name, object Payload)?>>> _queue =
@@ -34,8 +35,9 @@ public sealed class EventBridge : IHostedService
 
     public EventBridge(
         IHubContext<EventsHub> hub, DiscoveryService discovery, PeerCatalog catalog, GameLibrary library,
-        DownloadManager downloads, SeedManager seeds, GameView view, ILogger<EventBridge> log)
+        DownloadManager downloads, SeedManager seeds, GameChangeTracker changes, GameView view, ILogger<EventBridge> log)
     {
+        _changes = changes;
         _hub = hub;
         _discovery = discovery;
         _catalog = catalog;
@@ -57,6 +59,7 @@ public sealed class EventBridge : IHostedService
         _library.InstallationChanged += OnInstallationChanged;
         _downloads.DownloadEventRaised += OnDownload;
         _seeds.SeedEventRaised += OnSeed;
+        _changes.Changed += OnTrackedChange;
         return Task.CompletedTask;
     }
 
@@ -68,6 +71,7 @@ public sealed class EventBridge : IHostedService
         _library.InstallationChanged -= OnInstallationChanged;
         _downloads.DownloadEventRaised -= OnDownload;
         _seeds.SeedEventRaised -= OnSeed;
+        _changes.Changed -= OnTrackedChange;
 
         _queue.Writer.TryComplete();
         if (_sender is not null)
@@ -110,6 +114,10 @@ public sealed class EventBridge : IHostedService
         if (change.Previous is not null && change.Previous.ContentHash != change.Current.ContentHash)
             Enqueue(() => GameChangedAsync(change.Previous.ContentHash));
     }
+
+    /// <summary>What the game changed while it was in use is part of its card: how many files, and which patterns would hide them.</summary>
+    private void OnTrackedChange(object? sender, TrackedChange change) =>
+        Enqueue(() => GameChangedAsync(change.Installation.ContentHash));
 
     private void OnLocalGameDiscovered(object? sender, LibraryGame g) =>
         Enqueue(() => GameChangedAsync(g.Stored.Manifest.ContentHash));

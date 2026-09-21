@@ -11,9 +11,11 @@ public sealed class GameView
     private readonly DownloadManager _downloads;
     private readonly PeerCatalog _catalog;
     private readonly DiscoveryService _discovery;
+    private readonly GameChangeTracker _changes;
 
-    public GameView(GameLibrary library, DownloadManager downloads, PeerCatalog catalog, DiscoveryService discovery)
+    public GameView(GameLibrary library, DownloadManager downloads, PeerCatalog catalog, DiscoveryService discovery, GameChangeTracker changes)
     {
+        _changes = changes;
         _library = library;
         _downloads = downloads;
         _catalog = catalog;
@@ -49,10 +51,13 @@ public sealed class GameView
             };
 
             var (fully, coverage) = _catalog.Availability(m.ContentHash);
+            var seen = state == GameState.Damaged ? _changes.Get(g.Installation!.Id) : ObservedChanges.None;
             result[m.ContentHash] = new GameDto(
                 m.ContentHash, m.GameId, m.Name, m.Version, m.TotalSize, state,
                 g.Installation?.InstallPath, peerNames, download?.Id, m.Definition)
             {
+                ChangedFileCount = seen.Count,
+                SuggestedPatterns = seen.SuggestedPatterns,
                 UpdatesContentHash = g.Installation is null && installedByGame.TryGetValue(m.GameId, out var installed) ? installed : null,
                 PartialPeerNames = PartialNames(offers[m.ContentHash]),
                 FullyAvailable = fully,

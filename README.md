@@ -86,7 +86,8 @@ Saves, settings and caches inside a game folder must not count as game content. 
 { "gameId": "beamng", "name": "BeamNG.drive", "version": "0.38", "volatile": ["saves/**", "*.ini"] }
 ```
 
-Or let the client find them: **Zkontrolovat** on a game shows which files changed since install and offers to mark them.
+Or let GameShare find them. While a game is played the agent notices which of its files are rewritten and the game shows as changed,
+with suggested patterns and a button that marks them. **Zkontrolovat** does the same on demand for every file. Nothing is marked without a click.
 A game whose files changed is shown as damaged until it is repaired or registered again. It still offers the parts that are unchanged,
 so other PCs can use it as a source, and PCs that were played on differently can complete each other.
 

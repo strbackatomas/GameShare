@@ -32,4 +32,7 @@ public static class Format
 
     /// <summary>Czech plural for "PC": 1 PC, 2 až 4 PC, 5 a více PC. The word does not change, only the count is shown.</summary>
     public static string PcCount(int count) => count == 1 ? "1 PC" : $"{count} PC";
+
+    /// <summary>Czech plural for "soubor": 1 soubor, 2 až 4 soubory, 5 a více souborů.</summary>
+    public static string FileCount(int count) => count == 1 ? "1 soubor" : count is >= 2 and <= 4 ? $"{count} soubory" : $"{count} souborů";
 }

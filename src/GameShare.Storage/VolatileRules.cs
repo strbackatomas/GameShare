@@ -134,11 +134,52 @@ public static class VolatileRules
     public static bool SameSet(IReadOnlyList<string> a, IReadOnlyList<string> b) =>
         a.Count == b.Count && a.Order(StringComparer.OrdinalIgnoreCase).SequenceEqual(b.Order(StringComparer.OrdinalIgnoreCase), StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>Patterns an admin could add after seeing which files a game changed: a folder for files in folders, the name otherwise.</summary>
-    public static IReadOnlyList<string> Suggest(IEnumerable<string> changedPaths) =>
-        changedPaths
-            .Select(p => p.Contains('/') ? p[..p.IndexOf('/')] + "/**" : p)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
+    /// <summary>Folder names in which games keep what they write while they are played.</summary>
+    private static readonly HashSet<string> VolatileFolders = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "save", "saves", "savegame", "savegames", "savedgames", "savedata", "profile", "profiles",
+        "config", "configs", "settings", "cache", "caches", "shadercache", "logs", "crashes", "crashdumps",
+        "screenshots", "replays", "temp", "tmp",
+    };
+
+    /// <summary>Changed files in one folder that are collapsed into a pattern for the whole folder.</summary>
+    private const int FilesPerFolderBeforeCollapsing = 4;
+
+    /// <summary>
+    /// Patterns an admin could add after seeing which files a game changed. Deliberately narrow, because a pattern that is too wide
+    /// hides real game content: a folder that games are known to write to (saves, cache, logs) becomes a folder pattern,
+    /// many changed files in one folder become that folder, and anything else stays the single file.
+    /// </summary>
+    public static IReadOnlyList<string> Suggest(IEnumerable<string> changedPaths)
+    {
+        var suggestions = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var perFolder = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var path in changedPaths.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            var parts = path.Split('/');
+            int known = Array.FindIndex(parts, 0, parts.Length - 1, p => VolatileFolders.Contains(p)); // folders only, never the file name
+            if (known >= 0)
+            {
+                suggestions.Add(string.Join('/', parts[..(known + 1)]) + "/**");
+                continue;
+            }
+            var folder = parts.Length > 1 ? string.Join('/', parts[..^1]) : "";
+            if (!perFolder.TryGetValue(folder, out var files)) perFolder[folder] = files = [];
+            files.Add(path);
+        }
+
+        foreach (var (folder, files) in perFolder)
+        {
+            if (folder.Length > 0 && files.Count >= FilesPerFolderBeforeCollapsing) suggestions.Add(folder + "/**");
+            else foreach (var f in files) suggestions.Add(f);
+        }
+
+        // A folder pattern makes single-file patterns inside it redundant.
+        var folders = suggestions.Where(s => s.EndsWith("/**", StringComparison.Ordinal)).Select(s => s[..^2]).ToList();
+        return suggestions
+            .Where(s => s.EndsWith("/**", StringComparison.Ordinal) || !folders.Any(f => s.StartsWith(f, StringComparison.OrdinalIgnoreCase)))
             .Order(StringComparer.OrdinalIgnoreCase)
             .ToList();
+    }
 }
