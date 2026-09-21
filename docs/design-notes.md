@@ -113,6 +113,27 @@ Many games write into their folder: settings, saves, shader caches, logs. Those 
   fall back to one full check. A damaged game that keeps changing has its seed re-checked every 5 minutes at most.
 - A file that must ship with initial values and is rewritten later is a separate case, left for later. The game can normally create its own defaults.
 
+## Verified games
+
+Identity is the content hash. A manifest is validated and its hash is recomputed from its file list, the torrent must match the manifest, and a finished
+download is checked against the manifest's SHA-256 of every file. So "this content hash" means exactly these files, whichever PC delivered them.
+The signed list adds the missing piece: *which* content hashes the administrator vouches for.
+
+- **Format.** JSON with a base64 payload, an ECDSA P-256 / SHA-256 signature over the payload bytes as they were serialised (nothing to canonicalise), and a key id.
+  The payload has a sequence number, the issue date, an optional `validUntil`, the vouched games (hash, id, name, version) and the revoked hashes with a reason.
+  The public key is one line of base64 in the agent settings, the private key stays with the administrator (optionally password protected).
+- **A list that does not verify counts as no list.** Wrong key (the message names both key ids), changed payload, garbage, a size over 4 MB, a hash that is not a hash: refused, and the list in use stays.
+  Tested by tampering with the payload, by signing with another key under the administrator's key id, and by turning the signature check off to see the tests fail.
+- **Rollback.** A validly signed list with a lower sequence than the one held is refused. Equal is ignored. A list past `validUntil` is not used, but it stays held so an older one cannot replace it.
+- **Fail closed, but not stuck.** In `Require` mode without a usable list nothing is installed, and the message says why the list did not load. The last good list is stored in the data folder and used after a restart while the source is unreachable.
+- **What a verdict means.** Verified: the hash is in the list. Unknown: a list is loaded and it is not there. Revoked wins over everything and is refused in `Warn` as well.
+  A game whose files changed after install is not shown as verified, the list vouches for the files of that version and those are no longer on disk. A revocation is still shown.
+- **Only installs and updates are checked.** Games that are already installed are not removed, and a PC keeps offering what it has. `Require` decides what a PC installs, not what it serves.
+- **The one outbound request.** The list is fetched with a plain GET from a web address or read from a file. It carries nothing about the PC, and the download is capped in size even if the server never says how large it is.
+
+What it does not protect against, so nobody assumes it does: the administrator adding a game from a PC that was already infected, a stolen private key,
+a first start of a PC with no stored list where someone serves an old list that was once valid and has no `validUntil`, and a game that a PC modifies after the install (that is the damaged state, not this).
+
 ## Speed limits
 
 The library ignores its own global speed limits for peers on the local network, and every peer here is on the local network.

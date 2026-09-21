@@ -12,10 +12,12 @@ public sealed class GameView
     private readonly PeerCatalog _catalog;
     private readonly DiscoveryService _discovery;
     private readonly GameChangeTracker _changes;
+    private readonly TrustService _trust;
 
-    public GameView(GameLibrary library, DownloadManager downloads, PeerCatalog catalog, DiscoveryService discovery, GameChangeTracker changes)
+    public GameView(GameLibrary library, DownloadManager downloads, PeerCatalog catalog, DiscoveryService discovery, GameChangeTracker changes, TrustService trust)
     {
         _changes = changes;
+        _trust = trust;
         _library = library;
         _downloads = downloads;
         _catalog = catalog;
@@ -52,12 +54,17 @@ public sealed class GameView
 
             var (fully, coverage) = _catalog.Availability(m.ContentHash);
             var seen = state == GameState.Damaged ? _changes.Get(g.Installation!.Id) : ObservedChanges.None;
+            var (trust, trustNote) = _trust.Check(m.ContentHash);
+            // The list vouches for the files of this version. Files that changed since are not those, so do not claim it. A revocation still stands.
+            if (state == GameState.Damaged && trust == TrustVerdict.Verified) trust = TrustVerdict.NotChecked;
             result[m.ContentHash] = new GameDto(
                 m.ContentHash, m.GameId, m.Name, m.Version, m.TotalSize, state,
                 g.Installation?.InstallPath, peerNames, download?.Id, m.Definition)
             {
                 ChangedFileCount = seen.Count,
                 SuggestedPatterns = seen.SuggestedPatterns,
+                Trust = trust,
+                TrustNote = trustNote,
                 UpdatesContentHash = g.Installation is null && installedByGame.TryGetValue(m.GameId, out var installed) ? installed : null,
                 PartialPeerNames = PartialNames(offers[m.ContentHash]),
                 FullyAvailable = fully,
@@ -70,11 +77,14 @@ public sealed class GameView
         {
             var o = group.First().Game;
             var (fully, coverage) = _catalog.Availability(o.ContentHash);
+            var (trust, trustNote) = _trust.Check(o.ContentHash);
             result[o.ContentHash] = new GameDto(
                 o.ContentHash, o.GameId, o.Name, o.Version, o.TotalSize, GameState.AvailableOnLan,
                 null, PeerNames(group), null, null)
             {
                 UpdatesContentHash = installedByGame.TryGetValue(o.GameId, out var installed) ? installed : null,
+                Trust = trust,
+                TrustNote = trustNote,
                 PartialPeerNames = PartialNames(group),
                 FullyAvailable = fully,
                 CoveragePercent = coverage,

@@ -1,5 +1,6 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/GameShare.Admin/GameShare.Admin.csproj" />
     <Project Path="src/GameShare.Agent/GameShare.Agent.csproj" />
     <Project Path="src/GameShare.Client/GameShare.Client.csproj" />
     <Project Path="src/GameShare.Core/GameShare.Core.csproj" />

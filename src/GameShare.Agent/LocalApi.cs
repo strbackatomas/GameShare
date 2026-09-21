@@ -32,6 +32,10 @@ public static partial class LocalApi
         api.MapPut("/settings", async (SettingsDto request, SettingsService settings, CancellationToken ct) =>
             await settings.UpdateAsync(request, ct));
 
+        // The administrator's list of verified games, and whether it loaded. Refreshing asks the source again now.
+        api.MapGet("/trust", (TrustService trust) => trust.Status());
+        api.MapPost("/trust/refresh", async (TrustService trust, CancellationToken ct) => await trust.RefreshAsync(ct));
+
         api.MapGet("/peers", (DiscoveryService discovery, GameView view) => discovery.Peers.Select(view.ToDto).ToList());
 
         api.MapGet("/games", async (GameView view, CancellationToken ct) => await view.ListGamesAsync(ct));
@@ -46,7 +50,7 @@ public static partial class LocalApi
 
         api.MapPost("/games/{contentHash}/install", async (
             string contentHash, [FromBody] InstallRequest? request,
-            SettingsService settings, GameShareDb db, PeerCatalog catalog, DownloadManager downloads, GameView view, CancellationToken ct) =>
+            SettingsService settings, GameShareDb db, PeerCatalog catalog, DownloadManager downloads, GameView view, TrustService trust, CancellationToken ct) =>
         {
             RequireHash(contentHash);
 
@@ -58,6 +62,7 @@ public static partial class LocalApi
 
             RequireFullyAvailable(catalog, contentHash);
             var (manifest, torrent) = await ResolveAsync(contentHash, db, catalog, ct);
+            trust.RequireAllowed(contentHash, manifest.Name);
 
             var status = await downloads.StartInstallAsync(manifest, torrent, root, ct);
             return Results.Accepted($"/api/downloads/{status.Id}", view.ToDto(status));
@@ -107,11 +112,12 @@ public static partial class LocalApi
 
         // Bring the installed version of a game to this version, fetching only what differs.
         api.MapPost("/games/{contentHash}/update", async (
-            string contentHash, GameShareDb db, PeerCatalog catalog, DownloadManager downloads, GameView view, CancellationToken ct) =>
+            string contentHash, GameShareDb db, PeerCatalog catalog, DownloadManager downloads, GameView view, TrustService trust, CancellationToken ct) =>
         {
             RequireHash(contentHash);
             RequireFullyAvailable(catalog, contentHash);
             var (manifest, torrent) = await ResolveAsync(contentHash, db, catalog, ct);
+            trust.RequireAllowed(contentHash, manifest.Name);
 
             var installs = new List<Installation>();
             foreach (var i in await db.ListInstallationsAsync(ct))

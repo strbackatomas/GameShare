@@ -11,6 +11,7 @@ public sealed class AgentWorker : BackgroundService
     private readonly DownloadManager _downloads;
     private readonly SeedManager _seeds;
     private readonly GameChangeTracker _changes;
+    private readonly TrustService _trust;
     private readonly GameLibrary _library;
     private readonly ScanService _scan;
     private readonly DiscoveryService _discovery;
@@ -21,12 +22,13 @@ public sealed class AgentWorker : BackgroundService
     private readonly ILogger<AgentWorker> _log;
 
     public AgentWorker(
-        DownloadManager downloads, SeedManager seeds, GameChangeTracker changes, GameLibrary library, ScanService scan, DiscoveryService discovery,
+        DownloadManager downloads, SeedManager seeds, GameChangeTracker changes, TrustService trust, GameLibrary library, ScanService scan, DiscoveryService discovery,
         PeerCatalog catalog, SettingsService settings, TorrentEngine engine, AgentOptions options, ILogger<AgentWorker> log)
     {
         _downloads = downloads;
         _seeds = seeds;
         _changes = changes;
+        _trust = trust;
         _library = library;
         _scan = scan;
         _discovery = discovery;
@@ -60,6 +62,7 @@ public sealed class AgentWorker : BackgroundService
                 ScanLoopAsync(ct),
                 SeedResumeLoopAsync(ct),
                 _changes.RunAsync(_options.ChangeWatchSyncInterval, ct),
+                _trust.RunAsync(ct),
                 DamagedSeedRecheckLoopAsync(ct)).ConfigureAwait(false);
         }
         catch (OperationCanceledException) { /* shutting down */ }

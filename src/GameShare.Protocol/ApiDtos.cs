@@ -29,6 +29,12 @@ public sealed record GameDto(
     long? DownloadId,
     GameDefinition? Definition)
 {
+    /// <summary>What the administrator's signed list says about this version. <see cref="TrustVerdict.NotChecked"/> when checking is off or there is no list.</summary>
+    public TrustVerdict Trust { get; init; } = TrustVerdict.NotChecked;
+
+    /// <summary>For a revoked version, the administrator's reason.</summary>
+    public string? TrustNote { get; init; }
+
     /// <summary>Files of this game that were seen changing while it was in use, and new files it created. Only for a damaged game installed here.</summary>
     public int ChangedFileCount { get; init; }
 
@@ -94,6 +100,35 @@ public sealed record AddVolatileRequest(IReadOnlyList<string> Patterns);
 
 /// <param name="MaxUploadMBps">Megabytes (10^6 bytes) per second, null for unlimited.</param>
 public sealed record SettingsDto(IReadOnlyList<string> GameRoots, bool SeedingEnabled, int? MaxUploadMBps, int? MaxDownloadMBps);
+
+/// <summary>How strictly this PC follows the administrator's signed list of verified games.</summary>
+public enum TrustMode
+{
+    /// <summary>The list is not loaded and nothing is said about games.</summary>
+    Off,
+    /// <summary>Games are marked as verified or not, and everything can still be installed. Only a revoked version is refused.</summary>
+    Warn,
+    /// <summary>Only verified games are installed. Without a usable list nothing is.</summary>
+    Require,
+}
+
+public enum TrustVerdict
+{
+    NotChecked,
+    /// <summary>The content hash is in the administrator's list.</summary>
+    Verified,
+    /// <summary>A list is loaded and does not contain this version.</summary>
+    Unknown,
+    /// <summary>The administrator withdrew this version.</summary>
+    Revoked,
+}
+
+/// <param name="Source">Where the list comes from, null when checking is off.</param>
+/// <param name="HasList">A list that verified is loaded and still valid.</param>
+/// <param name="LastError">Why the last attempt to load the list failed. The previous list stays in use.</param>
+public sealed record TrustStatusDto(
+    TrustMode Mode, string? Source, bool HasList, long? Sequence, DateTimeOffset? IssuedAt, DateTimeOffset? ValidUntil,
+    int VerifiedCount, int RevokedCount, DateTimeOffset? LastRefreshed, string? LastError, string? KeyId);
 
 public sealed record StatusDto(string MachineId, string MachineName, string Version, int PeerCount, int GameCount, int ActiveDownloads);
 

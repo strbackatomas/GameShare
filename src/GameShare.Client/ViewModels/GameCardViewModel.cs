@@ -47,6 +47,14 @@ public sealed partial class GameCardViewModel : ViewModelBase
 
     [ObservableProperty] public partial string CoverageText { get; set; } = "";
 
+    /// <summary>What the administrator's signed list says about this version. Nothing is shown when checking is off.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasTrust), nameof(TrustText), nameof(IsTrustVerified), nameof(IsTrustUnknown), nameof(IsTrustRevoked))]
+    public partial TrustVerdict Trust { get; set; }
+
+    /// <summary>For a revoked version, the administrator's reason.</summary>
+    [ObservableProperty] public partial string? TrustNote { get; set; }
+
     /// <summary>0 to 100, only meaningful while the game is being downloaded.</summary>
     [ObservableProperty] public partial double Percent { get; set; }
     [ObservableProperty] public partial string ProgressText { get; set; } = "";
@@ -73,6 +81,19 @@ public sealed partial class GameCardViewModel : ViewModelBase
 
     /// <summary>Offered by PCs that were used to play it, and the missing parts are not among the PCs that are online.</summary>
     public bool IsWaitingForParts => IsAvailable && !FullyAvailable;
+    public bool HasTrust => Trust != TrustVerdict.NotChecked;
+    public bool IsTrustVerified => Trust == TrustVerdict.Verified;
+    public bool IsTrustUnknown => Trust == TrustVerdict.Unknown;
+    public bool IsTrustRevoked => Trust == TrustVerdict.Revoked;
+
+    public string TrustText => Trust switch
+    {
+        TrustVerdict.Verified => "Ověřeno správcem",
+        TrustVerdict.Unknown => "Není v seznamu správce",
+        TrustVerdict.Revoked => "Zrušeno správcem",
+        _ => "",
+    };
+
     public bool CanAct => !IsBusy;
     public bool HasMessage => !string.IsNullOrEmpty(Message);
     public bool HasSuggestion => !string.IsNullOrEmpty(Suggestion);
@@ -95,6 +116,8 @@ public sealed partial class GameCardViewModel : ViewModelBase
         UpdatesContentHash = g.UpdatesContentHash;
         Details = string.IsNullOrEmpty(g.Version) ? Format.Size(g.TotalSize) : $"{g.Version} · {Format.Size(g.TotalSize)}";
         PeersText = g.State == GameState.AvailableOnLan && g.PeerNames.Count > 0 ? DescribePeers(g) : "";
+        Trust = g.Trust;
+        TrustNote = g.TrustNote;
         FullyAvailable = g.FullyAvailable;
         CoverageText = g.State == GameState.AvailableOnLan && !g.FullyAvailable
             ? $"Dohromady je k dispozici jen {Format.Percent(g.CoveragePercent ?? 0)} dat hry. Instalace půjde, až se objeví PC s chybějícími částmi."

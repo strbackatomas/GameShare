@@ -1,6 +1,7 @@
 <#
 .SYNOPSIS
   Builds the agent and the client into artifacts\ as self-contained folders. Nothing needs to be installed on the target PCs.
+  The administrator's tool (artifacts\admin\gameshare-admin.exe) is built too. It is for the administrator's PC only, not for the players'.
 #>
 [CmdletBinding()]
 param(
@@ -10,7 +11,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-foreach ($app in @(@{ Name = 'agent'; Project = 'GameShare.Agent' }, @{ Name = 'client'; Project = 'GameShare.Client' })) {
+foreach ($app in @(@{ Name = 'agent'; Project = 'GameShare.Agent' }, @{ Name = 'client'; Project = 'GameShare.Client' }, @{ Name = 'admin'; Project = 'GameShare.Admin' })) {
     $target = Join-Path $Output $app.Name
     if (Test-Path $target) { Remove-Item -Recurse -Force $target }
     dotnet publish (Join-Path $PSScriptRoot "..\src\$($app.Project)") -c Release -r $Runtime --self-contained true -o $target

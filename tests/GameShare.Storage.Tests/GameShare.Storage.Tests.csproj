@@ -21,6 +21,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\GameShare.Storage\GameShare.Storage.csproj" />
+    <ProjectReference Include="..\..\src\GameShare.Admin\GameShare.Admin.csproj" />
   </ItemGroup>
 
   <ItemGroup>

@@ -117,6 +117,34 @@ public sealed partial class SettingsViewModel : ViewModelBase
     [ObservableProperty] public partial string Message { get; set; } = "";
     [ObservableProperty] public partial bool IsLoaded { get; set; }
 
+    /// <summary>Whether the administrator's list of verified games is followed, and whether it loaded. Read only, it is set on the PC itself.</summary>
+    [ObservableProperty] public partial string TrustText { get; set; } = "";
+    [ObservableProperty] public partial bool TrustEnabled { get; set; }
+
+    internal static string DescribeTrust(TrustStatusDto t)
+    {
+        if (t.Mode == TrustMode.Off) return "Ověřování her seznamem správce je vypnuté.";
+        var mode = t.Mode == TrustMode.Require ? "instalují se jen ověřené hry" : "neověřené hry se jen označí";
+        var list = t.HasList
+            ? $"Seznam č. {t.Sequence} z {(t.IssuedAt is { } issued ? Format.Date(issued) : "?")}, ověřených her: {t.VerifiedCount}, zrušených verzí: {t.RevokedCount}."
+            : "Seznam zatím není k dispozici.";
+        var error = t.LastError is null ? "" : $" Poslední načtení selhalo: {t.LastError}";
+        return $"Režim: {mode}. {list}{error}";
+    }
+
+    /// <summary>Asks where the list comes from again, for the administrator who has just published a new one.</summary>
+    [RelayCommand]
+    private async Task RefreshTrustAsync()
+    {
+        await TryAsync(async () =>
+        {
+            var t = await _app.Client.RefreshTrustAsync();
+            TrustEnabled = t.Mode != TrustMode.Off;
+            TrustText = DescribeTrust(t);
+            await _app.RefreshGamesAsync();
+        }, m => Message = m).ConfigureAwait(true);
+    }
+
     /// <summary>Reads the current settings from the agent. Called when the page is opened.</summary>
     [RelayCommand]
     public async Task LoadAsync()
@@ -128,6 +156,9 @@ public sealed partial class SettingsViewModel : ViewModelBase
             SeedingEnabled = s.SeedingEnabled;
             MaxUploadText = s.MaxUploadMBps?.ToString() ?? "";
             MaxDownloadText = s.MaxDownloadMBps?.ToString() ?? "";
+            var trust = await _app.Client.GetTrustAsync();
+            TrustEnabled = trust.Mode != TrustMode.Off;
+            TrustText = DescribeTrust(trust);
             IsLoaded = true;
             Message = "";
         }, m => Message = m).ConfigureAwait(true);

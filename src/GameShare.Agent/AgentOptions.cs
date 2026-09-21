@@ -1,3 +1,5 @@
+using GameShare.Protocol;
+
 namespace GameShare.Agent;
 
 /// <summary>
@@ -41,6 +43,20 @@ public sealed class AgentOptions
     public TimeSpan ResumeSaveInterval { get; set; } = TimeSpan.FromSeconds(10);
 
     /// <summary>
+    /// Off: the administrator's list of verified games is ignored. Warn: games are marked, everything but a revoked version can be installed.
+    /// Require: only verified games are installed. Set by the administrator here or with Agent__TrustMode, not from the GUI.
+    /// </summary>
+    public TrustMode TrustMode { get; set; } = TrustMode.Off;
+
+    /// <summary>An https:// address, or a file path such as \\server\share\trust.json, of the signed list. Needed unless <see cref="TrustMode"/> is Off.</summary>
+    public string? TrustListSource { get; set; }
+
+    /// <summary>Public key of the administrator, one line of base64 as printed by gameshare-admin keygen.</summary>
+    public string? TrustPublicKey { get; set; }
+
+    public TimeSpan TrustRefreshInterval { get; set; } = TimeSpan.FromHours(1);
+
+    /// <summary>
     /// How many game files the transfer engine keeps open at once. An open file cannot be replaced by a game that saves by truncating it,
     /// so this is kept low. See TorrentEngineOptions.OpenFileLimit.
     /// </summary>
@@ -78,6 +94,17 @@ public sealed class AgentOptions
 
         if (LocalApiPort == PeerApiPort)
             throw new InvalidOperationException("Agent:LocalApiPort and Agent:PeerApiPort must differ, they are separate listeners with different trust.");
+        if (TrustMode != TrustMode.Off)
+        {
+            if (string.IsNullOrWhiteSpace(TrustListSource))
+                throw new InvalidOperationException($"Agent:TrustListSource is needed when Agent:TrustMode is {TrustMode}. Give the address or file of the signed list, or set the mode to Off.");
+            if (string.IsNullOrWhiteSpace(TrustPublicKey))
+                throw new InvalidOperationException($"Agent:TrustPublicKey is needed when Agent:TrustMode is {TrustMode}. Use the public key printed by gameshare-admin keygen.");
+            try { Storage.TrustSigning.CheckPublicKey(TrustPublicKey); }
+            catch (InvalidDataException ex) { throw new InvalidOperationException($"Agent:TrustPublicKey is not usable: {ex.Message}", ex); }
+            if (TrustRefreshInterval < TimeSpan.FromSeconds(1))
+                throw new InvalidOperationException("Agent:TrustRefreshInterval must be at least one second.");
+        }
         if (PeerTimeout < HelloInterval * 2)
             throw new InvalidOperationException("Agent:PeerTimeout must be at least twice Agent:HelloInterval.");
     }

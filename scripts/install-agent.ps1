@@ -19,7 +19,12 @@ param(
     [string[]]$GameRoots = @(),
     [int]$PeerApiPort = 47702,
     [int]$DiscoveryPort = 47800,
-    [int]$TorrentPort = 6881
+    [int]$TorrentPort = 6881,
+    # The administrator's signed list of verified games. Leave out to keep the check off.
+    # Mode: Off, Warn (mark games, install anything but a revoked version) or Require (install only verified games).
+    [ValidateSet('Off', 'Warn', 'Require')][string]$TrustMode = 'Off',
+    [string]$TrustListSource = '',   # an https:// address or a file path, see gameshare-admin
+    [string]$TrustPublicKey = ''     # printed by gameshare-admin keygen
 )
 
 $ErrorActionPreference = 'Stop'
@@ -50,6 +55,13 @@ $settings.Agent.PeerApiPort = $PeerApiPort
 $settings.Agent.DiscoveryPort = $DiscoveryPort
 $settings.Agent.TorrentPort = $TorrentPort
 $settings.Agent.InitialGameRoots = @($GameRoots)
+if ($TrustMode -ne 'Off' -and (-not $TrustListSource -or -not $TrustPublicKey)) {
+    throw "-TrustMode $TrustMode needs both -TrustListSource and -TrustPublicKey."
+}
+# The trust settings are set here, by the administrator, and are not in the client, so a player cannot switch the check off from the app.
+$settings.Agent | Add-Member -NotePropertyName TrustMode -NotePropertyValue $TrustMode -Force
+$settings.Agent | Add-Member -NotePropertyName TrustListSource -NotePropertyValue $TrustListSource -Force
+$settings.Agent | Add-Member -NotePropertyName TrustPublicKey -NotePropertyValue $TrustPublicKey -Force
 $settings | ConvertTo-Json -Depth 5 | Set-Content -Path $settingsPath -Encoding UTF8
 
 # The desktop client, if it was published. It talks to the agent on this machine, so it needs no settings.

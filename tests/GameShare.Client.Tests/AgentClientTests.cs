@@ -159,6 +159,33 @@ public class AgentClientTests
     }
 
     [Fact]
+    public async Task The_trust_status_is_read_and_refreshing_asks_the_agent_to_load_the_list_again()
+    {
+        var (client, handler) = Create((_, _) => Json(
+            """{"mode":"Require","source":"https://example.org/trust.json","hasList":true,"sequence":7,"issuedAt":"2026-09-21T10:00:00+00:00","validUntil":null,"verifiedCount":12,"revokedCount":1,"lastRefreshed":null,"lastError":null,"keyId":"0123456789abcdef"}"""));
+
+        var status = await client.GetTrustAsync();
+        await client.RefreshTrustAsync();
+
+        Assert.Equal((TrustMode.Require, true, 7L, 12, 1), (status.Mode, status.HasList, status.Sequence, status.VerifiedCount, status.RevokedCount));
+        Assert.Equal(
+            [(HttpMethod.Get, "/api/trust"), (HttpMethod.Post, "/api/trust/refresh")],
+            handler.Requests.Select(r => (r.Method, r.Url)));
+    }
+
+    [Fact]
+    public async Task A_game_carries_what_the_administrators_list_says_about_it()
+    {
+        var (client, _) = Create((_, _) => Json(
+            $$"""[{"contentHash":"{{Data.A}}","gameId":"g","name":"BeamNG.drive","version":"0.38","totalSize":1,"state":"AvailableOnLan","installPath":null,"peerNames":[],"downloadId":null,"definition":null,"trust":"Revoked","trustNote":"modified executable"}]"""));
+
+        var game = Assert.Single(await client.GetGamesAsync());
+
+        Assert.Equal(TrustVerdict.Revoked, game.Trust);
+        Assert.Equal("modified executable", game.TrustNote);
+    }
+
+    [Fact]
     public async Task A_full_check_result_is_read()
     {
         var (client, _) = Create((_, _) => Json("""{"isIntact":false,"modified":["content/big.pak"],"missing":[],"added":["notes.txt"],"suggestedPatterns":["content/**","notes.txt"]}"""));

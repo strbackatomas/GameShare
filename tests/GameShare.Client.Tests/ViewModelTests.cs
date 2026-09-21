@@ -336,6 +336,74 @@ public class LibraryTests
     }
 
     [Fact]
+    public async Task Each_verdict_of_the_administrators_list_has_its_own_badge_and_nothing_is_shown_when_checking_is_off()
+    {
+        var (main, _, _, _) = await StartAsync(
+            Game(A, "Verified", GameState.AvailableOnLan, peers: ["PC-01"]) with { Trust = TrustVerdict.Verified },
+            Game(B, "Unknown", GameState.AvailableOnLan, peers: ["PC-01"]) with { Trust = TrustVerdict.Unknown },
+            Game(C, "Revoked", GameState.AvailableOnLan, peers: ["PC-01"]) with { Trust = TrustVerdict.Revoked, TrustNote = "modified executable" },
+            Game(D, "Off", GameState.AvailableOnLan, peers: ["PC-01"]));
+
+        GameCardViewModel Card(string name) => main.Library.LanGames.Single(g => g.Name == name);
+
+        Assert.Equal(("Ověřeno správcem", true, false, false), (Card("Verified").TrustText, Card("Verified").IsTrustVerified, Card("Verified").IsTrustUnknown, Card("Verified").IsTrustRevoked));
+        Assert.Equal("Není v seznamu správce", Card("Unknown").TrustText);
+        Assert.True(Card("Unknown").IsTrustUnknown);
+        Assert.Equal("Zrušeno správcem", Card("Revoked").TrustText);
+        Assert.True(Card("Revoked").IsTrustRevoked);
+        Assert.Equal("modified executable", Card("Revoked").TrustNote);
+        Assert.False(Card("Off").HasTrust);
+        Assert.Equal("", Card("Off").TrustText);
+    }
+
+    [Fact]
+    public async Task A_new_list_changes_the_badge_of_a_game_that_is_already_shown()
+    {
+        var (main, _, _, events) = await StartAsync(Game(A, "BeamNG.drive", GameState.AvailableOnLan, peers: ["PC-01"]) with { Trust = TrustVerdict.Unknown });
+        var card = main.Library.LanGames.Single();
+
+        events.Raise(GameShareEvents.GameUpdated, Game(A, "BeamNG.drive", GameState.AvailableOnLan, peers: ["PC-01"]) with { Trust = TrustVerdict.Verified });
+
+        Assert.Same(card, main.Library.LanGames.Single());
+        Assert.True(card.IsTrustVerified);
+        Assert.False(card.IsTrustUnknown);
+    }
+
+    [Theory]
+    [InlineData(TrustMode.Off, false, null, "vypnuté")]
+    [InlineData(TrustMode.Warn, true, null, "neověřené hry se jen označí")]
+    [InlineData(TrustMode.Require, true, null, "instalují se jen ověřené hry")]
+    [InlineData(TrustMode.Require, false, "The list file does not exist", "Seznam zatím není k dispozici")]
+    public async Task The_settings_page_says_how_the_list_is_followed_and_why_it_did_not_load(TrustMode mode, bool hasList, string? error, string expected)
+    {
+        var (main, _, agent, _) = await StartAsync();
+        agent.Trust = new TrustStatusDto(mode, mode == TrustMode.Off ? null : "list.json", hasList, hasList ? 7 : null, hasList ? DateTimeOffset.UtcNow : null, null, 12, 1, null, error, null);
+
+        await main.Settings.LoadAsync();
+
+        Assert.Contains(expected, main.Settings.TrustText);
+        Assert.Equal(mode != TrustMode.Off, main.Settings.TrustEnabled);
+        if (hasList) Assert.Contains("ověřených her: 12, zrušených verzí: 1", main.Settings.TrustText);
+        if (error is not null) Assert.Contains(error, main.Settings.TrustText);
+    }
+
+    [Fact]
+    public async Task Loading_the_list_again_asks_the_agent_and_shows_the_result()
+    {
+        var (main, _, agent, _) = await StartAsync();
+        agent.Trust = new TrustStatusDto(TrustMode.Warn, "list.json", false, null, null, null, 0, 0, null, "offline", null);
+        await main.Settings.LoadAsync();
+        Assert.Contains("offline", main.Settings.TrustText);
+
+        agent.Trust = new TrustStatusDto(TrustMode.Warn, "list.json", true, 8, DateTimeOffset.UtcNow, null, 3, 0, DateTimeOffset.UtcNow, null, null);
+        await main.Settings.RefreshTrustCommand.ExecuteAsync(null);
+
+        Assert.Contains("RefreshTrust", agent.Calls);
+        Assert.Contains("Seznam č. 8", main.Settings.TrustText);
+        Assert.DoesNotContain("offline", main.Settings.TrustText);
+    }
+
+    [Fact]
     public async Task Files_the_agent_noticed_a_game_rewriting_are_offered_as_patterns_without_running_a_check()
     {
         var (main, _, agent, events) = await StartAsync(Game(A, "BeamNG.drive", GameState.Installed, installPath: @"D:\Games\BeamNG"));

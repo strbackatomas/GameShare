@@ -107,6 +107,12 @@ public static class AgentHost
         services.AddSingleton<GameView>();
         services.AddSingleton<ScanService>();
 
+        // The only request that may leave the LAN: a small download of the administrator's signed list. It carries nothing about this PC,
+        // and the list is only used when its signature verifies. Off unless the administrator turned it on.
+        services.AddHttpClient("trust", c => c.Timeout = TimeSpan.FromSeconds(20));
+        services.AddSingleton(sp => new TrustService(
+            options, sp.GetRequiredService<IHttpClientFactory>().CreateClient("trust"), sp.GetRequiredService<ILogger<TrustService>>()));
+
         services.AddExceptionHandler<ApiExceptionHandler>();
         services.AddProblemDetails();
         services.ConfigureHttpJsonOptions(o => o.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));

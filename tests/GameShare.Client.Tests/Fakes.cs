@@ -16,6 +16,7 @@ internal sealed class FakeAgent : IAgentClient
     public List<PeerDto> Peers { get; set; } = [];
     public List<DownloadDto> Downloads { get; set; } = [];
     public SettingsDto Settings { get; set; } = new(["D:\\Games"], true, null, null);
+    public TrustStatusDto Trust { get; set; } = new(TrustMode.Off, null, false, null, null, null, 0, 0, null, null, null);
     public string MachineName { get; set; } = "PC-07";
 
     /// <summary>When set, every call throws this, as if the agent were stopped.</summary>
@@ -48,6 +49,9 @@ internal sealed class FakeAgent : IAgentClient
 
     public Task<SettingsDto> SaveSettingsAsync(SettingsDto settings, CancellationToken ct = default) =>
         Do($"SaveSettings({string.Join(";", settings.GameRoots)}|{settings.SeedingEnabled}|{settings.MaxUploadMBps}|{settings.MaxDownloadMBps})", () => Settings = settings);
+
+    public Task<TrustStatusDto> GetTrustAsync(CancellationToken ct = default) => Do("GetTrust", () => Trust);
+    public Task<TrustStatusDto> RefreshTrustAsync(CancellationToken ct = default) => Do("RefreshTrust", () => Trust);
 
     public Task<ScanResultDto> ScanAsync(CancellationToken ct = default) => Do("Scan", () => new ScanResultDto(2, 5, 0, [], [], []));
 

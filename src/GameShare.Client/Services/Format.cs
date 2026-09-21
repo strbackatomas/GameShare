@@ -30,6 +30,8 @@ public static class Format
 
     public static string Percent(double percent) => string.Create(Cz, $"{Math.Clamp(percent, 0, 100):0.#} %");
 
+    public static string Date(DateTimeOffset value) => string.Create(Cz, $"{value.ToLocalTime():d. M. yyyy}");
+
     /// <summary>Czech plural for "PC": 1 PC, 2 až 4 PC, 5 a více PC. The word does not change, only the count is shown.</summary>
     public static string PcCount(int count) => count == 1 ? "1 PC" : $"{count} PC";
 

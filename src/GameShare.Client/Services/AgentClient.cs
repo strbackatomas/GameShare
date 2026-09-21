@@ -25,6 +25,9 @@ public sealed class AgentClient : IAgentClient
     public Task<SettingsDto> GetSettingsAsync(CancellationToken ct = default) => SendAsync<SettingsDto>(HttpMethod.Get, "/api/settings", null, Quick, ct);
     public Task<SettingsDto> SaveSettingsAsync(SettingsDto settings, CancellationToken ct = default) => SendAsync<SettingsDto>(HttpMethod.Put, "/api/settings", settings, Quick, ct);
 
+    public Task<TrustStatusDto> GetTrustAsync(CancellationToken ct = default) => SendAsync<TrustStatusDto>(HttpMethod.Get, "/api/trust", null, Quick, ct);
+    public Task<TrustStatusDto> RefreshTrustAsync(CancellationToken ct = default) => SendAsync<TrustStatusDto>(HttpMethod.Post, "/api/trust/refresh", null, Slow, ct);
+
     public Task<ScanResultDto> ScanAsync(CancellationToken ct = default) => SendAsync<ScanResultDto>(HttpMethod.Post, "/api/games/scan", null, Slow, ct);
 
     public Task<DownloadDto> InstallAsync(string contentHash, string? targetRoot = null, CancellationToken ct = default) =>

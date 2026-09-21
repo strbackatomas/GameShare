@@ -18,6 +18,12 @@ public interface IAgentClient
     Task<SettingsDto> GetSettingsAsync(CancellationToken ct = default);
     Task<SettingsDto> SaveSettingsAsync(SettingsDto settings, CancellationToken ct = default);
 
+    /// <summary>How the agent follows the administrator's list of verified games, and whether that list loaded.</summary>
+    Task<TrustStatusDto> GetTrustAsync(CancellationToken ct = default);
+
+    /// <summary>Asks the source of the list again now.</summary>
+    Task<TrustStatusDto> RefreshTrustAsync(CancellationToken ct = default);
+
     Task<ScanResultDto> ScanAsync(CancellationToken ct = default);
     Task<DownloadDto> InstallAsync(string contentHash, string? targetRoot = null, CancellationToken ct = default);
     Task<DownloadDto> UpdateAsync(string contentHash, CancellationToken ct = default);
