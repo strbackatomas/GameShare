@@ -14,18 +14,22 @@ public sealed partial class AppModel : ViewModelBase, IAsyncDisposable
     private readonly IEventStream _events;
     private readonly IUiDispatcher _ui;
 
-    public AppModel(IAgentClient client, IEventStream events, IUiDispatcher ui, IGameStarter? starter = null)
+    public AppModel(IAgentClient client, IEventStream events, IUiDispatcher ui, IGameStarter? starter = null, IFolderPicker? folderPicker = null)
     {
         Client = client;
         _events = events;
         _ui = ui;
         Starter = starter ?? new ProcessGameStarter();
+        FolderPicker = folderPicker ?? new NoFolderPicker();
     }
 
     public IAgentClient Client { get; }
 
     /// <summary>What starts a game once the agent has said it may be started.</summary>
     public IGameStarter Starter { get; }
+
+    /// <summary>Lets the settings page offer a real folder dialog instead of a path typed by hand.</summary>
+    public IFolderPicker FolderPicker { get; }
 
     public ObservableCollection<GameCardViewModel> Games { get; } = [];
     public ObservableCollection<DownloadViewModel> Downloads { get; } = [];

@@ -97,6 +97,19 @@ internal sealed class FakeStarter : IGameStarter
     }
 }
 
+/// <summary>Answers with a preset path, or null for a cancelled dialog.</summary>
+internal sealed class FakeFolderPicker : IFolderPicker
+{
+    public string? NextPath { get; set; }
+    public int Calls { get; private set; }
+
+    public Task<string?> PickFolderAsync(CancellationToken ct = default)
+    {
+        Calls++;
+        return Task.FromResult(NextPath);
+    }
+}
+
 internal sealed class FakeEvents : IEventStream
 {
     public event EventHandler<AgentEvent>? Received;

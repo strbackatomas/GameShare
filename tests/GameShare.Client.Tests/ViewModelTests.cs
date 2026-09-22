@@ -738,20 +738,21 @@ public class DownloadsTests
 
 public class NetworkAndSettingsTests
 {
-    private static async Task<(MainViewModel Main, FakeAgent Agent, FakeEvents Events)> StartAsync(FakeAgent? agent = null)
+    private static async Task<(MainViewModel Main, FakeAgent Agent, FakeEvents Events, FakeFolderPicker Picker)> StartAsync(FakeAgent? agent = null)
     {
         agent ??= new FakeAgent();
         var events = new FakeEvents();
-        var app = new AppModel(agent, events, new ImmediateDispatcher());
+        var picker = new FakeFolderPicker();
+        var app = new AppModel(agent, events, new ImmediateDispatcher(), folderPicker: picker);
         var main = new MainViewModel(app);
         await app.StartAsync();
-        return (main, agent, events);
+        return (main, agent, events, picker);
     }
 
     [Fact]
     public async Task Peers_come_and_go_with_events_and_stay_sorted()
     {
-        var (main, _, events) = await StartAsync(new FakeAgent { Peers = [Peer("p4", "PC-04"), Peer("p9", "PC-09")] });
+        var (main, _, events, _) = await StartAsync(new FakeAgent { Peers = [Peer("p4", "PC-04"), Peer("p9", "PC-09")] });
 
         events.Raise(GameShareEvents.PeerConnected, Peer("p1", "PC-01", games: 3));
         Assert.Equal(["PC-01", "PC-04", "PC-09"], main.Network.Peers.Select(p => p.Name));
@@ -775,7 +776,7 @@ public class NetworkAndSettingsTests
     [InlineData(12, "nabízí 12 her")]
     public async Task Game_counts_are_worded_in_correct_czech(int games, string expected)
     {
-        var (main, _, _) = await StartAsync(new FakeAgent { Peers = [Peer("p1", "PC-01", games)] });
+        var (main, _, _, _) = await StartAsync(new FakeAgent { Peers = [Peer("p1", "PC-01", games)] });
         Assert.Equal(expected, main.Network.Peers.Single().GamesText);
     }
 
@@ -783,7 +784,7 @@ public class NetworkAndSettingsTests
     public async Task Opening_the_settings_page_reads_the_current_settings_from_the_agent()
     {
         var agent = new FakeAgent { Settings = new SettingsDto([@"D:\Games", @"E:\Games"], false, 80, 120) };
-        var (main, _, _) = await StartAsync(agent);
+        var (main, _, _, _) = await StartAsync(agent);
 
         main.SelectedItem = main.Items.Single(i => i.Title == "Nastavení");
         await Task.Yield();
@@ -799,7 +800,7 @@ public class NetworkAndSettingsTests
     public async Task Folders_can_be_added_once_removed_and_saved_with_parsed_limits()
     {
         var agent = new FakeAgent { Settings = new SettingsDto([@"D:\Games"], true, null, null) };
-        var (main, _, _) = await StartAsync(agent);
+        var (main, _, _, _) = await StartAsync(agent);
         var s = main.Settings;
         await s.LoadAsync();
 
@@ -822,6 +823,55 @@ public class NetworkAndSettingsTests
         Assert.Equal("Uloženo.", s.Message);
     }
 
+    [Fact]
+    public async Task Browse_opens_the_folder_dialog_and_adds_what_was_picked()
+    {
+        var (main, _, _, picker) = await StartAsync(new FakeAgent { Settings = new SettingsDto([@"D:\Games"], true, null, null) });
+        await main.Settings.LoadAsync();
+        picker.NextPath = @"E:\Games";
+
+        await main.Settings.BrowseCommand.ExecuteAsync(null);
+
+        Assert.Equal(1, picker.Calls);
+        Assert.Equal([@"D:\Games", @"E:\Games"], main.Settings.Roots.Select(r => r.Path));
+    }
+
+    [Fact]
+    public async Task Cancelling_the_folder_dialog_adds_nothing()
+    {
+        var (main, _, _, picker) = await StartAsync(new FakeAgent { Settings = new SettingsDto([@"D:\Games"], true, null, null) });
+        await main.Settings.LoadAsync();
+        picker.NextPath = null;
+
+        await main.Settings.BrowseCommand.ExecuteAsync(null);
+
+        Assert.Equal([@"D:\Games"], main.Settings.Roots.Select(r => r.Path));
+    }
+
+    [Fact]
+    public async Task Picking_a_folder_that_is_already_in_the_list_does_not_duplicate_it()
+    {
+        var (main, _, _, picker) = await StartAsync(new FakeAgent { Settings = new SettingsDto([@"D:\Games"], true, null, null) });
+        await main.Settings.LoadAsync();
+        picker.NextPath = @"d:\games"; // same folder, different case
+
+        await main.Settings.BrowseCommand.ExecuteAsync(null);
+
+        Assert.Equal([@"D:\Games"], main.Settings.Roots.Select(r => r.Path));
+    }
+
+    [Fact]
+    public async Task Clicking_Add_with_nothing_typed_explains_what_to_do_instead_of_doing_nothing()
+    {
+        var (main, _, _, _) = await StartAsync();
+        main.Settings.NewRoot = "   ";
+
+        main.Settings.AddRootCommand.Execute(null);
+
+        Assert.Contains("Procházet", main.Settings.Message);
+        Assert.Empty(main.Settings.Roots);
+    }
+
     [Theory]
     [InlineData("abc")]
     [InlineData("0")]
@@ -830,7 +880,7 @@ public class NetworkAndSettingsTests
     public async Task An_invalid_speed_limit_is_refused_before_anything_is_sent(string limit)
     {
         var agent = new FakeAgent();
-        var (main, _, _) = await StartAsync(agent);
+        var (main, _, _, _) = await StartAsync(agent);
         main.Settings.MaxUploadText = limit;
 
         await main.Settings.SaveCommand.ExecuteAsync(null);
@@ -843,7 +893,7 @@ public class NetworkAndSettingsTests
     public async Task When_the_agent_rejects_the_settings_its_reason_is_shown()
     {
         var agent = new FakeAgent();
-        var (main, _, _) = await StartAsync(agent);
+        var (main, _, _, _) = await StartAsync(agent);
         main.Settings.NewRoot = "relative\\path";
         main.Settings.AddRootCommand.Execute(null);
         agent.FailNext["SaveSettings"] = new AgentException("Game folder 'relative\\path' must be a full path such as D:\\Games.", 400);

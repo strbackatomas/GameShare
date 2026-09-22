@@ -169,9 +169,22 @@ public sealed partial class SettingsViewModel : ViewModelBase
     {
         var path = NewRoot.Trim();
         NewRoot = "";
-        if (path.Length == 0) return;
+        if (path.Length == 0) { Message = "Napiš cestu ke složce, nebo použij Procházet."; return; }
+        AddRootPath(path);
+    }
+
+    /// <summary>Opens the Windows folder dialog. Adds what was picked the same way a typed path would be.</summary>
+    [RelayCommand]
+    private async Task BrowseAsync()
+    {
+        var path = await _app.FolderPicker.PickFolderAsync().ConfigureAwait(true);
+        if (path is not null) AddRootPath(path);
+    }
+
+    private void AddRootPath(string path)
+    {
+        Message = "";
         if (!Roots.Any(r => string.Equals(r.Path, path, StringComparison.OrdinalIgnoreCase))) Roots.Add(new RootItem(path, r => Roots.Remove(r)));
-        NewRoot = "";
     }
 
     private void SetRoots(IEnumerable<string> paths)

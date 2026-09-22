@@ -42,6 +42,13 @@ public interface IAgentClient
     Task CancelAsync(long downloadId, bool deleteFiles, CancellationToken ct = default);
 }
 
+/// <summary>Lets the player pick a folder from the real Windows dialog, instead of typing a path by hand.</summary>
+public interface IFolderPicker
+{
+    /// <returns>The chosen folder, or null when the player cancelled.</returns>
+    Task<string?> PickFolderAsync(CancellationToken ct = default);
+}
+
 /// <summary>
 /// Starts a game on the player's desktop. The agent cannot, it runs as a service without one, so the client does it
 /// with what the agent has checked.

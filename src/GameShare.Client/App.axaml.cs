@@ -18,9 +18,12 @@ public partial class App : Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            var app = new AppModel(AgentClient.Create(AgentUrl), new AgentEventStream(AgentUrl), new AvaloniaDispatcher());
+            MainWindow? window = null;
+            var app = new AppModel(AgentClient.Create(AgentUrl), new AgentEventStream(AgentUrl), new AvaloniaDispatcher(),
+                folderPicker: new AvaloniaFolderPicker(() => window)); // looked up when a folder is picked, the window does not exist yet here
             var main = new MainViewModel(app);
-            desktop.MainWindow = new MainWindow { DataContext = main };
+            window = new MainWindow { DataContext = main };
+            desktop.MainWindow = window;
             desktop.Exit += async (_, _) => await app.DisposeAsync();
 
             // The window opens at once and fills in as the agent answers. A slow or missing agent never freezes it.

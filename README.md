@@ -1,3 +1,4 @@
+<p align="center"><img src="src/GameShare.Client/Assets/logo.png" alt="LANka.seru.cz" width="200"></p>
 
 # GameShare
 
@@ -52,8 +53,12 @@ scripts\publish.ps1                                # builds artifacts\agent and 
 scripts\install-agent.ps1 -GameRoots D:\Games      # elevated PowerShell, run on each PC
 ```
 
-The published folders include the .NET runtime, nothing has to be installed on the PCs first. The agent is about 120 MB,
-the client about 110 MB. The script installs the agent as a Windows service, opens only the ports it needs on the Private and
+`publish.ps1` builds each app twice: `artifacts\agent` and `artifacts\client` are self-contained (about 120 MB and 110 MB),
+nothing has to be installed on the PC first, just copy the folder. `artifacts\agent-net10` and `artifacts\client-net10` are the
+same apps without the runtime bundled in (about 13 MB and 31 MB), for a PC that already has the ASP.NET Core Runtime 10.0 (x64)
+installed (https://dotnet.microsoft.com/download/dotnet/10.0, one installer covers both). `install-agent.ps1` uses the
+self-contained folders by default; pass `-SourceDir artifacts\agent-net10 -ClientSourceDir artifacts\client-net10` to use the
+smaller ones instead. The script installs the agent as a Windows service, opens only the ports it needs on the Private and
 Domain profiles, and adds a Start menu entry for the client. It has not been run yet, see the end.
 
 ## Ports and trust
