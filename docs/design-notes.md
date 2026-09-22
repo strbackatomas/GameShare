@@ -155,6 +155,51 @@ a first start of a PC with no stored list where someone serves an old list that 
   That closes the limit noted under the transfer library for games started on this PC. Tested by mutation: without the re-check guard the test that watches the piece map fails.
 - **Commands and their buttons.** The toolkit does not re-evaluate a command when the property behind its CanExecute changes, so the card names the commands to re-evaluate. Before, buttons stayed enabled while a card was busy.
 
+## Standalone (LAN party) build
+
+`GameShare.Standalone` (`GameShare-LanParty.exe`) bundles the agent and the client into one portable, non-elevated
+process, for a guest who wants to play and share for one evening without installing a Windows service or running as
+administrator. It reuses `AgentHost.BuildAsync` and the client's own `App`/`Program` unchanged, rather than
+duplicating either.
+
+- **Probe before self-hosting.** On startup it asks `127.0.0.1:47701/api/status`. If something answers, this PC
+  already has a real agent (the installed service, or another copy of this same exe started a moment ago) and the
+  process just becomes an ordinary thin client of it. Only when nothing answers does it host its own agent. This
+  also means launching the exe twice in a row is harmless: the second instance quietly attaches to the first.
+- **Its own data and game folder.** A self-hosted instance uses `%LocalAppData%\GameShare`, never the installed
+  service's `%ProgramData%\GameShare` — always writable without elevation, and never collides with a real install's
+  data even in a race with the probe above. `Documents\GameShare Games` is created and pre-configured as the one
+  game folder, so "browse LAN games → Instalovat" works without a trip to Settings first; an empty `GameRoots` list
+  would otherwise refuse the very first install.
+- **A startup failure never kills the window before it can explain itself.** A bind conflict on the control or peer
+  API port throws and is caught before the Avalonia app starts; the window still opens, pointed at the same fixed
+  URL, and the client's existing "agent unreachable" retry banner takes it from there. The one exception: a taken
+  BitTorrent port fails silently inside libtorrent, not as a .NET exception, so nothing catches it — a guest whose
+  transfer port collides with something else on the same PC will just not be reachable *for inbound transfers*,
+  outbound is unaffected. Known limitation, not solved here.
+- **Tray icon is the client's own, not specific to this build.** `GameShare.Client\TrayController.cs` closes the
+  window to the tray instead of exiting for every build, including the plain installed client — convenient there
+  too, even though its agent already outlives it as a real Windows service. It reuses `AppModel` directly: the
+  "Hrát" submenu is every game whose `GameCardViewModel.CanPlay` is currently true, rebuilt on `AppModel.GamesChanged`
+  and firing the same `PlayCommand` a card's button would; the tooltip shows how many games and PCs are around, and
+  briefly shows what just happened (a download finished, a new game appeared on the LAN) via `AppModel.EventReceived`
+  — the raw agent event, re-raised for exactly this kind of thing, no dedicated notification API needed. This
+  build's one addition is `App.BeforeShutdownAsync`: the tray menu's "Ukončit" runs it before the real shutdown, and
+  this is the only build that sets it, to stop the agent hosted right here.
+- **Does not change the trust/LAN model.** `LanOnly` and `AccessGuard` restrict the peer API exactly as for the
+  installed product; a guest's shared folder is visible to everyone on the same private subnet, same as today.
+- **Firewall prompts, without admin rights to smooth them over.** The installer opens firewall rules elevated, once.
+  This exe, run non-elevated, triggers Windows Defender Firewall's normal "allow this app" prompt the first time it
+  binds the peer/discovery/torrent ports — clickable without admin on a Private/Domain network, but silently blocked
+  with no prompt at all on a "Public" profile, which is the Windows default for unrecognised LAN-party Wi-Fi. The
+  single most likely real-world failure mode for this build; worth a first-run hint eventually, not built yet.
+- **Does not cover self-update.** The "Planned: self-update" section below assumes a Windows Service that a separate
+  updater stops, swaps and restarts. This build isn't a service; updating it means handing the guest a new exe.
+- **Logs are one tab away.** A guest has no easy path to `%LocalAppData%\GameShare\logs` the way an administrator has
+  to `%ProgramData%\GameShare\logs`. `GET /api/logs` (LocalApi.cs) tails the newest `agent-*.log` file, and the
+  client's own "Protokol" tab (`LogView`/`LogViewModel`) shows it — again the client's own feature, not specific to
+  this build, same as the tray.
+
 ## Speed limits
 
 The library ignores its own global speed limits for peers on the local network, and every peer here is on the local network.

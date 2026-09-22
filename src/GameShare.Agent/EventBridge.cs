@@ -114,6 +114,10 @@ public sealed class EventBridge : IHostedService
     private void OnCatalogChanged(object? sender, CatalogChange change)
     {
         foreach (var hash in change.ContentHashes) Enqueue(() => GameChangedAsync(hash));
+
+        // Some peer now offers, or stopped offering, one of these versions. The peer list shows how many
+        // games each one offers, so it needs the same refresh discovery gives it on join, change or leave.
+        foreach (var peer in _discovery.Peers) Enqueue(GameShareEvents.PeerConnected, _view.ToDto(peer));
     }
 
     private void OnInstallationChanged(object? sender, InstallationChange change)

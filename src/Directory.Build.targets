@@ -1,0 +1,19 @@
+<Project>
+  <!-- The SkiaSharp package ships native symbol files of about 100 MB. They are useless on a user's PC.
+       Applies to every project under src\, including ones that merely reference GameShare.Client and pull the same dependency. -->
+  <Target Name="DropNativeSymbolsFromPublish" AfterTargets="ComputeResolvedFilesToPublishList">
+    <ItemGroup>
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="'%(Extension)' == '.pdb'" />
+    </ItemGroup>
+  </Target>
+
+  <!-- A single-file publish embeds its own runtimeconfig.json. A project referenced as another exe (GameShare.Agent,
+       GameShare.Client, both referenced by GameShare.Standalone) still tags its own along as ordinary publish output;
+       nothing reads it and it would sit next to the one file this build is meant to be. -->
+  <Target Name="DropForeignRuntimeConfigsFromSingleFilePublish" AfterTargets="ComputeResolvedFilesToPublishList" Condition="'$(PublishSingleFile)' == 'true'">
+    <ItemGroup>
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)"
+        Condition="'%(Extension)' == '.json' And $([System.String]::new('%(Filename)').EndsWith('.runtimeconfig')) And '%(Filename)' != '$(AssemblyName).runtimeconfig'" />
+    </ItemGroup>
+  </Target>
+</Project>

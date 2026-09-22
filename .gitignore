@@ -483,3 +483,7 @@ $RECYCLE.BIN/
 
 # Published agent builds
 artifacts/
+
+# Real games used for manual testing, too big for the repo. DemoGame is the small synthetic fixture, keep that one.
+/TestGames/*
+!/TestGames/DemoGame/

@@ -65,6 +65,22 @@ public class ConnectionTests
         Assert.True(app.IsConnected);
         Assert.Equal(["BeamNG.drive", "ETS2"], app.Games.Select(g => g.Name).Order());
     }
+
+    [Fact]
+    public async Task Every_agent_event_is_also_raised_raw_for_anything_that_wants_one_kind_by_name()
+    {
+        var (app, _, events) = Create();
+        await app.StartAsync();
+        AgentEvent? seen = null;
+        app.EventReceived += (_, e) => seen = e;
+
+        var download = Download(1, A, "BeamNG.drive", "Completed", 100);
+        events.Raise(GameShareEvents.DownloadCompleted, download);
+
+        Assert.NotNull(seen);
+        Assert.Equal(GameShareEvents.DownloadCompleted, seen!.Name);
+        Assert.Same(download, seen.Payload);
+    }
 }
 
 public class LibraryTests
@@ -271,6 +287,45 @@ public class LibraryTests
         await card.InstallCommand.ExecuteAsync(null);
         Assert.Equal("Not enough free space on D:\\: BeamNG needs 70 GB, 10 GB are free.", card.Message);
         Assert.False(card.IsBusy);
+    }
+
+    [Fact]
+    public async Task Install_with_several_configured_folders_asks_which_one_before_installing()
+    {
+        var (main, _, agent, _) = await StartAsync(Game(A, "BeamNG.drive", GameState.AvailableOnLan, peers: ["PC-01"]));
+        var card = main.Library.LanGames.Single();
+        agent.GameRoots = [new GameRootDto(@"D:\Games", 50_000_000_000), new GameRootDto(@"E:\Games", 10_000_000_000)];
+
+        await card.InstallCommand.ExecuteAsync(null);
+
+        Assert.True(card.IsChoosingInstallFolder);
+        Assert.False(card.ShowInstallButton);
+        Assert.Equal([@"D:\Games", @"E:\Games"], card.InstallRoots.Select(r => r.Path));
+        Assert.Contains("volno", card.InstallRoots[0].Text);
+        Assert.DoesNotContain(agent.Calls, c => c.StartsWith("Install(", StringComparison.Ordinal));
+
+        card.SelectedInstallRoot = card.InstallRoots[1];
+        await card.ConfirmInstallCommand.ExecuteAsync(null);
+
+        Assert.Contains($@"Install({A}|E:\Games)", agent.Calls);
+        Assert.False(card.IsChoosingInstallFolder);
+        Assert.Equal("Instalace začala.", card.Message);
+    }
+
+    [Fact]
+    public async Task Choosing_an_install_folder_can_be_cancelled_without_installing()
+    {
+        var (main, _, agent, _) = await StartAsync(Game(A, "BeamNG.drive", GameState.AvailableOnLan, peers: ["PC-01"]));
+        var card = main.Library.LanGames.Single();
+        agent.GameRoots = [new GameRootDto(@"D:\Games", null), new GameRootDto(@"E:\Games", null)];
+
+        await card.InstallCommand.ExecuteAsync(null);
+        Assert.True(card.IsChoosingInstallFolder);
+
+        card.CancelChoosingInstallFolderCommand.Execute(null);
+
+        Assert.False(card.IsChoosingInstallFolder);
+        Assert.DoesNotContain(agent.Calls, c => c.StartsWith("Install(", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -794,6 +849,44 @@ public class NetworkAndSettingsTests
         Assert.False(main.Settings.SeedingEnabled);
         Assert.Equal("80", main.Settings.MaxUploadText);
         Assert.Equal("120", main.Settings.MaxDownloadText);
+    }
+
+    [Fact]
+    public async Task Opening_the_log_page_reads_the_agents_log_tail_and_colours_it_by_level()
+    {
+        var agent = new FakeAgent
+        {
+            LogLines =
+            [
+                "2026-09-22 10:00:00.000 INF Agent started",
+                "2026-09-22 10:00:05.000 WRN Free space is low",
+                "2026-09-22 10:00:06.000 ERR Could not open the torrent",
+            ],
+        };
+        var (main, _, _, _) = await StartAsync(agent);
+
+        main.SelectedItem = main.Items.Single(i => i.Title == "Protokol");
+        await Task.Yield();
+        await main.Log.LoadAsync();
+
+        Assert.Equal(3, main.Log.Lines.Count);
+        Assert.False(main.Log.IsEmpty);
+        Assert.False(main.Log.HasMessage);
+
+        Assert.False(main.Log.Lines[0].IsWarn); Assert.False(main.Log.Lines[0].IsError);
+        Assert.True(main.Log.Lines[1].IsWarn); Assert.False(main.Log.Lines[1].IsError);
+        Assert.True(main.Log.Lines[2].IsError); Assert.False(main.Log.Lines[2].IsWarn);
+    }
+
+    [Fact]
+    public async Task An_empty_log_leaves_the_line_list_empty_for_the_views_own_placeholder()
+    {
+        var (main, _, _, _) = await StartAsync();
+
+        await main.Log.LoadAsync();
+
+        Assert.Empty(main.Log.Lines);
+        Assert.True(main.Log.IsEmpty);
     }
 
     [Fact]

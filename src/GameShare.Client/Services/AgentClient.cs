@@ -21,9 +21,12 @@ public sealed class AgentClient : IAgentClient
     public Task<StatusDto> GetStatusAsync(CancellationToken ct = default) => SendAsync<StatusDto>(HttpMethod.Get, "/api/status", null, Quick, ct);
     public Task<IReadOnlyList<GameDto>> GetGamesAsync(CancellationToken ct = default) => ListAsync<GameDto>("/api/games", ct);
     public Task<IReadOnlyList<PeerDto>> GetPeersAsync(CancellationToken ct = default) => ListAsync<PeerDto>("/api/peers", ct);
+    public Task<IReadOnlyList<OfferedGameDto>> GetPeerGamesAsync(string machineId, CancellationToken ct = default) => ListAsync<OfferedGameDto>($"/api/peers/{machineId}/games", ct);
     public Task<IReadOnlyList<DownloadDto>> GetDownloadsAsync(CancellationToken ct = default) => ListAsync<DownloadDto>("/api/downloads", ct);
     public Task<SettingsDto> GetSettingsAsync(CancellationToken ct = default) => SendAsync<SettingsDto>(HttpMethod.Get, "/api/settings", null, Quick, ct);
     public Task<SettingsDto> SaveSettingsAsync(SettingsDto settings, CancellationToken ct = default) => SendAsync<SettingsDto>(HttpMethod.Put, "/api/settings", settings, Quick, ct);
+    public Task<IReadOnlyList<GameRootDto>> GetGameRootsAsync(CancellationToken ct = default) => ListAsync<GameRootDto>("/api/settings/roots", ct);
+    public Task<IReadOnlyList<string>> GetLogTailAsync(int maxLines = 500, CancellationToken ct = default) => ListAsync<string>($"/api/logs?lines={maxLines}", ct);
 
     public Task<TrustStatusDto> GetTrustAsync(CancellationToken ct = default) => SendAsync<TrustStatusDto>(HttpMethod.Get, "/api/trust", null, Quick, ct);
     public Task<TrustStatusDto> RefreshTrustAsync(CancellationToken ct = default) => SendAsync<TrustStatusDto>(HttpMethod.Post, "/api/trust/refresh", null, Slow, ct);
@@ -47,6 +50,9 @@ public sealed class AgentClient : IAgentClient
 
     public Task<GameDto?> AddVolatileAsync(string contentHash, IReadOnlyList<string> patterns, CancellationToken ct = default) =>
         SendAsync<GameDto?>(HttpMethod.Post, $"/api/games/{contentHash}/volatile", new AddVolatileRequest(patterns), Slow, ct);
+
+    public async Task UninstallAsync(string contentHash, CancellationToken ct = default) =>
+        await SendAsync<object?>(HttpMethod.Delete, $"/api/games/{contentHash}", null, Quick, ct).ConfigureAwait(false);
 
     public Task<LaunchInfoDto> LaunchAsync(string contentHash, CancellationToken ct = default) =>
         SendAsync<LaunchInfoDto>(HttpMethod.Post, $"/api/games/{contentHash}/launch", null, Slow, ct);

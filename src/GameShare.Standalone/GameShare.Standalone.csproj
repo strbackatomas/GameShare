@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <ApplicationManifest>..\GameShare.Client\app.manifest</ApplicationManifest>
+    <ApplicationIcon>..\GameShare.Client\Assets\icon.ico</ApplicationIcon>
+    <AssemblyName>GameShare-LanParty</AssemblyName>
+    <RootNamespace>GameShare.Standalone</RootNamespace>
+    <!-- Shares the PC with a game and a GUI, same reasoning as GameShare.Agent. -->
+    <ServerGarbageCollector>false</ServerGarbageCollector>
+    <SatelliteResourceLanguages>cs;en</SatelliteResourceLanguages>
+    <DebugType Condition="'$(Configuration)' == 'Release'">none</DebugType>
+    <!-- The one build meant to be handed to someone as a single file to double-click.
+         SelfContained is deliberately not hardcoded here: setting it as a persistent property on an exe project that
+         references other exe projects (Agent, Client) trips NETSDK1150 ("non self-contained executable referenced by
+         a self-contained executable") at plain "dotnet build" time. publish.ps1 passes the self-contained flag
+         explicitly, same as every other published project in this repo. -->
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Comes transitively via GameShare.Agent (Sdk.Web), explicit here as a safeguard for self-contained/single-file publish. -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\GameShare.Agent\GameShare.Agent.csproj" />
+    <ProjectReference Include="..\GameShare.Client\GameShare.Client.csproj" />
+  </ItemGroup>
+
+</Project>

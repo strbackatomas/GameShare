@@ -15,14 +15,37 @@
                 <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="vm:PeerViewModel">
                         <Border Classes="card">
-                            <Grid ColumnDefinitions="Auto,*,Auto">
-                                <Ellipse Grid.Column="0" Width="10" Height="10" Fill="{StaticResource SuccessBrush}" VerticalAlignment="Center" Margin="0,0,14,0" />
-                                <StackPanel Grid.Column="1" Spacing="2">
-                                    <TextBlock Text="{Binding Name}" Classes="title" />
-                                    <TextBlock Text="{Binding Address}" Classes="muted" FontSize="12" />
+                            <StackPanel Spacing="10">
+                                <Button Classes="row" Command="{Binding ToggleExpandCommand}">
+                                    <Grid ColumnDefinitions="Auto,Auto,Auto,*,Auto">
+                                        <Ellipse Grid.Column="0" Width="10" Height="10" Fill="{StaticResource SuccessBrush}" VerticalAlignment="Center" Margin="0,0,14,0" />
+                                        <TextBlock Grid.Column="1" Text="{Binding Chevron}" Classes="muted" VerticalAlignment="Center" Width="16" />
+                                        <StackPanel Grid.Column="3" Spacing="2" Margin="6,0,0,0">
+                                            <TextBlock Text="{Binding Name}" Classes="title" />
+                                            <TextBlock Text="{Binding Address}" Classes="muted" FontSize="12" />
+                                        </StackPanel>
+                                        <TextBlock Grid.Column="4" Text="{Binding GamesText}" Classes="muted" VerticalAlignment="Center" />
+                                    </Grid>
+                                </Button>
+
+                                <StackPanel IsVisible="{Binding IsExpanded}" Spacing="6" Margin="30,0,0,0">
+                                    <TextBlock Text="Načítám…" Classes="muted" FontSize="12" IsVisible="{Binding IsLoadingGames}" />
+                                    <TextBlock Text="{Binding GamesError}" Foreground="{StaticResource DangerBrush}" FontSize="12" TextWrapping="Wrap"
+                                               IsVisible="{Binding HasGamesError}" />
+                                    <TextBlock Text="Tento PC teď nic nenabízí." Classes="muted" FontSize="12" IsVisible="{Binding ShowNoGames}" />
+
+                                    <ItemsControl ItemsSource="{Binding Games}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate x:DataType="vm:PeerGameRow">
+                                                <Grid ColumnDefinitions="*,Auto" Margin="0,3">
+                                                    <TextBlock Grid.Column="0" Text="{Binding Name}" FontSize="13" />
+                                                    <TextBlock Grid.Column="1" Text="{Binding StatusText}" Classes="muted" FontSize="12" Margin="12,0,0,0" />
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
                                 </StackPanel>
-                                <TextBlock Grid.Column="2" Text="{Binding GamesText}" Classes="muted" VerticalAlignment="Center" />
-                            </Grid>
+                            </StackPanel>
                         </Border>
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>

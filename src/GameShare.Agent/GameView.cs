@@ -125,7 +125,12 @@ public sealed class GameView
 
         return new DownloadDto(
             d.Id, d.ContentHash, d.GameName, d.State.ToString(), d.BytesDone, d.BytesTotal, d.Percent,
-            d.DownloadRate, d.Peers, d.Eta?.TotalSeconds, d.Error, peers) { Kind = d.Kind.ToString() };
+            d.DownloadRate, d.Peers, d.Eta?.TotalSeconds, d.Error, peers)
+        {
+            Kind = d.Kind.ToString(),
+            DurationSeconds = d.Duration?.TotalSeconds,
+            PeakSpeedBytesPerSecond = d.PeakDownloadRate,
+        };
     }
 
     public static SeedDto ToDto(SeedEvent e, string contentHash) => new(contentHash, e.GameName, e.Installation.InstallPath);

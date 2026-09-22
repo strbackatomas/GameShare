@@ -34,16 +34,16 @@ public sealed partial class GameCardViewModel : ViewModelBase
     [ObservableProperty] public partial string? InstallPath { get; set; }
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsInstalled), nameof(IsDamaged), nameof(IsDownloading), nameof(IsAvailable), nameof(CanInstall), nameof(CanUpdate), nameof(StateText), nameof(CanPlay), nameof(NeedsExecutable))]
+    [NotifyPropertyChangedFor(nameof(IsInstalled), nameof(IsDamaged), nameof(IsDownloading), nameof(IsAvailable), nameof(CanInstall), nameof(CanUpdate), nameof(ShowInstallButton), nameof(StateText), nameof(CanPlay), nameof(NeedsExecutable), nameof(ShowUninstallButton))]
     public partial GameState State { get; set; }
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(CanInstall), nameof(CanUpdate))]
+    [NotifyPropertyChangedFor(nameof(CanInstall), nameof(CanUpdate), nameof(ShowInstallButton))]
     public partial string? UpdatesContentHash { get; set; }
 
     /// <summary>False when the PCs that are online do not have all of the game between them, so installing would stall.</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(CanInstall), nameof(CanUpdate), nameof(IsWaitingForParts), nameof(StateText))]
+    [NotifyPropertyChangedFor(nameof(CanInstall), nameof(CanUpdate), nameof(ShowInstallButton), nameof(IsWaitingForParts), nameof(StateText))]
     public partial bool FullyAvailable { get; set; } = true;
 
     [ObservableProperty] public partial string CoverageText { get; set; } = "";
@@ -56,7 +56,7 @@ public sealed partial class GameCardViewModel : ViewModelBase
     /// <summary>A program of the game is running on this PC. Its files are then not rewritten, so repairing and updating wait.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanPlay), nameof(CanModify))]
-    [NotifyCanExecuteChangedFor(nameof(UpdateCommand), nameof(RepairCommand), nameof(RegisterCommand))]
+    [NotifyCanExecuteChangedFor(nameof(UpdateCommand), nameof(RepairCommand), nameof(RegisterCommand), nameof(UninstallPromptCommand), nameof(ConfirmUninstallCommand))]
     public partial bool IsRunning { get; set; }
 
     /// <summary>The programs of the game to choose from, once the player asked to choose.</summary>
@@ -67,6 +67,20 @@ public sealed partial class GameCardViewModel : ViewModelBase
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanPlay))]
     public partial bool IsChoosingExecutable { get; set; }
+
+    /// <summary>The configured game folders to install into, once there is more than one and the player is asked to pick.</summary>
+    public ObservableCollection<InstallRootOption> InstallRoots { get; } = [];
+
+    [ObservableProperty] public partial InstallRootOption? SelectedInstallRoot { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowInstallButton))]
+    public partial bool IsChoosingInstallFolder { get; set; }
+
+    /// <summary>The player is asked to confirm before the game's files are deleted.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowUninstallButton))]
+    public partial bool IsConfirmingUninstall { get; set; }
 
     /// <summary>What the administrator's signed list says about this version. Nothing is shown when checking is off.</summary>
     [ObservableProperty]
@@ -83,8 +97,8 @@ public sealed partial class GameCardViewModel : ViewModelBase
     /// <summary>An operation on this game is running, so its buttons are off.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanAct), nameof(CanModify))]
-    [NotifyCanExecuteChangedFor(nameof(PlayCommand), nameof(ChooseExecutableCommand), nameof(SaveExecutableCommand), nameof(InstallCommand), nameof(UpdateCommand),
-        nameof(RepairCommand), nameof(CheckCommand), nameof(MarkVolatileCommand), nameof(RegisterCommand))]
+    [NotifyCanExecuteChangedFor(nameof(PlayCommand), nameof(ChooseExecutableCommand), nameof(SaveExecutableCommand), nameof(InstallCommand), nameof(ConfirmInstallCommand),
+        nameof(UpdateCommand), nameof(RepairCommand), nameof(CheckCommand), nameof(MarkVolatileCommand), nameof(RegisterCommand), nameof(UninstallPromptCommand), nameof(ConfirmUninstallCommand))]
     public partial bool IsBusy { get; set; }
 
     [ObservableProperty]
@@ -101,6 +115,12 @@ public sealed partial class GameCardViewModel : ViewModelBase
     public bool IsAvailable => State == GameState.AvailableOnLan;
     public bool CanInstall => IsAvailable && FullyAvailable && UpdatesContentHash is null;
     public bool CanUpdate => IsAvailable && FullyAvailable && UpdatesContentHash is not null;
+
+    /// <summary>Hidden while the player is picking which folder to install into.</summary>
+    public bool ShowInstallButton => CanInstall && !IsChoosingInstallFolder;
+
+    /// <summary>Hidden while the player is confirming the uninstall.</summary>
+    public bool ShowUninstallButton => (IsInstalled || IsDamaged) && !IsConfirmingUninstall;
 
     /// <summary>Offered by PCs that were used to play it, and the missing parts are not among the PCs that are online.</summary>
     public bool IsWaitingForParts => IsAvailable && !FullyAvailable;
@@ -241,8 +261,54 @@ public sealed partial class GameCardViewModel : ViewModelBase
     [RelayCommand]
     private void CancelChoosingExecutable() => IsChoosingExecutable = false;
 
+    /// <summary>With one configured folder, installs straight into it. With several, asks which one first.</summary>
     [RelayCommand(CanExecute = nameof(CanAct))]
-    private Task InstallAsync() => Run(() => _app.Client.InstallAsync(ContentHash), "Instalace začala.");
+    private async Task InstallAsync()
+    {
+        IsBusy = true;
+        Message = null;
+        try
+        {
+            await TryAsync(async () =>
+            {
+                var roots = await _app.Client.GetGameRootsAsync();
+                if (roots.Count <= 1) { await _app.Client.InstallAsync(ContentHash); return; }
+
+                InstallRoots.Clear();
+                foreach (var r in roots) InstallRoots.Add(new InstallRootOption(r.Path, DescribeRoot(r)));
+                SelectedInstallRoot = InstallRoots.FirstOrDefault();
+                IsChoosingInstallFolder = true;
+            }, m => Message = m).ConfigureAwait(true);
+        }
+        finally { IsBusy = false; }
+
+        if (IsChoosingInstallFolder) return;
+        Message ??= "Instalace začala.";
+        await _app.RefreshDownloadsAsync().ConfigureAwait(true);
+    }
+
+    [RelayCommand(CanExecute = nameof(CanAct))]
+    private async Task ConfirmInstallAsync()
+    {
+        if (SelectedInstallRoot is null) return;
+        IsBusy = true;
+        try
+        {
+            if (await TryAsync(() => _app.Client.InstallAsync(ContentHash, SelectedInstallRoot.Path), m => Message = m).ConfigureAwait(true))
+            {
+                Message = "Instalace začala.";
+                IsChoosingInstallFolder = false;
+            }
+        }
+        finally { IsBusy = false; }
+        await _app.RefreshDownloadsAsync().ConfigureAwait(true);
+    }
+
+    [RelayCommand]
+    private void CancelChoosingInstallFolder() => IsChoosingInstallFolder = false;
+
+    private static string DescribeRoot(GameRootDto root) =>
+        root.FreeBytes is null ? root.Path : $"{root.Path}  ({Format.Size(root.FreeBytes.Value)} volno)";
 
     [RelayCommand(CanExecute = nameof(CanModify))]
     private Task UpdateAsync() => Run(() => _app.Client.UpdateAsync(ContentHash), "Aktualizace začala.");
@@ -313,6 +379,27 @@ public sealed partial class GameCardViewModel : ViewModelBase
         await _app.RefreshGamesAsync().ConfigureAwait(true);
     }
 
+    [RelayCommand(CanExecute = nameof(CanModify))]
+    private void UninstallPrompt() => IsConfirmingUninstall = true;
+
+    [RelayCommand]
+    private void CancelUninstall() => IsConfirmingUninstall = false;
+
+    /// <summary>Stops offering the game, deletes its files and forgets it was installed. Confirmed first, files are gone for good.</summary>
+    [RelayCommand(CanExecute = nameof(CanModify))]
+    private async Task ConfirmUninstallAsync()
+    {
+        IsBusy = true;
+        Message = null;
+        try
+        {
+            if (await TryAsync(() => _app.Client.UninstallAsync(ContentHash), m => Message = m).ConfigureAwait(true))
+                IsConfirmingUninstall = false;
+        }
+        finally { IsBusy = false; }
+        await _app.RefreshGamesAsync().ConfigureAwait(true);
+    }
+
     private async Task Run(Func<Task> action, string doneMessage)
     {
         IsBusy = true;
@@ -328,10 +415,16 @@ public sealed partial class GameCardViewModel : ViewModelBase
     partial void OnIsBusyChanged(bool value)
     {
         InstallCommand.NotifyCanExecuteChanged();
+        ConfirmInstallCommand.NotifyCanExecuteChanged();
         UpdateCommand.NotifyCanExecuteChanged();
         RepairCommand.NotifyCanExecuteChanged();
         CheckCommand.NotifyCanExecuteChanged();
         MarkVolatileCommand.NotifyCanExecuteChanged();
         RegisterCommand.NotifyCanExecuteChanged();
+        UninstallPromptCommand.NotifyCanExecuteChanged();
+        ConfirmUninstallCommand.NotifyCanExecuteChanged();
     }
 }
+
+/// <summary>A configured game folder as an item to pick from, with free space folded into the text shown.</summary>
+public sealed record InstallRootOption(string Path, string Text);

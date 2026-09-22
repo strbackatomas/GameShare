@@ -31,6 +31,7 @@ public sealed partial class DownloadViewModel : ViewModelBase
     [ObservableProperty] public partial string SizeText { get; set; } = "";
     [ObservableProperty] public partial string SpeedText { get; set; } = "";
     [ObservableProperty] public partial string EtaText { get; set; } = "";
+    [ObservableProperty] public partial string StatsText { get; set; } = "";
     [ObservableProperty] public partial string? Error { get; set; }
 
     [ObservableProperty]
@@ -77,6 +78,9 @@ public sealed partial class DownloadViewModel : ViewModelBase
         SizeText = $"{Format.Size(d.BytesDone)} z {Format.Size(d.BytesTotal)}";
         SpeedText = IsRunning ? Format.Speed(d.SpeedBytesPerSecond) : "";
         EtaText = IsRunning ? Format.Eta(d.EtaSeconds) : "";
+        StatsText = IsFinished && d.DurationSeconds is not null
+            ? string.Join(" · ", new[] { $"Staženo za {Format.Duration(d.DurationSeconds)}", Format.Speed(d.PeakSpeedBytesPerSecond ?? 0) is { Length: > 0 } peak ? $"špička {peak}" : "" }.Where(s => s.Length > 0))
+            : "";
         Error = d.Error;
 
         // Only sources that actually send something are worth a line.

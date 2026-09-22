@@ -71,6 +71,11 @@ public sealed class GameShareDb
         ALTER TABLE downloads ADD COLUMN installation_id INTEGER;
         ALTER TABLE installations ADD COLUMN resume_data BLOB;
         """,
+        // 3: a finished download remembers when it finished and how fast it went, for a small stats line in the GUI.
+        """
+        ALTER TABLE downloads ADD COLUMN completed_at TEXT;
+        ALTER TABLE downloads ADD COLUMN peak_download_rate INTEGER;
+        """,
     ];
 
     private readonly string _connectionString;
@@ -313,18 +318,22 @@ public sealed class GameShareDb
         return (await GetDownloadAsync(id, ct).ConfigureAwait(false))!;
     }
 
-    public async Task UpdateDownloadAsync(long id, DownloadState state, string? error = null, long? bytesDone = null, CancellationToken ct = default)
+    public async Task UpdateDownloadAsync(
+        long id, DownloadState state, string? error = null, long? bytesDone = null, long? peakDownloadRate = null, CancellationToken ct = default)
     {
         await using var conn = await ConnectAsync(ct).ConfigureAwait(false);
         await using var cmd = conn.CreateCommand();
         cmd.CommandText = """
             UPDATE downloads
-            SET state = $state, error = $error, bytes_done = COALESCE($bytes, bytes_done), updated_at = $now
+            SET state = $state, error = $error, bytes_done = COALESCE($bytes, bytes_done), updated_at = $now,
+                completed_at = CASE WHEN $state = 'Completed' THEN $now ELSE completed_at END,
+                peak_download_rate = COALESCE($peak, peak_download_rate)
             WHERE id = $id;
             """;
         cmd.Parameters.AddWithValue("$state", state.ToString());
         cmd.Parameters.AddWithValue("$error", (object?)error ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$bytes", (object?)bytesDone ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$peak", (object?)peakDownloadRate ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$now", Now());
         cmd.Parameters.AddWithValue("$id", id);
         if (await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false) == 0)
@@ -359,7 +368,11 @@ public sealed class GameShareDb
     {
         await using var conn = await ConnectAsync(ct).ConfigureAwait(false);
         await using var cmd = conn.CreateCommand();
-        cmd.CommandText = $"SELECT id, content_hash, target_root, state, error, resume_data, bytes_done, created_at, updated_at, kind, installation_id FROM downloads {where} ORDER BY id;";
+        cmd.CommandText = $"""
+            SELECT id, content_hash, target_root, state, error, resume_data, bytes_done, created_at, updated_at, kind, installation_id,
+                   completed_at, peak_download_rate
+            FROM downloads {where} ORDER BY id;
+            """;
         if (parameter is not null) cmd.Parameters.AddWithValue("$p", parameter);
 
         var result = new List<Download>();
@@ -369,7 +382,8 @@ public sealed class GameShareDb
                 r.GetInt64(0), r.GetString(1), r.GetString(2), Enum.Parse<DownloadState>(r.GetString(3)),
                 r.IsDBNull(4) ? null : r.GetString(4), r.IsDBNull(5) ? null : (byte[])r[5],
                 r.GetInt64(6), ParseTime(r.GetString(7)), ParseTime(r.GetString(8)),
-                Enum.Parse<DownloadKind>(r.GetString(9)), r.IsDBNull(10) ? null : r.GetInt64(10)));
+                Enum.Parse<DownloadKind>(r.GetString(9)), r.IsDBNull(10) ? null : r.GetInt64(10),
+                r.IsDBNull(11) ? null : ParseTime(r.GetString(11)), r.IsDBNull(12) ? null : r.GetInt64(12)));
         return result;
     }
 

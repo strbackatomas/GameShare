@@ -30,6 +30,16 @@ public static class Format
 
     public static string Percent(double percent) => string.Create(Cz, $"{Math.Clamp(percent, 0, 100):0.#} %");
 
+    /// <returns>For example "2 min 10 s", or an empty string when unknown.</returns>
+    public static string Duration(double? seconds)
+    {
+        if (seconds is null or < 0 or double.NaN or double.PositiveInfinity) return "";
+        var t = TimeSpan.FromSeconds(Math.Round(seconds.Value));
+        if (t.TotalHours >= 1) return $"{(int)t.TotalHours} h {t.Minutes} min";
+        if (t.TotalMinutes >= 1) return $"{t.Minutes} min {t.Seconds} s";
+        return $"{t.Seconds} s";
+    }
+
     public static string Date(DateTimeOffset value) => string.Create(Cz, $"{value.ToLocalTime():d. M. yyyy}");
 
     /// <summary>Czech plural for "PC": 1 PC, 2 až 4 PC, 5 a více PC. The word does not change, only the count is shown.</summary>

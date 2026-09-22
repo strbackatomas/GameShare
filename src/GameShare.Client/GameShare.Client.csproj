@@ -6,6 +6,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\icon.ico</ApplicationIcon>
     <AssemblyName>GameShare</AssemblyName>
     <RootNamespace>GameShare.Client</RootNamespace>
     <!-- Published output only needs Czech and English resources and no debug symbols. -->
@@ -23,19 +24,18 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\GameShare.Protocol\GameShare.Protocol.csproj" />
+    <AvaloniaResource Include="Assets\**" />
   </ItemGroup>
 
-  <!-- The SkiaSharp package ships native symbol files of about 100 MB. They are useless on a user's PC. -->
-  <Target Name="DropNativeSymbolsFromPublish" AfterTargets="ComputeResolvedFilesToPublishList">
-    <ItemGroup>
-      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="'%(Extension)' == '.pdb'" />
-    </ItemGroup>
-  </Target>
+  <ItemGroup>
+    <ProjectReference Include="..\GameShare.Protocol\GameShare.Protocol.csproj" />
+  </ItemGroup>
 
   <ItemGroup>
     <!-- Tests exercise the view models and render the real window without a display. -->
     <InternalsVisibleTo Include="GameShare.Client.Tests" />
+    <!-- The standalone build (AssemblyName GameShare-LanParty) reuses BuildAvaloniaApp() to host agent and client in one process. -->
+    <InternalsVisibleTo Include="GameShare-LanParty" />
   </ItemGroup>
 
 </Project>

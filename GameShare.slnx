@@ -7,6 +7,7 @@
     <Project Path="src/GameShare.Core/GameShare.Core.csproj" />
     <Project Path="src/GameShare.Discovery/GameShare.Discovery.csproj" />
     <Project Path="src/GameShare.Protocol/GameShare.Protocol.csproj" />
+    <Project Path="src/GameShare.Standalone/GameShare.Standalone.csproj" />
     <Project Path="src/GameShare.Storage/GameShare.Storage.csproj" />
     <Project Path="src/GameShare.Torrent/GameShare.Torrent.csproj" />
   </Folder>

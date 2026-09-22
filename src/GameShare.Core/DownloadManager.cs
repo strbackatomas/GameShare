@@ -38,6 +38,15 @@ public sealed record DownloadStatus(
 
     /// <summary>Install, repair or update.</summary>
     public DownloadKind Kind { get; init; }
+
+    /// <summary>When the download reached <see cref="DownloadState.Completed"/>. Null until then.</summary>
+    public DateTimeOffset? CompletedAt { get; init; }
+
+    /// <summary>How long it took, from start to <see cref="CompletedAt"/>. Null until then.</summary>
+    public TimeSpan? Duration { get; init; }
+
+    /// <summary>The highest download speed seen while it ran, in bytes per second. Null until something was measured.</summary>
+    public long? PeakDownloadRate { get; init; }
 }
 
 public enum DownloadEventKind { Started, Progress, Paused, Resumed, Completed, Failed, Cancelled }
@@ -59,6 +68,7 @@ public sealed class DownloadManager
         public DateTimeOffset LastResumeSave { get; set; } = DateTimeOffset.UtcNow;
         public Task? Verification { get; set; }
         public TransferStatus? Last { get; set; }
+        public long PeakDownloadRate { get; set; }
 
         /// <summary>
         /// Orders resume saves against removing the transfer. A save that is still in flight when the torrent is removed
@@ -121,7 +131,7 @@ public sealed class DownloadManager
                         $"Target folder {installPath} already exists and is not empty. GameShare will not overwrite a folder it did not create.");
             }
 
-            long? free = (_options.FreeSpaceProvider ?? DefaultFreeSpace)(targetRoot);
+            long? free = (_options.FreeSpaceProvider ?? GetFreeSpace)(targetRoot);
             if (free is not null && free < manifest.TotalSize)
                 throw new IOException($"Not enough free space on {Path.GetPathRoot(targetRoot)}: {manifest.Name} needs {manifest.TotalSize:N0} bytes, {free:N0} are free.");
 
@@ -234,7 +244,7 @@ public sealed class DownloadManager
 
     private void RequireFreeSpace(string root, long needed, string gameName)
     {
-        long? free = (_options.FreeSpaceProvider ?? DefaultFreeSpace)(root);
+        long? free = (_options.FreeSpaceProvider ?? GetFreeSpace)(root);
         if (free is not null && free < needed)
             throw new IOException($"Not enough free space on {Path.GetPathRoot(root)}: {gameName} needs about {needed:N0} bytes, {free:N0} are free.");
     }
@@ -324,6 +334,34 @@ public sealed class DownloadManager
         finally { _gate.Release(); }
     }
 
+    /// <summary>
+    /// Removes an installed game: stops offering it, optionally deletes its files, and forgets it was installed.
+    /// The stored manifest is kept, other installations or another PC may still need it.
+    /// </summary>
+    public async Task UninstallAsync(long installationId, bool deleteFiles, CancellationToken ct = default)
+    {
+        await _gate.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            var inst = await _db.GetInstallationAsync(installationId, ct).ConfigureAwait(false)
+                ?? throw new KeyNotFoundException($"Installation {installationId} does not exist.");
+            await RequireNoOtherWorkAsync(inst, ct).ConfigureAwait(false);
+
+            await _seeds.StopAsync(inst, ct).ConfigureAwait(false);
+            if (deleteFiles && Directory.Exists(inst.InstallPath))
+            {
+                try { Directory.Delete(inst.InstallPath, recursive: true); }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    _log.LogWarning(ex, "Could not delete all files of {Path}, the game is uninstalled anyway", inst.InstallPath);
+                }
+            }
+            await _db.DeleteInstallationAsync(inst.Id, ct).ConfigureAwait(false);
+            _log.LogInformation("Uninstalled {Path} (files deleted: {Deleted})", inst.InstallPath, deleteFiles);
+        }
+        finally { _gate.Release(); }
+    }
+
     /// <summary>Forgets the download. Downloaded files are kept unless <paramref name="deleteFiles"/> is set.</summary>
     public async Task CancelAsync(long id, bool deleteFiles = false, CancellationToken ct = default)
     {
@@ -340,10 +378,22 @@ public sealed class DownloadManager
                 a.Transfer.Stop();
                 await _engine.RemoveAsync(a.Transfer, CancellationToken.None).ConfigureAwait(false);
             }
-            await _db.DeleteDownloadAsync(id, ct).ConfigureAwait(false);
-
-            if (deleteFiles && row.Kind == DownloadKind.Install) await DeletePartialFilesAsync(row, stored.Manifest, ct).ConfigureAwait(false);
-            else if (deleteFiles) _log.LogInformation("Files of {Name} are kept: cancelling a {Kind} never deletes an installed game", stored.Manifest.Name, row.Kind);
+            if (deleteFiles && row.Kind == DownloadKind.Install)
+            {
+                await DeletePartialFilesAsync(row, stored.Manifest, ct).ConfigureAwait(false);
+                await _db.DeleteDownloadAsync(id, ct).ConfigureAwait(false);
+            }
+            else if (deleteFiles)
+            {
+                _log.LogInformation("Files of {Name} are kept: cancelling a {Kind} never deletes an installed game", stored.Manifest.Name, row.Kind);
+                await _db.DeleteDownloadAsync(id, ct).ConfigureAwait(false);
+            }
+            else if (row.Kind == DownloadKind.Install)
+                // The partial files stay on disk, so this download must stay remembered too: it is what lets a later
+                // install into the same folder recognise them as its own and repair them instead of refusing the folder as foreign.
+                await _db.UpdateDownloadAsync(id, DownloadState.Failed, "Cancelled", ct: ct).ConfigureAwait(false);
+            else
+                await _db.DeleteDownloadAsync(id, ct).ConfigureAwait(false); // an update or repair targets an existing installation, nothing is orphaned by forgetting it
 
             _log.LogInformation("Download cancelled: {Name} (files deleted: {Deleted})", stored.Manifest.Name, deleteFiles);
             Publish(DownloadEventKind.Cancelled, status with { State = DownloadState.Failed, Error = "Cancelled" });
@@ -436,6 +486,7 @@ public sealed class DownloadManager
                 if (a.Verification is not null) continue;
 
                 var s = a.Last = a.Transfer.GetStatus();
+                if (s.DownloadRate > a.PeakDownloadRate) a.PeakDownloadRate = s.DownloadRate;
                 if (s.State == TransferState.Error)
                 {
                     await FailAsync(a, $"The transfer engine reported an error: {s}", ct).ConfigureAwait(false);
@@ -521,7 +572,8 @@ public sealed class DownloadManager
                     installation = await _db.AddInstallationAsync(a.Manifest.ContentHash, a.InstallPath, InstallationState.Installed, ct: CancellationToken.None).ConfigureAwait(false);
                     break;
             }
-            await _db.UpdateDownloadAsync(a.Row.Id, DownloadState.Completed, bytesDone: a.Manifest.TotalSize, ct: CancellationToken.None).ConfigureAwait(false);
+            await _db.UpdateDownloadAsync(
+                a.Row.Id, DownloadState.Completed, bytesDone: a.Manifest.TotalSize, peakDownloadRate: a.PeakDownloadRate, ct: CancellationToken.None).ConfigureAwait(false);
             _active.Remove(a.Row.Id);
 
             _log.LogInformation("Download completed: {Kind} {Name} verified at {Path}", a.Row.Kind, a.Manifest.Name, a.InstallPath);
@@ -659,7 +711,11 @@ public sealed class DownloadManager
         return new DownloadStatus(
             row.Id, row.ContentHash, manifest.Name, row.State, done, manifest.TotalSize,
             manifest.TotalSize == 0 ? 100 : Math.Min(100, done * 100.0 / manifest.TotalSize),
-            live?.DownloadRate ?? 0, live?.UploadRate ?? 0, live?.PeerCount ?? 0, live?.Eta, row.Error) { Kind = row.Kind };
+            live?.DownloadRate ?? 0, live?.UploadRate ?? 0, live?.PeerCount ?? 0, live?.Eta, row.Error)
+        {
+            Kind = row.Kind, CompletedAt = row.CompletedAt, PeakDownloadRate = row.PeakDownloadRate,
+            Duration = row.CompletedAt - row.CreatedAt,
+        };
     }
 
     private void Publish(DownloadEventKind kind, DownloadStatus status)
@@ -668,7 +724,8 @@ public sealed class DownloadManager
         catch (Exception ex) { _log.LogError(ex, "A download event handler threw for {Kind}", kind); }
     }
 
-    private static long? DefaultFreeSpace(string path)
+    /// <summary>Free bytes on the drive of <paramref name="path"/>, or null when unknown (a network share, or the drive can't be statted).</summary>
+    public static long? GetFreeSpace(string path)
     {
         try
         {

@@ -19,6 +19,7 @@ Status: agent and desktop client work and are tested on one machine. Not yet tri
 | `GameShare.Core` | SQLite, game library, seeding, install, repair and update |
 | `GameShare.Agent` | The Windows service: local API, peer API, SignalR events |
 | `GameShare.Client` | The desktop app (Avalonia). Talks only to the local agent |
+| `GameShare.Standalone` | Agent and client bundled into one portable exe, no service install, for a LAN-party guest |
 | `GameShare.Admin` | `gameshare-admin`, the command-line administrator's tool for the signed list of verified games. Not installed on the players' PCs |
 | `GameShare.AdminGui` | The same tool with a window instead of a command line. Also administrator-only |
 
@@ -61,6 +62,13 @@ installed (https://dotnet.microsoft.com/download/dotnet/10.0, one installer cove
 self-contained folders by default; pass `-SourceDir artifacts\agent-net10 -ClientSourceDir artifacts\client-net10` to use the
 smaller ones instead. The script installs the agent as a Windows service, opens only the ports it needs on the Private and
 Domain profiles, and adds a Start menu entry for the client. It has not been run yet, see the end.
+
+## Just visiting? `GameShare-LanParty.exe`
+
+`publish.ps1` also builds `artifacts\standalone\GameShare-LanParty.exe`: agent and client in one file, self-contained,
+no service, no admin rights. Hand it to a LAN-party guest and they double-click it. It reuses the same ports as the
+installed product (below) and, if this PC already runs the real agent, quietly becomes a thin client of it instead of
+starting its own. See "Standalone (LAN party) build" in `docs/design-notes.md`.
 
 ## Ports and trust
 

@@ -37,6 +37,40 @@ public class AgentApiTests
 
     private static void SqliteClear() => Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
 
+    [Fact]
+    public async Task Settings_roots_reports_each_configured_folder_with_its_free_space()
+    {
+        await using var agent = await TestAgent.StartAsync("PC-01", TestAgent.DiscoveryPort());
+
+        var roots = await agent.GetAsync<List<GameRootDto>>("/api/settings/roots");
+
+        var root = Assert.Single(roots);
+        Assert.Equal(agent.GamesRoot, root.Path);
+        Assert.True(root.FreeBytes > 0);
+    }
+
+    [Fact]
+    public async Task Logs_endpoint_tails_the_agents_own_log_file()
+    {
+        await using var agent = await TestAgent.StartAsync("PC-01", TestAgent.DiscoveryPort());
+
+        var lines = await agent.GetAsync<List<string>>("/api/logs");
+
+        Assert.Contains(lines, l => l.Contains("Agent running")); // AgentWorker logs this once, right at startup
+    }
+
+    [Fact]
+    public async Task Logs_endpoint_clamps_the_requested_line_count()
+    {
+        await using var agent = await TestAgent.StartAsync("PC-01", TestAgent.DiscoveryPort());
+
+        var oneLine = await agent.GetAsync<List<string>>("/api/logs?lines=1");
+        Assert.Single(oneLine);
+
+        var tooMany = await agent.GetAsync<List<string>>("/api/logs?lines=1000000");
+        Assert.True(tooMany.Count <= 2000);
+    }
+
     [Theory]
     [InlineData("""{"gameRoots":["relative\\path"],"seedingEnabled":true}""", "full path")]
     [InlineData("""{"gameRoots":[""],"seedingEnabled":true}""", "empty")]

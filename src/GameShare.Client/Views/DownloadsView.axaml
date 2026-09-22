@@ -19,7 +19,7 @@
                                 <StackPanel Grid.Row="0" Grid.Column="0" Orientation="Horizontal" Spacing="10">
                                     <TextBlock Text="{Binding Name}" Classes="title" />
                                     <TextBlock Text="{Binding KindText}" Classes="muted" VerticalAlignment="Center" />
-                                    <Border Classes="chip" Background="{StaticResource AccentBrush}" IsVisible="{Binding IsRunning}"><TextBlock Text="{Binding StateText}" /></Border>
+                                    <Border Classes="chip" Background="{StaticResource BadgeBrush}" IsVisible="{Binding IsRunning}"><TextBlock Text="{Binding StateText}" /></Border>
                                     <Border Classes="chip" Background="{StaticResource WarnBrush}" IsVisible="{Binding IsPaused}"><TextBlock Text="{Binding StateText}" /></Border>
                                     <Border Classes="chip" Background="{StaticResource SuccessBrush}" IsVisible="{Binding IsFinished}"><TextBlock Text="{Binding StateText}" /></Border>
                                     <Border Classes="chip" Background="{StaticResource DangerBrush}" IsVisible="{Binding IsFailed}"><TextBlock Text="{Binding StateText}" /></Border>
@@ -44,6 +44,8 @@
                                         </StackPanel>
                                     </Grid>
                                 </StackPanel>
+
+                                <TextBlock Grid.Row="1" Grid.ColumnSpan="2" Text="{Binding StatsText}" Classes="muted" Margin="0,10,0,0" IsVisible="{Binding IsFinished}" />
 
                                 <!-- Which PCs the data comes from and how fast, for example "PC01  2,5 GB/s". -->
                                 <ItemsControl Grid.Row="2" Grid.ColumnSpan="2" ItemsSource="{Binding Sources}" Margin="0,8,0,0">

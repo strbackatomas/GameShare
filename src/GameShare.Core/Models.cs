@@ -45,6 +45,8 @@ public enum DownloadKind
 
 /// <summary>One attempt to bring a game version onto this PC. Survives restarts through its resume data.</summary>
 /// <param name="InstallationId">The installation being repaired or updated. Null for a new install.</param>
+/// <param name="CompletedAt">When the download reached <see cref="DownloadState.Completed"/>. Null until then.</param>
+/// <param name="PeakDownloadRate">The highest download speed seen, in bytes per second. Null until something was measured.</param>
 public sealed record Download(
     long Id,
     string ContentHash,
@@ -56,7 +58,9 @@ public sealed record Download(
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt,
     DownloadKind Kind = DownloadKind.Install,
-    long? InstallationId = null)
+    long? InstallationId = null,
+    DateTimeOffset? CompletedAt = null,
+    long? PeakDownloadRate = null)
 {
     /// <summary>Still expected to make progress or be resumed.</summary>
     public bool IsActive => State is DownloadState.Queued or DownloadState.Downloading or DownloadState.Paused or DownloadState.Verifying;

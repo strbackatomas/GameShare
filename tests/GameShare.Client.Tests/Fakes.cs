@@ -44,11 +44,28 @@ internal sealed class FakeAgent : IAgentClient
 
     public Task<IReadOnlyList<GameDto>> GetGamesAsync(CancellationToken ct = default) => Do<IReadOnlyList<GameDto>>("GetGames", () => [.. Games]);
     public Task<IReadOnlyList<PeerDto>> GetPeersAsync(CancellationToken ct = default) => Do<IReadOnlyList<PeerDto>>("GetPeers", () => [.. Peers]);
+
+    /// <summary>What each peer offers, keyed by machine id. A peer with no entry here answers with an empty list.</summary>
+    public Dictionary<string, List<OfferedGameDto>> PeerGames { get; set; } = [];
+
+    public Task<IReadOnlyList<OfferedGameDto>> GetPeerGamesAsync(string machineId, CancellationToken ct = default) =>
+        Do<IReadOnlyList<OfferedGameDto>>($"GetPeerGames({machineId})", () => PeerGames.TryGetValue(machineId, out var g) ? [.. g] : []);
     public Task<IReadOnlyList<DownloadDto>> GetDownloadsAsync(CancellationToken ct = default) => Do<IReadOnlyList<DownloadDto>>("GetDownloads", () => [.. Downloads]);
     public Task<SettingsDto> GetSettingsAsync(CancellationToken ct = default) => Do("GetSettings", () => Settings);
 
     public Task<SettingsDto> SaveSettingsAsync(SettingsDto settings, CancellationToken ct = default) =>
         Do($"SaveSettings({string.Join(";", settings.GameRoots)}|{settings.SeedingEnabled}|{settings.MaxUploadMBps}|{settings.MaxDownloadMBps})", () => Settings = settings);
+
+    /// <summary>Defaults to the configured roots with no known free space. Set to control what a test sees.</summary>
+    public List<GameRootDto> GameRoots { get; set; } = [];
+
+    public Task<IReadOnlyList<GameRootDto>> GetGameRootsAsync(CancellationToken ct = default) =>
+        Do<IReadOnlyList<GameRootDto>>("GetGameRoots", () => GameRoots.Count > 0 ? [.. GameRoots] : [.. Settings.GameRoots.Select(r => new GameRootDto(r, null))]);
+
+    public List<string> LogLines { get; set; } = [];
+
+    public Task<IReadOnlyList<string>> GetLogTailAsync(int maxLines = 500, CancellationToken ct = default) =>
+        Do<IReadOnlyList<string>>($"GetLogTail({maxLines})", () => [.. LogLines]);
 
     public Task<TrustStatusDto> GetTrustAsync(CancellationToken ct = default) => Do("GetTrust", () => Trust);
     public Task<TrustStatusDto> RefreshTrustAsync(CancellationToken ct = default) => Do("RefreshTrust", () => Trust);
@@ -56,13 +73,14 @@ internal sealed class FakeAgent : IAgentClient
     public Task<ScanResultDto> ScanAsync(CancellationToken ct = default) => Do("Scan", () => new ScanResultDto(2, 5, 0, [], [], []));
 
     public Task<DownloadDto> InstallAsync(string contentHash, string? targetRoot = null, CancellationToken ct = default) =>
-        Do($"Install({contentHash})", () => NewDownload(contentHash, "Install"));
+        Do($"Install({contentHash}{(targetRoot is null ? "" : $"|{targetRoot}")})", () => NewDownload(contentHash, "Install"));
     public Task<DownloadDto> UpdateAsync(string contentHash, CancellationToken ct = default) => Do($"Update({contentHash})", () => NewDownload(contentHash, "Update"));
     public Task<DownloadDto> RepairAsync(string contentHash, CancellationToken ct = default) => Do($"Repair({contentHash})", () => NewDownload(contentHash, "Repair"));
     public Task<GameChangesDto> CheckAsync(string contentHash, CancellationToken ct = default) => Do($"Check({contentHash})", () => CheckResult);
     public Task<GameDto?> RegisterAsync(string contentHash, CancellationToken ct = default) => Do<GameDto?>($"Register({contentHash})", () => null);
     public Task<GameDto?> AddVolatileAsync(string contentHash, IReadOnlyList<string> patterns, CancellationToken ct = default) =>
         Do<GameDto?>($"AddVolatile({contentHash}|{string.Join(";", patterns)})", () => null);
+    public Task UninstallAsync(string contentHash, CancellationToken ct = default) => Do($"Uninstall({contentHash})", () => (object?)null);
 
     public LaunchInfoDto LaunchInfo { get; set; } = new(@"D:\Games\BeamNG\Game.exe", "-windowed", @"D:\Games\BeamNG");
     public List<string> Executables { get; set; } = [];
@@ -139,4 +157,7 @@ internal static class Data
             (sources ?? []).Select(s => new DownloadPeerDto(s.Name, "10.0.0.1", s.Rate, 0)).ToList()) { Kind = kind };
 
     public static PeerDto Peer(string id, string name, int games = 1) => new(id, name, "192.168.30.10", 47702, games, DateTimeOffset.UtcNow);
+
+    public static OfferedGameDto OfferedGame(string hash, string name, bool isComplete = true, double percentIntact = 100, string gameId = "game") =>
+        new(hash, gameId, name, "0.38", 70_000_000_000) { IsComplete = isComplete, PercentIntact = percentIntact };
 }

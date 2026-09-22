@@ -1,0 +1,7 @@
+﻿{
+    "arguments":  "-t 127.0.0.1",
+    "gameId":  "demogame",
+    "version":  "1.0",
+    "name":  "Demo Game",
+    "executable":  "DemoGame.exe"
+}

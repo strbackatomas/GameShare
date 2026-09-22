@@ -1,0 +1,48 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:GameShare.Client.ViewModels"
+             x:Class="GameShare.Client.Views.LogView"
+             x:DataType="vm:LogViewModel">
+
+    <UserControl.Styles>
+        <Style Selector="TextBlock.log-line">
+            <Setter Property="FontFamily" Value="Consolas,Cascadia Mono,Courier New,monospace" />
+            <Setter Property="FontSize" Value="12" />
+        </Style>
+        <Style Selector="TextBlock.log-line.log-error">
+            <Setter Property="Foreground" Value="{StaticResource DangerBrush}" />
+        </Style>
+        <Style Selector="TextBlock.log-line.log-warn">
+            <Setter Property="Foreground" Value="{StaticResource WarnBrush}" />
+        </Style>
+        <Style Selector="TextBlock.log-line.log-debug">
+            <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
+        </Style>
+    </UserControl.Styles>
+
+    <Grid RowDefinitions="Auto,Auto,*" Margin="24,8,24,24">
+
+        <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
+            <TextBlock Grid.Column="0" Classes="section" Text="PROTOKOL AGENTA" VerticalAlignment="Center" />
+            <Button Grid.Column="1" Content="Obnovit" Command="{Binding LoadCommand}" IsEnabled="{Binding !IsLoading}" />
+        </Grid>
+
+        <TextBlock Grid.Row="1" Text="{Binding Message}" IsVisible="{Binding HasMessage}" Foreground="{StaticResource WarnBrush}" Margin="0,6,0,0" TextWrapping="Wrap" />
+
+        <Border Grid.Row="2" Classes="card" Margin="0,10,0,0" Padding="10">
+            <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
+                <StackPanel>
+                    <TextBlock Text="Zatím žádný záznam." Classes="muted" IsVisible="{Binding IsEmpty}" />
+                    <ItemsControl ItemsSource="{Binding Lines}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:LogLineViewModel">
+                                <SelectableTextBlock Classes="log-line" Classes.log-error="{Binding IsError}" Classes.log-warn="{Binding IsWarn}"
+                                                      Classes.log-debug="{Binding IsDebug}" Text="{Binding Text}" TextWrapping="NoWrap" />
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </ScrollViewer>
+        </Border>
+    </Grid>
+</UserControl>

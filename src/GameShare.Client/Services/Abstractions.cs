@@ -14,9 +14,18 @@ public interface IAgentClient
     Task<StatusDto> GetStatusAsync(CancellationToken ct = default);
     Task<IReadOnlyList<GameDto>> GetGamesAsync(CancellationToken ct = default);
     Task<IReadOnlyList<PeerDto>> GetPeersAsync(CancellationToken ct = default);
+
+    /// <summary>The games one PC on the LAN offers, for the network view's expanded row.</summary>
+    Task<IReadOnlyList<OfferedGameDto>> GetPeerGamesAsync(string machineId, CancellationToken ct = default);
     Task<IReadOnlyList<DownloadDto>> GetDownloadsAsync(CancellationToken ct = default);
     Task<SettingsDto> GetSettingsAsync(CancellationToken ct = default);
     Task<SettingsDto> SaveSettingsAsync(SettingsDto settings, CancellationToken ct = default);
+
+    /// <summary>The configured game folders with free space on each, for picking where to install.</summary>
+    Task<IReadOnlyList<GameRootDto>> GetGameRootsAsync(CancellationToken ct = default);
+
+    /// <summary>The tail of the agent's own log file, newest last.</summary>
+    Task<IReadOnlyList<string>> GetLogTailAsync(int maxLines = 500, CancellationToken ct = default);
 
     /// <summary>How the agent follows the administrator's list of verified games, and whether that list loaded.</summary>
     Task<TrustStatusDto> GetTrustAsync(CancellationToken ct = default);
@@ -31,6 +40,9 @@ public interface IAgentClient
     Task<GameChangesDto> CheckAsync(string contentHash, CancellationToken ct = default);
     Task<GameDto?> RegisterAsync(string contentHash, CancellationToken ct = default);
     Task<GameDto?> AddVolatileAsync(string contentHash, IReadOnlyList<string> patterns, CancellationToken ct = default);
+
+    /// <summary>Removes an installed game: stops offering it, deletes its files, forgets it was installed.</summary>
+    Task UninstallAsync(string contentHash, CancellationToken ct = default);
 
     /// <summary>The agent checks the game and says what to start. It refuses, with the reason, when the game must not be started.</summary>
     Task<LaunchInfoDto> LaunchAsync(string contentHash, CancellationToken ct = default);

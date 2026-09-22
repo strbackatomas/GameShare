@@ -45,6 +45,10 @@ public sealed partial class AppModel : ViewModelBase, IAsyncDisposable
     /// <summary>Raised after games were added, removed or changed state, so lists built from them can be rebuilt.</summary>
     public event EventHandler? GamesChanged;
 
+    /// <summary>Every event exactly as the agent sent it, after it was applied. For anything that reacts to one
+    /// specific kind of event (for example the tray icon's notifications) without AppModel knowing about it.</summary>
+    public event EventHandler<AgentEvent>? EventReceived;
+
     public async Task StartAsync(CancellationToken ct = default)
     {
         _events.Received += (_, e) => _ui.Post(() => Apply(e));
@@ -114,6 +118,8 @@ public sealed partial class AppModel : ViewModelBase, IAsyncDisposable
                 UpsertDownload(d);
                 break;
         }
+
+        EventReceived?.Invoke(this, e);
     }
 
     // ---- games ----
@@ -207,7 +213,7 @@ public sealed partial class AppModel : ViewModelBase, IAsyncDisposable
         var vm = Peers.FirstOrDefault(v => v.MachineId == p.MachineId);
         if (vm is null)
         {
-            var newVm = new PeerViewModel(p);
+            var newVm = new PeerViewModel(p, Client);
             int i = 0;
             while (i < Peers.Count && string.Compare(Peers[i].Name, newVm.Name, StringComparison.OrdinalIgnoreCase) < 0) i++;
             Peers.Insert(i, newVm);

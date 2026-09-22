@@ -87,6 +87,12 @@ public sealed record DownloadDto(
 {
     /// <summary>Install, Repair or Update.</summary>
     public string Kind { get; init; } = "Install";
+
+    /// <summary>How long it took, from start to completion. Null until it is Completed.</summary>
+    public double? DurationSeconds { get; init; }
+
+    /// <summary>The highest download speed seen while it ran, in bytes per second. Null until something was measured.</summary>
+    public long? PeakSpeedBytesPerSecond { get; init; }
 }
 
 public sealed record SeedDto(string ContentHash, string GameName, string InstallPath);
@@ -106,6 +112,10 @@ public sealed record AddVolatileRequest(IReadOnlyList<string> Patterns);
 
 /// <param name="MaxUploadMBps">Megabytes (10^6 bytes) per second, null for unlimited.</param>
 public sealed record SettingsDto(IReadOnlyList<string> GameRoots, bool SeedingEnabled, int? MaxUploadMBps, int? MaxDownloadMBps);
+
+/// <summary>One configured game folder, with how much room is left on its drive.</summary>
+/// <param name="FreeBytes">Null when it could not be read, for example a network share.</param>
+public sealed record GameRootDto(string Path, long? FreeBytes);
 
 public enum LaunchState
 {

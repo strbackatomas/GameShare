@@ -32,11 +32,22 @@ public static partial class LocalApi
         api.MapPut("/settings", async (SettingsDto request, SettingsService settings, CancellationToken ct) =>
             await settings.UpdateAsync(request, ct));
 
+        // The configured game folders with free space, for a GUI that lets the player pick where to install.
+        api.MapGet("/settings/roots", (SettingsService settings) =>
+            settings.Current.GameRoots.Select(r => new GameRootDto(r, DownloadManager.GetFreeSpace(r))).ToList());
+
+        // The tail of today's log file, so the GUI can show what the agent is doing without a trip to the data folder.
+        api.MapGet("/logs", (int? lines, AgentOptions options) => TailLog(options.ResolveDataDir(), Math.Clamp(lines ?? 200, 1, 2000)));
+
         // The administrator's list of verified games, and whether it loaded. Refreshing asks the source again now.
         api.MapGet("/trust", (TrustService trust) => trust.Status());
         api.MapPost("/trust/refresh", async (TrustService trust, CancellationToken ct) => await trust.RefreshAsync(ct));
 
         api.MapGet("/peers", (DiscoveryService discovery, GameView view) => discovery.Peers.Select(view.ToDto).ToList());
+
+        // What one PC on the LAN offers, for the network view's expanded row. Empty for a PC that is unknown or offers nothing.
+        api.MapGet("/peers/{machineId}/games", (string machineId, PeerCatalog catalog) =>
+            catalog.Offers.Where(o => o.Peer.MachineId == machineId).Select(o => o.Game).ToList());
 
         api.MapGet("/games", async (GameView view, CancellationToken ct) => await view.ListGamesAsync(ct));
 
@@ -154,6 +165,16 @@ public static partial class LocalApi
             return Results.Accepted($"/api/downloads/{status.Id}", view.ToDto(status));
         });
 
+        // Take the game out of service: stop offering it, delete its files and forget it was installed.
+        api.MapDelete("/games/{contentHash}", async (string contentHash, GameShareDb db, DownloadManager downloads, RunningGames running, CancellationToken ct) =>
+        {
+            RequireHash(contentHash);
+            var inst = await RequireInstallationAsync(contentHash, db, ct);
+            await RequireNotRunningAsync(running, inst, ct);
+            await downloads.UninstallAsync(inst.Id, deleteFiles: true, ct);
+            return Results.NoContent();
+        });
+
         api.MapGet("/downloads", async (DownloadManager downloads, GameView view, CancellationToken ct) =>
             (await downloads.ListAsync(ct)).Select(view.ToDto).ToList());
 
@@ -214,5 +235,20 @@ public static partial class LocalApi
     {
         if (!Sha256Hex().IsMatch(contentHash))
             throw new ArgumentException("The game id must be 64 lowercase hexadecimal characters, the content hash from the game list.");
+    }
+
+    /// <summary>The last <paramref name="maxLines"/> lines of the newest "agent-*.log" file (see AgentHost's file sink),
+    /// opened for shared read so a log still being written does not block this. Empty when nothing has logged yet.</summary>
+    private static List<string> TailLog(string dataDir, int maxLines)
+    {
+        var dir = Path.Combine(dataDir, "logs");
+        var newest = Directory.Exists(dir) ? Directory.EnumerateFiles(dir, "agent-*.log").OrderByDescending(f => f).FirstOrDefault() : null;
+        if (newest is null) return [];
+
+        using var stream = new FileStream(newest, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+        using var reader = new StreamReader(stream);
+        var lines = new List<string>();
+        for (string? line; (line = reader.ReadLine()) is not null;) lines.Add(line);
+        return lines.Count <= maxLines ? lines : lines.GetRange(lines.Count - maxLines, maxLines);
     }
 }

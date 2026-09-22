@@ -89,6 +89,66 @@ public sealed class NetworkViewModel(AppModel app) : ViewModelBase
     public ObservableCollection<PeerViewModel> Peers => App.Peers;
 }
 
+/// <summary>One line of the agent's log, coloured by its level so a warning or error stands out from the rest.</summary>
+public sealed class LogLineViewModel
+{
+    public LogLineViewModel(string text)
+    {
+        Text = text;
+        IsError = HasLevel(text, "ERR") || HasLevel(text, "FTL");
+        IsWarn = HasLevel(text, "WRN");
+        IsDebug = HasLevel(text, "DBG") || HasLevel(text, "VRB");
+    }
+
+    public string Text { get; }
+    public bool IsError { get; }
+    public bool IsWarn { get; }
+    public bool IsDebug { get; }
+
+    // AgentHost's Serilog template puts "{Level:u3}" right after the timestamp, so the 3-letter code always sits
+    // between two single spaces: "...123 ERR message". A continuation line of a stack trace has none and stays plain.
+    private static bool HasLevel(string text, string level) => text.Contains(' ' + level + ' ', StringComparison.Ordinal);
+}
+
+/// <summary>The tail of the agent's own log file, read on demand. No trip to the data folder needed to see what it is doing.</summary>
+public sealed partial class LogViewModel : ViewModelBase
+{
+    private readonly AppModel _app;
+
+    public LogViewModel(AppModel app) => _app = app;
+
+    public ObservableCollection<LogLineViewModel> Lines { get; } = [];
+
+    [ObservableProperty] public partial bool IsEmpty { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasMessage))]
+    public partial string Message { get; set; } = "";
+
+    [ObservableProperty] public partial bool IsLoading { get; set; }
+
+    public bool HasMessage => Message.Length > 0;
+
+    /// <summary>Reads the log again. Called when the page is opened, and by its own Refresh button.</summary>
+    [RelayCommand]
+    public async Task LoadAsync()
+    {
+        IsLoading = true;
+        try
+        {
+            await TryAsync(async () =>
+            {
+                var lines = await _app.Client.GetLogTailAsync();
+                Lines.Clear();
+                foreach (var line in lines) Lines.Add(new LogLineViewModel(line));
+                IsEmpty = Lines.Count == 0;
+                Message = "";
+            }, m => Message = m).ConfigureAwait(true);
+        }
+        finally { IsLoading = false; }
+    }
+}
+
 /// <summary>One game folder in the settings list, with its own remove button.</summary>
 public sealed class RootItem
 {

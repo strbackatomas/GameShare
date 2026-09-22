@@ -278,6 +278,29 @@ public class InstallWorkflowTests
         Assert.Contains(pc.DownloadEvents, e => e.Kind == DownloadEventKind.Cancelled);
     }
 
+    /// <summary>Cancelling keeps the files by default. A later install into that same folder must still be able to reclaim them, not be refused as a foreign folder forever.</summary>
+    [Fact]
+    public async Task Cancelling_without_deleting_files_still_lets_a_later_install_into_that_folder_repair_them()
+    {
+        await using var source = await Pc.StartAsync();
+        source.AddGame();
+        await source.Library.ScanAsync([source.GamesRoot]);
+        await source.Seeds.StartAllAsync();
+        var offer = await source.OnlyKnownGameAsync();
+
+        await using var pc = await Pc.StartAsync(downloadLimit: 1_000_000);
+        var d = await pc.Downloads.StartInstallAsync(offer.Manifest, offer.TorrentBytes!, pc.GamesRoot);
+        await Poll.UntilAsync(async () => (await pc.Downloads.GetAsync(d.Id))!.Percent >= 5, "some data on disk");
+
+        await pc.Downloads.CancelAsync(d.Id, deleteFiles: false);
+        Assert.True(Directory.Exists(InstalledDir(pc, offer.Manifest)));
+
+        // Retrying must not be refused as an unrecognised folder, even though the cancelled download's own id is gone.
+        var retry = await pc.Downloads.StartInstallAsync(offer.Manifest, offer.TorrentBytes!, pc.GamesRoot);
+        await Poll.DownloadStateAsync(pc, retry.Id, DownloadState.Completed);
+        Assert.NotNull(await pc.Db.FindInstalledAsync(offer.Manifest.ContentHash));
+    }
+
     [Fact]
     public async Task Bad_requests_are_refused_up_front_with_clear_messages_and_write_nothing()
     {

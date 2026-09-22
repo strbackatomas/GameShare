@@ -20,15 +20,15 @@
                 <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="vm:GameCardViewModel">
                         <Border Classes="card">
-                            <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto,Auto,Auto">
+                            <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto">
 
                                 <StackPanel Grid.Row="0" Grid.Column="0" Spacing="3">
                                     <StackPanel Orientation="Horizontal" Spacing="10">
                                         <TextBlock Text="{Binding Name}" Classes="title" />
                                         <Border Classes="chip" Background="{StaticResource SuccessBrush}" IsVisible="{Binding IsInstalled}"><TextBlock Text="{Binding StateText}" /></Border>
                                         <Border Classes="chip" Background="{StaticResource WarnBrush}" IsVisible="{Binding IsDamaged}"><TextBlock Text="{Binding StateText}" /></Border>
-                                        <Border Classes="chip" Background="{StaticResource AccentBrush}" IsVisible="{Binding IsDownloading}"><TextBlock Text="{Binding StateText}" /></Border>
-                                        <Border Classes="chip" Background="{StaticResource AccentBrush}" IsVisible="{Binding IsRunning}"><TextBlock Text="Hra běží" /></Border>
+                                        <Border Classes="chip" Background="{StaticResource BadgeBrush}" IsVisible="{Binding IsDownloading}"><TextBlock Text="{Binding StateText}" /></Border>
+                                        <Border Classes="chip" Background="{StaticResource BadgeBrush}" IsVisible="{Binding IsRunning}"><TextBlock Text="Hra běží" /></Border>
                                         <Border Classes="chip" Background="{StaticResource SuccessBrush}" IsVisible="{Binding IsTrustVerified}"><TextBlock Text="{Binding TrustText}" /></Border>
                                         <Border Classes="chip" Background="{StaticResource WarnBrush}" IsVisible="{Binding IsTrustUnknown}"><TextBlock Text="{Binding TrustText}" /></Border>
                                         <Border Classes="chip" Background="{StaticResource DangerBrush}" IsVisible="{Binding IsTrustRevoked}"><TextBlock Text="{Binding TrustText}" /></Border>
@@ -47,6 +47,7 @@
                                     <Button Content="Zkontrolovat" Command="{Binding CheckCommand}" IsVisible="{Binding IsDamaged}" />
                                     <Button Classes="primary" Content="Opravit" Command="{Binding RepairCommand}" IsVisible="{Binding IsDamaged}" />
                                     <Button Content="Registrovat jako novou verzi" Command="{Binding RegisterCommand}" IsVisible="{Binding IsDamaged}" />
+                                    <Button Classes="danger" Content="Odinstalovat" Command="{Binding UninstallPromptCommand}" IsVisible="{Binding ShowUninstallButton}" />
                                 </StackPanel>
 
                                 <StackPanel Grid.Row="1" Grid.ColumnSpan="2" Spacing="4" Margin="0,10,0,0" IsVisible="{Binding IsDownloading}">
@@ -66,6 +67,12 @@
                                     <TextBlock Grid.Column="0" Text="{Binding Suggestion}" Classes="muted" TextWrapping="Wrap" VerticalAlignment="Center" />
                                     <Button Grid.Column="1" Content="Označit jako proměnné" Command="{Binding MarkVolatileCommand}" Margin="12,0,0,0" />
                                 </Grid>
+
+                                <Grid Grid.Row="5" Grid.ColumnSpan="2" ColumnDefinitions="*,Auto,Auto" Margin="0,8,0,0" IsVisible="{Binding IsConfirmingUninstall}">
+                                    <TextBlock Grid.Column="0" Text="Opravdu odinstalovat? Smažou se i soubory hry na disku." Classes="muted" TextWrapping="Wrap" VerticalAlignment="Center" />
+                                    <Button Grid.Column="1" Classes="danger" Content="Ano, odinstalovat" Command="{Binding ConfirmUninstallCommand}" Margin="8,0,0,0" />
+                                    <Button Grid.Column="2" Content="Zrušit" Command="{Binding CancelUninstallCommand}" Margin="8,0,0,0" />
+                                </Grid>
                             </Grid>
                         </Border>
                     </DataTemplate>
@@ -77,11 +84,11 @@
                 <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="vm:GameCardViewModel">
                         <Border Classes="card">
-                            <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto">
+                            <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto">
                                 <StackPanel Grid.Row="0" Grid.Column="0" Spacing="3">
                                     <StackPanel Orientation="Horizontal" Spacing="10">
                                         <TextBlock Text="{Binding Name}" Classes="title" />
-                                        <Border Classes="chip" Background="{StaticResource AccentBrush}" IsVisible="{Binding CanUpdate}"><TextBlock Text="{Binding StateText}" /></Border>
+                                        <Border Classes="chip" Background="{StaticResource BadgeBrush}" IsVisible="{Binding CanUpdate}"><TextBlock Text="{Binding StateText}" /></Border>
                                         <Border Classes="chip" Background="{StaticResource WarnBrush}" IsVisible="{Binding IsWaitingForParts}"><TextBlock Text="{Binding StateText}" /></Border>
                                         <Border Classes="chip" Background="{StaticResource SuccessBrush}" IsVisible="{Binding IsTrustVerified}"><TextBlock Text="{Binding TrustText}" /></Border>
                                         <Border Classes="chip" Background="{StaticResource WarnBrush}" IsVisible="{Binding IsTrustUnknown}"><TextBlock Text="{Binding TrustText}" /></Border>
@@ -94,11 +101,18 @@
                                 </StackPanel>
 
                                 <StackPanel Grid.Row="0" Grid.Column="1" VerticalAlignment="Center">
-                                    <Button Classes="primary" Content="Instalovat" Command="{Binding InstallCommand}" IsVisible="{Binding CanInstall}" MinWidth="120" HorizontalContentAlignment="Center" />
+                                    <Button Classes="primary" Content="Instalovat" Command="{Binding InstallCommand}" IsVisible="{Binding ShowInstallButton}" MinWidth="120" HorizontalContentAlignment="Center" />
                                     <Button Classes="primary" Content="Aktualizovat" Command="{Binding UpdateCommand}" IsVisible="{Binding CanUpdate}" MinWidth="120" HorizontalContentAlignment="Center" />
                                 </StackPanel>
 
                                 <TextBlock Grid.Row="1" Grid.ColumnSpan="2" Text="{Binding Message}" IsVisible="{Binding HasMessage}" Margin="0,10,0,0" TextWrapping="Wrap" />
+
+                                <Grid Grid.Row="2" Grid.ColumnSpan="2" ColumnDefinitions="*,Auto,Auto" Margin="0,8,0,0" IsVisible="{Binding IsChoosingInstallFolder}">
+                                    <ComboBox Grid.Column="0" ItemsSource="{Binding InstallRoots}" SelectedItem="{Binding SelectedInstallRoot}"
+                                              DisplayMemberBinding="{Binding Text}" HorizontalAlignment="Stretch" />
+                                    <Button Grid.Column="1" Classes="primary" Content="Instalovat sem" Command="{Binding ConfirmInstallCommand}" Margin="8,0,0,0" />
+                                    <Button Grid.Column="2" Content="Zrušit" Command="{Binding CancelChoosingInstallFolderCommand}" Margin="8,0,0,0" />
+                                </Grid>
                             </Grid>
                         </Border>
                     </DataTemplate>
