@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>gameshare-admin-gui</AssemblyName>
+    <RootNamespace>GameShare.AdminGui</RootNamespace>
+    <SatelliteResourceLanguages>cs;en</SatelliteResourceLanguages>
+    <DebugType Condition="'$(Configuration)' == 'Release'">none</DebugType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="12.1.2" />
+    <PackageReference Include="Avalonia.Desktop" Version="12.1.2" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.2" />
+    <PackageReference Include="Avalonia.Fonts.Inter" Version="12.1.2" />
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\GameShare.Protocol\GameShare.Protocol.csproj" />
+    <ProjectReference Include="..\GameShare.Storage\GameShare.Storage.csproj" />
+  </ItemGroup>
+
+  <!-- The SkiaSharp package ships native symbol files of about 100 MB. They are useless on the administrator's PC. -->
+  <Target Name="DropNativeSymbolsFromPublish" AfterTargets="ComputeResolvedFilesToPublishList">
+    <ItemGroup>
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="'%(Extension)' == '.pdb'" />
+    </ItemGroup>
+  </Target>
+
+  <ItemGroup>
+    <!-- The view models are tested with fake pickers, without a display. -->
+    <InternalsVisibleTo Include="GameShare.AdminGui.Tests" />
+  </ItemGroup>
+
+</Project>

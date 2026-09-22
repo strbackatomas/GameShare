@@ -5,6 +5,7 @@ namespace GameShare.Admin;
 /// <summary>
 /// The administrator's tool for the list of verified games: make a key, add the games as they are installed on the reference PC,
 /// withdraw a version, and check a published list. Only this tool ever sees the private key.
+/// The steps themselves live in <see cref="TrustWorkflow"/>, shared with the GUI version of this tool.
 /// </summary>
 public static class AdminCli
 {
@@ -25,6 +26,9 @@ public static class AdminCli
         gameshare-admin show --list <list file> --pub <public key file or the key itself>
             Checks the signature and prints what the list says.
 
+        gameshare-admin gui
+            Opens the graphical version of this tool, if it was published alongside this one.
+
         The password can also be given in the environment variable GAMESHARE_KEY_PASSWORD.
         Publish the list file at an https address or on a share and give that to the PCs as Agent:TrustListSource.
         """;
@@ -44,6 +48,9 @@ public static class AdminCli
                 case "revoke": return Revoke(positional, options, output, clock());
                 case "remove": return Remove(positional, options, output, clock());
                 case "show": return Show(options, output, clock());
+                case "gui":
+                    error.WriteLine("This build has no graphical tool. Publish GameShare.AdminGui alongside it, or run gameshare-admin-gui.exe directly.");
+                    return 2;
                 default: error.WriteLine($"Unknown command '{args[0]}'.\n\n{Usage}"); return 2;
             }
         }
@@ -56,56 +63,48 @@ public static class AdminCli
 
     private static int KeyGen(Dictionary<string, string> options, TextWriter output)
     {
-        var dir = Required(options, "out");
-        Directory.CreateDirectory(dir);
-        var privatePath = Path.Combine(dir, "trust-private.key");
-        var publicPath = Path.Combine(dir, "trust-public.key");
-        if (File.Exists(privatePath)) throw new InvalidOperationException($"{privatePath} already exists. Not overwriting a key, delete it yourself if you mean to.");
-
-        var keys = TrustSigning.GenerateKeyPair(Password(options));
-        File.WriteAllText(privatePath, keys.PrivateKey + Environment.NewLine);
-        File.WriteAllText(publicPath, keys.PublicKey + Environment.NewLine);
-        output.WriteLine($"Private key: {privatePath}  (keep it safe, whoever has it can sign the list)");
+        var info = TrustWorkflow.GenerateKeys(Required(options, "out"), Password(options));
+        var publicPath = Path.Combine(Path.GetDirectoryName(info.PrivateKeyPath)!, "trust-public.key");
+        output.WriteLine($"Private key: {info.PrivateKeyPath}  (keep it safe, whoever has it can sign the list)");
         output.WriteLine($"Public key:  {publicPath}");
-        output.WriteLine($"Key id:      {TrustSigning.KeyId(keys.PublicKey)}");
-        output.WriteLine($"Agent setting on every PC: Agent__TrustPublicKey={keys.PublicKey}");
+        output.WriteLine($"Key id:      {info.KeyId}");
+        output.WriteLine($"Agent setting on every PC: Agent__TrustPublicKey={info.PublicKey}");
         return 0;
     }
 
     private static async Task<int> AddAsync(List<string> folders, Dictionary<string, string> options, TextWriter output, DateTimeOffset now)
     {
         if (folders.Count == 0) throw new ArgumentException("Give at least one game folder.");
-        var (privateKey, password, listPath) = SigningInputs(options);
-        var list = LoadOrStart(listPath, privateKey, password, now);
+        var (keyPath, password, listPath) = SigningInputs(options);
+        var list = LoadOrStart(keyPath, password, listPath, now);
 
         var games = new List<TrustedGame>();
         foreach (var folder in folders)
         {
-            if (!Directory.Exists(folder)) throw new DirectoryNotFoundException($"'{folder}' is not a folder.");
             output.WriteLine($"Scanning {folder} ...");
-            var (manifest, _) = await ManifestBuilder.ScanAndBuildAsync(folder).ConfigureAwait(false);
-            games.Add(new TrustedGame(manifest.ContentHash, manifest.GameId, manifest.Name, manifest.Version));
-            output.WriteLine($"  {manifest.Name} {manifest.Version}  {manifest.ContentHash}  ({manifest.Files.Count} files, {manifest.TotalSize:N0} bytes)");
+            var game = await TrustWorkflow.ScanAsync(folder).ConfigureAwait(false);
+            games.Add(game);
+            output.WriteLine($"  {game.Name} {game.Version}  {game.ContentHash}");
         }
 
-        return Publish(TrustListEditor.Add(list, games, now, ValidFor(options)), privateKey, password, listPath, output);
+        return Publish(TrustListEditor.Add(list, games, now, ValidFor(options)), keyPath, password, listPath, output);
     }
 
     private static int Revoke(List<string> positional, Dictionary<string, string> options, TextWriter output, DateTimeOffset now)
     {
         var hash = OneHash(positional);
         var reason = Required(options, "reason");
-        var (privateKey, password, listPath) = SigningInputs(options);
-        var list = LoadOrStart(listPath, privateKey, password, now);
-        return Publish(TrustListEditor.Revoke(list, hash, reason, now, ValidFor(options)), privateKey, password, listPath, output);
+        var (keyPath, password, listPath) = SigningInputs(options);
+        var list = LoadOrStart(keyPath, password, listPath, now);
+        return Publish(TrustListEditor.Revoke(list, hash, reason, now, ValidFor(options)), keyPath, password, listPath, output);
     }
 
     private static int Remove(List<string> positional, Dictionary<string, string> options, TextWriter output, DateTimeOffset now)
     {
         var hash = OneHash(positional);
-        var (privateKey, password, listPath) = SigningInputs(options);
-        var list = LoadOrStart(listPath, privateKey, password, now);
-        return Publish(TrustListEditor.Remove(list, hash, now, ValidFor(options)), privateKey, password, listPath, output);
+        var (keyPath, password, listPath) = SigningInputs(options);
+        var list = LoadOrStart(keyPath, password, listPath, now);
+        return Publish(TrustListEditor.Remove(list, hash, now, ValidFor(options)), keyPath, password, listPath, output);
     }
 
     private static int Show(Dictionary<string, string> options, TextWriter output, DateTimeOffset now)
@@ -126,26 +125,21 @@ public static class AdminCli
     }
 
     /// <summary>The list that is there, checked with the key that is about to sign the next one, or a new empty one.</summary>
-    private static TrustPayload LoadOrStart(string listPath, string privateKey, string? password, DateTimeOffset now) =>
-        File.Exists(listPath)
-            ? TrustSigning.Open(File.ReadAllBytes(listPath), TrustSigning.PublicKeyOf(privateKey, password))
-            : TrustPayload.Empty(now);
+    private static TrustPayload LoadOrStart(string keyPath, string? password, string listPath, DateTimeOffset now) =>
+        TrustWorkflow.LoadOrStartList(listPath, TrustWorkflow.LoadKey(keyPath, password).PublicKey, now);
 
-    private static int Publish(TrustPayload list, string privateKey, string? password, string listPath, TextWriter output)
+    private static int Publish(TrustPayload list, string keyPath, string? password, string listPath, TextWriter output)
     {
-        var bytes = TrustSigning.Serialize(TrustSigning.Sign(list, privateKey, password));
-        var directory = Path.GetDirectoryName(Path.GetFullPath(listPath));
-        if (directory is not null) Directory.CreateDirectory(directory);
-        File.WriteAllBytes(listPath, bytes);
+        TrustWorkflow.Publish(list, keyPath, password, listPath);
         output.WriteLine($"Signed list {list.Sequence} written to {listPath}: {list.Games.Count} verified, {list.Revoked.Count} revoked. Publish it where the PCs fetch it.");
         return 0;
     }
 
-    private static (string PrivateKey, string? Password, string ListPath) SigningInputs(Dictionary<string, string> options)
+    private static (string KeyPath, string? Password, string ListPath) SigningInputs(Dictionary<string, string> options)
     {
         var keyPath = Required(options, "key");
         if (!File.Exists(keyPath)) throw new FileNotFoundException($"Private key file '{keyPath}' does not exist.");
-        return (File.ReadAllText(keyPath).Trim(), Password(options), Required(options, "list"));
+        return (keyPath, Password(options), Required(options, "list"));
     }
 
     private static string? Password(Dictionary<string, string> options) =>

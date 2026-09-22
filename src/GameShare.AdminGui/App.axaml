@@ -1,0 +1,63 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="GameShare.AdminGui.App"
+             RequestedThemeVariant="Dark">
+
+    <Application.Resources>
+        <!-- Same palette as the player's client, so the two look like they belong together. -->
+        <SolidColorBrush x:Key="BgBrush" Color="#130E22" />
+        <SolidColorBrush x:Key="CardBrush" Color="#241A3E" />
+        <SolidColorBrush x:Key="LineBrush" Color="#372A58" />
+        <SolidColorBrush x:Key="TextBrush" Color="#EEEAF7" />
+        <SolidColorBrush x:Key="MutedBrush" Color="#A69DC0" />
+        <SolidColorBrush x:Key="AccentBrush" Color="#FF9F0A" />
+        <SolidColorBrush x:Key="OnAccentBrush" Color="#1D0642" />
+        <SolidColorBrush x:Key="SuccessBrush" Color="#2FAE6B" />
+        <SolidColorBrush x:Key="WarnBrush" Color="#D9922B" />
+        <SolidColorBrush x:Key="DangerBrush" Color="#D2504A" />
+    </Application.Resources>
+
+    <Application.Styles>
+        <FluentTheme>
+            <FluentTheme.Palettes>
+                <ColorPaletteResources x:Key="Dark" Accent="#FF9F0A" RegionColor="#130E22" />
+            </FluentTheme.Palettes>
+        </FluentTheme>
+
+        <Style Selector="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+        </Style>
+        <Style Selector="TextBlock.muted">
+            <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
+        </Style>
+        <Style Selector="TextBlock.section">
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="LetterSpacing" Value="1.5" />
+            <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
+            <Setter Property="Margin" Value="0,18,0,8" />
+        </Style>
+
+        <Style Selector="Border.card">
+            <Setter Property="Background" Value="{StaticResource CardBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Padding" Value="16,14" />
+            <Setter Property="Margin" Value="0,0,0,8" />
+        </Style>
+
+        <Style Selector="Button">
+            <Setter Property="Padding" Value="14,7" />
+            <Setter Property="CornerRadius" Value="6" />
+        </Style>
+        <Style Selector="Button.primary">
+            <Setter Property="Background" Value="{StaticResource AccentBrush}" />
+            <Setter Property="Foreground" Value="{StaticResource OnAccentBrush}" />
+            <Setter Property="FontWeight" Value="Bold" />
+        </Style>
+        <Style Selector="Button.danger">
+            <Setter Property="Foreground" Value="{StaticResource DangerBrush}" />
+        </Style>
+    </Application.Styles>
+</Application>

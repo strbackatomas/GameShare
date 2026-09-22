@@ -1,0 +1,115 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:GameShare.AdminGui.ViewModels"
+        x:Class="GameShare.AdminGui.Views.MainWindow"
+        x:DataType="vm:MainViewModel"
+        Title="GameShare Admin"
+        Width="820" Height="800" MinWidth="640" MinHeight="480"
+        Background="{StaticResource BgBrush}">
+
+    <ScrollViewer>
+        <StackPanel Margin="24,16,24,24" MaxWidth="760" HorizontalAlignment="Left" Spacing="4">
+
+            <TextBlock Text="GameShare Admin" FontSize="20" FontWeight="Bold" />
+            <TextBlock Classes="muted" TextWrapping="Wrap"
+                       Text="Spravuje podepsaný seznam ověřených her. Soukromý klíč nikdy neopouští tenhle počítač." />
+
+            <TextBlock Classes="section" Text="KLÍČ" />
+            <Border Classes="card">
+                <StackPanel Spacing="8">
+                    <Grid ColumnDefinitions="*,Auto,Auto">
+                        <TextBox Grid.Column="0" Text="{Binding PrivateKeyPath}" PlaceholderText="trust-private.key" Margin="0,0,8,0" />
+                        <Button Grid.Column="1" Content="Procházet…" Command="{Binding BrowsePrivateKeyCommand}" Margin="0,0,8,0" />
+                        <Button Grid.Column="2" Classes="primary" Content="Načíst" Command="{Binding LoadKeyCommand}" />
+                    </Grid>
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBox Grid.Column="0" Text="{Binding Password}" PasswordChar="•" PlaceholderText="heslo klíče, pokud je nastavené" Margin="0,0,8,0" />
+                        <Button Grid.Column="1" Content="Vygenerovat nové klíče…" Command="{Binding GenerateKeysCommand}" />
+                    </Grid>
+                    <TextBlock IsVisible="{Binding !HasKey}" Classes="muted" Text="Klíč zatím není načtený." />
+                    <TextBlock IsVisible="{Binding HasKey}" Classes="muted" TextWrapping="Wrap">
+                        <Run Text="Otisk klíče: " /><Run Text="{Binding KeyId}" FontWeight="SemiBold" />
+                    </TextBlock>
+                </StackPanel>
+            </Border>
+
+            <TextBlock Classes="section" Text="SEZNAM" />
+            <Border Classes="card">
+                <StackPanel Spacing="8">
+                    <Grid ColumnDefinitions="*,Auto,Auto">
+                        <TextBox Grid.Column="0" Text="{Binding ListPath}" PlaceholderText="trust.json" Margin="0,0,8,0" />
+                        <Button Grid.Column="1" Content="Procházet…" Command="{Binding BrowseListCommand}" Margin="0,0,8,0" />
+                        <Button Grid.Column="2" Classes="primary" Content="Načíst / založit" Command="{Binding LoadListCommand}" />
+                    </Grid>
+                    <TextBlock Classes="muted" TextWrapping="Wrap" Text="{Binding ListSummary}" />
+                </StackPanel>
+            </Border>
+
+            <TextBlock Classes="section" Text="PŘIDAT HRU" />
+            <Border Classes="card">
+                <StackPanel Spacing="8">
+                    <Grid ColumnDefinitions="*,Auto,Auto">
+                        <TextBox Grid.Column="0" Text="{Binding GameFolder}" PlaceholderText="Složka hry, čistá instalace bez uložených pozic" Margin="0,0,8,0" />
+                        <Button Grid.Column="1" Content="Procházet…" Command="{Binding BrowseGameFolderCommand}" Margin="0,0,8,0" />
+                        <Button Grid.Column="2" Content="Skenovat" Command="{Binding ScanCommand}" />
+                    </Grid>
+                    <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding HasScanned}">
+                        <StackPanel Grid.Column="0" Spacing="2">
+                            <TextBlock FontWeight="SemiBold">
+                                <Run Text="{Binding ScannedName}" /><Run Text=" " /><Run Text="{Binding ScannedVersion}" />
+                            </TextBlock>
+                            <TextBlock Classes="muted" FontSize="12" Text="{Binding ScannedHash}" />
+                        </StackPanel>
+                        <Button Grid.Column="1" Classes="primary" Content="Přidat do seznamu" Command="{Binding AddScannedGameCommand}" VerticalAlignment="Center" />
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <TextBlock Classes="section" Text="OVĚŘENÉ HRY" />
+            <ItemsControl ItemsSource="{Binding VerifiedGames}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:TrustedGameRow">
+                        <Border Classes="card">
+                            <StackPanel Spacing="8">
+                                <Grid ColumnDefinitions="*,Auto,Auto">
+                                    <StackPanel Grid.Column="0" Spacing="2">
+                                        <TextBlock FontWeight="SemiBold">
+                                            <Run Text="{Binding Name}" /><Run Text=" " /><Run Text="{Binding Version}" />
+                                        </TextBlock>
+                                        <TextBlock Classes="muted" FontSize="12" Text="{Binding ShortHash}" />
+                                    </StackPanel>
+                                    <Button Grid.Column="1" Content="Zrušit…" Command="{Binding StartRevokeCommand}" IsVisible="{Binding !IsRevoking}" Margin="0,0,8,0" />
+                                    <Button Grid.Column="2" Classes="danger" Content="Odebrat" Command="{Binding RemoveCommand}" />
+                                </Grid>
+                                <Grid ColumnDefinitions="*,Auto,Auto" IsVisible="{Binding IsRevoking}">
+                                    <TextBox Grid.Column="0" Text="{Binding Reason}" PlaceholderText="Důvod zrušení, například 'upravený spustitelný soubor'" Margin="0,0,8,0" />
+                                    <Button Grid.Column="1" Classes="primary" Content="Potvrdit" Command="{Binding ConfirmRevokeCommand}" Margin="0,0,8,0" />
+                                    <Button Grid.Column="2" Content="Storno" Command="{Binding CancelRevokeCommand}" />
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <TextBlock Classes="section" Text="ZRUŠENÉ VERZE" />
+            <ItemsControl ItemsSource="{Binding RevokedGames}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:RevokedGameRow">
+                        <Border Classes="card">
+                            <Grid ColumnDefinitions="*,Auto">
+                                <StackPanel Grid.Column="0" Spacing="2">
+                                    <TextBlock Classes="muted" FontSize="12" Text="{Binding ShortHash}" />
+                                    <TextBlock Foreground="{StaticResource DangerBrush}" TextWrapping="Wrap" Text="{Binding Reason}" />
+                                </StackPanel>
+                                <Button Grid.Column="1" Content="Odebrat ze seznamu" Command="{Binding ForgetCommand}" VerticalAlignment="Center" />
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <TextBlock Text="{Binding Message}" TextWrapping="Wrap" Margin="0,14,0,0" />
+        </StackPanel>
+    </ScrollViewer>
+</Window>

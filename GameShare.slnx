@@ -3,6 +3,7 @@
     <Project Path="src/GameShare.Admin/GameShare.Admin.csproj" />
     <Project Path="src/GameShare.Agent/GameShare.Agent.csproj" />
     <Project Path="src/GameShare.Client/GameShare.Client.csproj" />
+    <Project Path="src/GameShare.AdminGui/GameShare.AdminGui.csproj" />
     <Project Path="src/GameShare.Core/GameShare.Core.csproj" />
     <Project Path="src/GameShare.Discovery/GameShare.Discovery.csproj" />
     <Project Path="src/GameShare.Protocol/GameShare.Protocol.csproj" />
@@ -12,6 +13,7 @@
   <Folder Name="/tests/">
     <Project Path="tests/GameShare.Agent.Tests/GameShare.Agent.Tests.csproj" />
     <Project Path="tests/GameShare.Client.Tests/GameShare.Client.Tests.csproj" />
+    <Project Path="tests/GameShare.AdminGui.Tests/GameShare.AdminGui.Tests.csproj" />
     <Project Path="tests/GameShare.Core.Tests/GameShare.Core.Tests.csproj" />
     <Project Path="tests/GameShare.Discovery.Tests/GameShare.Discovery.Tests.csproj" />
     <Project Path="tests/GameShare.Storage.Tests/GameShare.Storage.Tests.csproj" />

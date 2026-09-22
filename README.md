@@ -19,7 +19,8 @@ Status: agent and desktop client work and are tested on one machine. Not yet tri
 | `GameShare.Core` | SQLite, game library, seeding, install, repair and update |
 | `GameShare.Agent` | The Windows service: local API, peer API, SignalR events |
 | `GameShare.Client` | The desktop app (Avalonia). Talks only to the local agent |
-| `GameShare.Admin` | `gameshare-admin`, the administrator's tool for the signed list of verified games. Not installed on the players' PCs |
+| `GameShare.Admin` | `gameshare-admin`, the command-line administrator's tool for the signed list of verified games. Not installed on the players' PCs |
+| `GameShare.AdminGui` | The same tool with a window instead of a command line. Also administrator-only |
 
 More detail is in `docs/design-notes.md`. The choice of libtorrent binding is in `docs/binding-evaluation.md`.
 
@@ -118,7 +119,11 @@ Content is identified by a hash of every file, so a PC that hands out a modified
 What the hash cannot say is which version is the one you meant. The administrator can publish a **signed list** of the content hashes
 they vouch for, and every PC checks games against it. Nobody has to trust the PC a game came from.
 
-On the administrator's PC (`scripts\publish.ps1` builds `artifacts\admin\gameshare-admin.exe`):
+On the administrator's PC, either the command line or the graphical tool, whichever is easier. Both call the same code
+(`GameShare.Storage/TrustWorkflow.cs`), so they behave the same and either can carry on where the other left off on the
+same key and list files.
+
+Command line (`scripts\publish.ps1` builds `artifacts\admin\gameshare-admin.exe`):
 
 ```
 gameshare-admin keygen --out C:\keys                       # once. Keep trust-private.key safe, and off the players' PCs
@@ -126,6 +131,11 @@ gameshare-admin add D:\Games\BeamNG --key C:\keys\trust-private.key --list trust
 gameshare-admin revoke <content hash> --reason "modified executable" --key ... --list trust.json
 gameshare-admin show --list trust.json --pub C:\keys\trust-public.key
 ```
+
+Graphical (`artifacts\admin-gui\gameshare-admin-gui.exe`): a window with a key section, a list section, a folder picker
+to scan and add a game, and a card per verified and per revoked version with Zrušit/Odebrat buttons. Every change signs
+and writes the list at once, there is no separate save step. It remembers the last key and list file used (not the
+password) in the administrator's own profile, never on a share.
 
 Put `trust.json` on an https address or a share, and install the agents with the public key:
 
@@ -148,4 +158,6 @@ scripts\install-agent.ps1 -GameRoots D:\Games -TrustMode Warn -TrustListSource h
   and speed on 2.5 or 10 GbE are untested.
 - **The service installer.** The scripts were syntax checked but never run, they need an elevated session.
 - **The signed list on real infrastructure.** It was tested with files and real agents, not with an https server, a share, or a PC that is offline for days.
+- **`gameshare-admin-gui`.** Its logic is tested (17 tests, with mutation checks), and the published exe was run and screenshotted once. Not tried on a second machine,
+  and dialog cancel/error paths were exercised through fakes, not by actually clicking Cancel in the real Windows dialogs.
 - **The client as a Windows app on another PC.** It ran here, headless and as a real window, not on a second machine.

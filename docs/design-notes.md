@@ -130,6 +130,9 @@ The signed list adds the missing piece: *which* content hashes the administrator
   A game whose files changed after install is not shown as verified, the list vouches for the files of that version and those are no longer on disk. A revocation is still shown.
 - **Only installs and updates are checked.** Games that are already installed are not removed, and a PC keeps offering what it has. `Require` decides what a PC installs, not what it serves.
 - **The one outbound request.** The list is fetched with a plain GET from a web address or read from a file. It carries nothing about the PC, and the download is capped in size even if the server never says how large it is.
+- **Two tools, one workflow.** `GameShare.Storage/TrustWorkflow.cs` holds the steps (make a key, load one, load or start a list, scan a folder, sign and publish). `gameshare-admin`
+  (console) and `gameshare-admin-gui` (Avalonia, its own small project `GameShare.AdminGui`) both call it, so they behave the same and either can pick up a key or list the other
+  started. The GUI signs and writes the list on every single change (add, revoke, remove), there is no separate save step, matching one CLI invocation doing one change.
 
 What it does not protect against, so nobody assumes it does: the administrator adding a game from a PC that was already infected, a stolen private key,
 a first start of a PC with no stored list where someone serves an old list that was once valid and has no `validUntil`, and a game that a PC modifies after the install (that is the damaged state, not this).

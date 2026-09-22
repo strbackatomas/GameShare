@@ -9,7 +9,8 @@
                             the plain .NET runtime too. https://dotnet.microsoft.com/download/dotnet/10.0
 
   install-agent.ps1 uses artifacts\agent and artifacts\client by default, the self-contained ones, unless told otherwise.
-  The administrator's tool (gameshare-admin) is for the administrator's PC only, not for the players'.
+  The administrator's tools (gameshare-admin, the command line, and gameshare-admin-gui, the graphical one) are for the
+  administrator's own PC only, not for the players'.
 #>
 [CmdletBinding()]
 param(
@@ -31,7 +32,12 @@ function Publish-App($project, $target, [bool]$selfContained) {
 
 function Format-Size([double]$mb) { if ($mb -lt 1) { "{0:N0} KB" -f ($mb * 1024) } else { "{0:N0} MB" -f $mb } }
 
-foreach ($app in @(@{ Name = 'agent'; Project = 'GameShare.Agent' }, @{ Name = 'client'; Project = 'GameShare.Client' }, @{ Name = 'admin'; Project = 'GameShare.Admin' })) {
+foreach ($app in @(
+    @{ Name = 'agent'; Project = 'GameShare.Agent' },
+    @{ Name = 'client'; Project = 'GameShare.Client' },
+    @{ Name = 'admin'; Project = 'GameShare.Admin' },
+    @{ Name = 'admin-gui'; Project = 'GameShare.AdminGui' }
+)) {
     $full = Publish-App $app.Project (Join-Path $Output $app.Name) $true
     Write-Host ("Published {0} to artifacts\{0} ({1}, self-contained, nothing to install)" -f $app.Name, (Format-Size $full))
 
