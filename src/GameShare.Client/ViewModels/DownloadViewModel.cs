@@ -119,6 +119,11 @@ public sealed partial class DownloadViewModel : ViewModelBase
     [RelayCommand(CanExecute = nameof(CanAct))]
     private Task CancelAsync() => Run(() => _app.Client.CancelAsync(Id, deleteFiles: false));
 
+    /// <summary>For a failed or cancelled install: deletes its partial files too, so nothing is left to retry and this
+    /// row does not linger forever. A repair or update is never offered this, they never delete an installed game.</summary>
+    [RelayCommand(CanExecute = nameof(CanAct))]
+    private Task DiscardAsync() => Run(() => _app.Client.CancelAsync(Id, deleteFiles: true));
+
     private async Task Run(Func<Task> action)
     {
         IsBusy = true;
@@ -133,5 +138,6 @@ public sealed partial class DownloadViewModel : ViewModelBase
         PauseCommand.NotifyCanExecuteChanged();
         ResumeCommand.NotifyCanExecuteChanged();
         CancelCommand.NotifyCanExecuteChanged();
+        DiscardCommand.NotifyCanExecuteChanged();
     }
 }

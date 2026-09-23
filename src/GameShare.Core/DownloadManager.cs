@@ -365,17 +365,34 @@ public sealed class DownloadManager
 
             await _seeds.StopAsync(inst, ct).ConfigureAwait(false);
             if (deleteFiles && Directory.Exists(inst.InstallPath))
-            {
-                try { Directory.Delete(inst.InstallPath, recursive: true); }
-                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-                {
-                    _log.LogWarning(ex, "Could not delete all files of {Path}, the game is uninstalled anyway", inst.InstallPath);
-                }
-            }
+                await DeleteFolderAsync(inst.InstallPath, ct).ConfigureAwait(false);
             await _db.DeleteInstallationAsync(inst.Id, ct).ConfigureAwait(false);
             _log.LogInformation("Uninstalled {Path} (files deleted: {Deleted})", inst.InstallPath, deleteFiles);
         }
         finally { _gate.Release(); }
+    }
+
+    /// <summary>
+    /// Deletes a folder just stopped seeding. A file in it can still be briefly locked right after: the engine's own
+    /// removal is asynchronous, and Windows itself can take a moment to release a handle after the last reader of a
+    /// large file closes it. Retried a few times before giving up, so an uninstall does not routinely leave a
+    /// half-deleted folder behind for a later install to trip over as "already exists".
+    /// </summary>
+    private async Task DeleteFolderAsync(string path, CancellationToken ct)
+    {
+        for (int attempt = 1; ; attempt++)
+        {
+            try { Directory.Delete(path, recursive: true); return; }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                if (attempt >= 5)
+                {
+                    _log.LogWarning(ex, "Could not delete all files of {Path} after {Attempts} tries, the game is uninstalled anyway", path, attempt);
+                    return;
+                }
+                await Task.Delay(TimeSpan.FromMilliseconds(300 * attempt), ct).ConfigureAwait(false);
+            }
+        }
     }
 
     /// <summary>Forgets the download. Downloaded files are kept unless <paramref name="deleteFiles"/> is set.</summary>
@@ -397,7 +414,7 @@ public sealed class DownloadManager
             if (deleteFiles && row.Kind == DownloadKind.Install)
             {
                 await DeletePartialFilesAsync(row, stored.Manifest, ct).ConfigureAwait(false);
-                await _db.DeleteDownloadAsync(id, ct).ConfigureAwait(false);
+                await _db.DeleteDownloadAsync(id, ct).ConfigureAwait(false); // forgotten either way: a kept folder is someone else's install now, not this row's to track
             }
             else if (deleteFiles)
             {
@@ -417,13 +434,21 @@ public sealed class DownloadManager
         finally { _gate.Release(); }
     }
 
+    /// <summary>
+    /// Deletes the folder this download's partial files are in, unless something else has since made it a real
+    /// installed game (for example another download reused the folder after this one was abandoned) — that game's
+    /// files are kept, only this download's own bookkeeping is forgotten by the caller.
+    /// </summary>
     private async Task DeletePartialFilesAsync(Download row, GameManifest manifest, CancellationToken ct)
     {
         var path = Path.GetFullPath(Path.Combine(row.TargetRoot, manifest.FolderName));
-        // Never delete a folder that holds a registered game, only what this download created.
         bool registered = (await _db.ListInstallationsAsync(ct).ConfigureAwait(false))
             .Any(i => string.Equals(i.InstallPath, path, StringComparison.OrdinalIgnoreCase));
-        if (registered) throw new InvalidOperationException($"{path} belongs to an installed game and will not be deleted.");
+        if (registered)
+        {
+            _log.LogInformation("Not deleting {Path}, it belongs to an installed game now. Forgetting this old download anyway.", path);
+            return;
+        }
         if (Directory.Exists(path)) Directory.Delete(path, recursive: true);
     }
 
@@ -728,12 +753,9 @@ public sealed class DownloadManager
     {
         long done = live?.BytesDone ?? (row.State == DownloadState.Completed ? manifest.TotalSize : row.BytesDone);
 
-        TimeSpan? eta = null;
-        if (live is { State: TransferState.Downloading })
-        {
-            double rate = smoothedDownloadRate ?? live.DownloadRate;
-            if (rate > 0) eta = TimeSpan.FromSeconds((manifest.TotalSize - done) / rate);
-        }
+        TimeSpan? eta = live is { State: TransferState.Downloading }
+            ? EstimateEta(manifest.TotalSize - done, smoothedDownloadRate ?? live.DownloadRate)
+            : null;
 
         return new DownloadStatus(
             row.Id, row.ContentHash, manifest.Name, row.State, done, manifest.TotalSize,
@@ -749,6 +771,19 @@ public sealed class DownloadManager
     {
         try { DownloadEventRaised?.Invoke(this, new DownloadEvent(kind, status)); }
         catch (Exception ex) { _log.LogError(ex, "A download event handler threw for {Kind}", kind); }
+    }
+
+    /// <summary>
+    /// How long <paramref name="remainingBytes"/> will take at <paramref name="bytesPerSecond"/>, or null when that cannot be said.
+    /// After a stall the smoothed rate decays toward zero without ever quite reaching it, so dividing by a near-zero rate can ask
+    /// for an ETA of thousands of years, which <see cref="TimeSpan"/> cannot hold. Internal for its own test, otherwise only
+    /// reached through <see cref="ToStatus(Active)"/>.
+    /// </summary>
+    internal static TimeSpan? EstimateEta(long remainingBytes, double bytesPerSecond)
+    {
+        if (bytesPerSecond <= 0) return null;
+        double seconds = remainingBytes / bytesPerSecond;
+        return seconds >= 0 && seconds <= TimeSpan.MaxValue.TotalSeconds ? TimeSpan.FromSeconds(seconds) : null;
     }
 
     /// <summary>Free bytes on the drive of <paramref name="path"/>, or null when unknown (a network share, or the drive can't be statted).</summary>

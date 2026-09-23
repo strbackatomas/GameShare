@@ -23,7 +23,7 @@ public sealed class SettingsService
     {
         var json = await db.GetSettingAsync(Key, ct).ConfigureAwait(false);
         var settings = json is null
-            ? Normalize(new SettingsDto([.. initialRoots], SeedingEnabled: true, MaxUploadMBps: null, MaxDownloadMBps: null))
+            ? Normalize(new SettingsDto([.. initialRoots], SeedingEnabled: true, MaxUploadMBps: null, MaxDownloadMBps: null, TorrentDebugLogging: false))
             : Normalize(GameShareJson.Deserialize<SettingsDto>(json));
         return new SettingsService(db, settings);
     }
@@ -72,7 +72,10 @@ public sealed class SettingsService
 
         CheckLimit(s.MaxUploadMBps, nameof(s.MaxUploadMBps));
         CheckLimit(s.MaxDownloadMBps, nameof(s.MaxDownloadMBps));
-        return new SettingsDto(roots, s.SeedingEnabled, s.MaxUploadMBps, s.MaxDownloadMBps);
+
+        var unignored = (s.AllowedVirtualAdapterIds ?? [])
+            .Where(id => !string.IsNullOrWhiteSpace(id)).Distinct(StringComparer.Ordinal).ToList();
+        return new SettingsDto(roots, s.SeedingEnabled, s.MaxUploadMBps, s.MaxDownloadMBps, unignored, s.TorrentDebugLogging);
     }
 
     private static void CheckLimit(int? value, string name)

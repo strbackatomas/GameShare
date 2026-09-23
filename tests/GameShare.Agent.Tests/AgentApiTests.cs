@@ -71,6 +71,46 @@ public class AgentApiTests
         Assert.True(tooMany.Count <= 2000);
     }
 
+    /// <summary>Clearing hides earlier lines from the GUI without touching the file: the file sink keeps writing to it,
+    /// so a second handle truncating it live would race the sink's own write position and corrupt the log.</summary>
+    [Fact]
+    public async Task Logs_clear_hides_earlier_lines_but_keeps_them_on_disk()
+    {
+        await using var agent = await TestAgent.StartAsync("PC-01", TestAgent.DiscoveryPort());
+        Assert.Contains(await agent.GetAsync<List<string>>("/api/logs"), l => l.Contains("Agent running"));
+
+        (await agent.SendAsync(HttpMethod.Post, "/api/logs/clear")).EnsureSuccessStatusCode();
+
+        Assert.DoesNotContain(await agent.GetAsync<List<string>>("/api/logs"), l => l.Contains("Agent running"));
+
+        var logFile = Directory.GetFiles(Path.Combine(agent.Dir, "data", "logs"), "agent-*.log").Single();
+        using (var stream = new FileStream(logFile, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+        {
+            var onDisk = await new StreamReader(stream).ReadToEndAsync();
+            Assert.Contains("Agent running", onDisk);
+        }
+    }
+
+    /// <summary>A continuation line (a stack trace) has no timestamp of its own, so it must be hidden along with the
+    /// entry it belongs to, not kept forever just because it cannot be timestamp-checked on its own.</summary>
+    [Fact]
+    public void Clearing_also_hides_the_stack_trace_lines_of_an_earlier_error()
+    {
+        List<string> lines =
+        [
+            "2026-09-23 09:00:00.000 INF Before the clear",
+            "2026-09-23 09:00:01.000 ERR Something failed before the clear",
+            "System.Exception: boom",
+            "   at Some.Method()",
+            "2026-09-23 09:00:02.000 INF After the clear",
+        ];
+
+        var clearedAt = new DateTimeOffset(new DateTime(2026, 9, 23, 9, 0, 2, DateTimeKind.Local));
+        var kept = LocalApi.FilterClearedLines(lines, clearedAt);
+
+        Assert.Equal(["2026-09-23 09:00:02.000 INF After the clear"], kept);
+    }
+
     [Theory]
     [InlineData("""{"gameRoots":["relative\\path"],"seedingEnabled":true}""", "full path")]
     [InlineData("""{"gameRoots":[""],"seedingEnabled":true}""", "empty")]

@@ -18,14 +18,29 @@ public interface IAgentClient
     /// <summary>The games one PC on the LAN offers, for the network view's expanded row.</summary>
     Task<IReadOnlyList<OfferedGameDto>> GetPeerGamesAsync(string machineId, CancellationToken ct = default);
     Task<IReadOnlyList<DownloadDto>> GetDownloadsAsync(CancellationToken ct = default);
+
+    /// <summary>Who is pulling data from this PC right now, one row per game with at least one active peer.</summary>
+    Task<IReadOnlyList<UploadDto>> GetUploadsAsync(CancellationToken ct = default);
     Task<SettingsDto> GetSettingsAsync(CancellationToken ct = default);
     Task<SettingsDto> SaveSettingsAsync(SettingsDto settings, CancellationToken ct = default);
 
     /// <summary>The configured game folders with free space on each, for picking where to install.</summary>
     Task<IReadOnlyList<GameRootDto>> GetGameRootsAsync(CancellationToken ct = default);
 
+    /// <summary>Network adapters discovery could use, and which it currently skips as likely virtual.</summary>
+    Task<IReadOnlyList<NetworkAdapterDto>> GetNetworkAdaptersAsync(CancellationToken ct = default);
+
     /// <summary>The tail of the agent's own log file, newest last.</summary>
     Task<IReadOnlyList<string>> GetLogTailAsync(int maxLines = 500, CancellationToken ct = default);
+
+    /// <summary>Hides everything logged so far from <see cref="GetLogTailAsync"/>. Nothing is deleted from disk.</summary>
+    Task ClearLogAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Restarts the agent, so a startup-only setting change (for example TorrentDebugLogging) takes effect.
+    /// The connection drops while it happens; the caller does not need to do anything else.
+    /// </summary>
+    Task RestartAgentAsync(CancellationToken ct = default);
 
     /// <summary>How the agent follows the administrator's list of verified games, and whether that list loaded.</summary>
     Task<TrustStatusDto> GetTrustAsync(CancellationToken ct = default);
@@ -59,6 +74,13 @@ public interface IFolderPicker
 {
     /// <returns>The chosen folder, or null when the player cancelled.</returns>
     Task<string?> PickFolderAsync(CancellationToken ct = default);
+}
+
+/// <summary>Puts text on the system clipboard. The log view uses it: its coloured lines are separate controls, so
+/// dragging the mouse across several of them cannot select text the normal way.</summary>
+public interface IClipboard
+{
+    Task SetTextAsync(string text, CancellationToken ct = default);
 }
 
 /// <summary>

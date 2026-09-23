@@ -35,6 +35,9 @@ public static class AgentHost
             .MinimumLevel.Override("Microsoft.AspNetCore", LogEventLevel.Warning)
             .MinimumLevel.Override("Microsoft.Hosting", LogEventLevel.Warning)
             .MinimumLevel.Override("System.Net.Http", LogEventLevel.Warning)
+            // Always Debug: cheap on its own, the actual noise (extra libtorrent notification categories) is gated by
+            // Settings.TorrentDebugLogging when the transfer engine is built, below.
+            .MinimumLevel.Override("GameShare.Torrent", LogEventLevel.Debug)
             .Enrich.FromLogContext()
             .WriteTo.Console(outputTemplate: "{Timestamp:HH:mm:ss} {Level:u3} {Message:lj}{NewLine}{Exception}")
             .WriteTo.File(Path.Combine(dataDir, "logs", "agent-.log"), rollingInterval: RollingInterval.Day,
@@ -74,6 +77,7 @@ public static class AgentHost
             IdleReleaseAfter = options.SeedIdleRelease,
             MaxUploadBytesPerSecond = SettingsService.ToBytesPerSecond(settings.Current.MaxUploadMBps),
             MaxDownloadBytesPerSecond = SettingsService.ToBytesPerSecond(settings.Current.MaxDownloadMBps),
+            DebugLogging = settings.Current.TorrentDebugLogging,
         }, sp.GetRequiredService<ILogger<TorrentEngine>>()));
 
         services.AddSingleton<GameLibrary>();
@@ -86,7 +90,9 @@ public static class AgentHost
             sp.GetRequiredService<ILogger<DownloadManager>>(),
             new DownloadManagerOptions { TickInterval = options.DownloadTickInterval, ResumeSaveInterval = options.ResumeSaveInterval }));
 
-        services.AddSingleton<IDatagramTransport>(sp => new UdpDatagramTransport(options.DiscoveryPort, logger: sp.GetRequiredService<ILogger<UdpDatagramTransport>>()));
+        services.AddSingleton<IDatagramTransport>(sp => new UdpDatagramTransport(options.DiscoveryPort,
+            logger: sp.GetRequiredService<ILogger<UdpDatagramTransport>>(),
+            unignoredAdapterIds: () => new HashSet<string>(settings.Current.AllowedVirtualAdapterIds ?? [], StringComparer.Ordinal)));
         services.AddSingleton(sp => new DiscoveryService(
             new DiscoveryOptions
             {

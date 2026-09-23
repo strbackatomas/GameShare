@@ -76,7 +76,7 @@ public class EndToEndTests
         Assert.Equal(pc02.InstalledPath, main.Library.MyGames.Single().InstallPath);
         Assert.Equal(TestGame.HashTree(pc01.InstalledPath), TestGame.HashTree(pc02.InstalledPath));
         Assert.Empty(main.Library.LanGames); // installed, so no longer an offer
-        Assert.Equal(0, main.Items.Single(i => i.Title == "Stahování").Badge);
+        Assert.Equal(0, main.Items.Single(i => i.Title == "Přenosy").Badge);
 
         // The game changes on disk. A check explains it and the game leaves the LAN.
         var mine = main.Library.MyGames.Single();

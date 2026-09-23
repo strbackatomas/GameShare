@@ -78,10 +78,52 @@ public sealed partial class LibraryViewModel : ViewModelBase
     }
 }
 
-public sealed class DownloadsViewModel(AppModel app) : ViewModelBase
+/// <summary>One PC pulling data from this one right now, with its speed.</summary>
+public sealed record UploadPeerRow(string Name, string SpeedText);
+
+/// <summary>One game this PC is serving, with who is pulling it and at what speed.</summary>
+public sealed record UploadRow(string GameName, string SpeedText, IReadOnlyList<UploadPeerRow> Peers);
+
+public sealed partial class DownloadsViewModel : ViewModelBase
 {
-    public AppModel App { get; } = app;
+    private readonly AppModel _app;
+
+    public DownloadsViewModel(AppModel app)
+    {
+        _app = app;
+        App = app;
+    }
+
+    public AppModel App { get; }
     public ObservableCollection<DownloadViewModel> Downloads => App.Downloads;
+
+    /// <summary>Who is pulling data from this PC right now. Not pushed live like <see cref="Downloads"/>, so it is
+    /// reloaded whenever this page is opened; <see cref="LoadUploadsCommand"/> also lets the player ask again.</summary>
+    public ObservableCollection<UploadRow> Uploads { get; } = [];
+
+    [ObservableProperty] public partial bool HasUploads { get; set; }
+    [ObservableProperty] public partial bool IsLoadingUploads { get; set; }
+    [ObservableProperty] public partial string UploadsMessage { get; set; } = "";
+
+    [RelayCommand]
+    public async Task LoadUploadsAsync()
+    {
+        IsLoadingUploads = true;
+        try
+        {
+            await TryAsync(async () =>
+            {
+                var rows = await _app.Client.GetUploadsAsync();
+                Uploads.Clear();
+                foreach (var u in rows)
+                    Uploads.Add(new UploadRow(u.GameName, Format.Speed(u.TotalUploadRate),
+                        [.. u.Peers.Select(p => new UploadPeerRow(p.Name, Format.Speed(p.UploadRate)))]));
+                HasUploads = Uploads.Count > 0;
+                UploadsMessage = "";
+            }, m => UploadsMessage = m).ConfigureAwait(true);
+        }
+        finally { IsLoadingUploads = false; }
+    }
 }
 
 public sealed class NetworkViewModel(AppModel app) : ViewModelBase
@@ -160,6 +202,9 @@ public sealed partial class LogViewModel : ViewModelBase
 {
     private readonly AppModel _app;
 
+    /// <summary>True while <see cref="LoadAsync"/> applies the value read from the agent, so that does not itself trigger a save.</summary>
+    private bool _applyingLoadedSettings;
+
     public LogViewModel(AppModel app) => _app = app;
 
     public ObservableCollection<LogLineViewModel> Lines { get; } = [];
@@ -172,7 +217,16 @@ public sealed partial class LogViewModel : ViewModelBase
 
     [ObservableProperty] public partial bool IsLoading { get; set; }
 
+    /// <summary>Detailed libtorrent diagnostics. Saved at once when toggled; only takes effect after the agent restarts.</summary>
+    [ObservableProperty] public partial bool TorrentDebugLogging { get; set; }
+
+    /// <summary>The player is asked to confirm before the agent, and with it every in-progress transfer, is restarted.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowRestartButton))]
+    public partial bool IsConfirmingRestart { get; set; }
+
     public bool HasMessage => Message.Length > 0;
+    public bool ShowRestartButton => !IsConfirmingRestart;
 
     /// <summary>Reads the log again. Called when the page is opened, and by its own Refresh button.</summary>
     [RelayCommand]
@@ -188,9 +242,74 @@ public sealed partial class LogViewModel : ViewModelBase
                 foreach (var line in lines) Lines.Add(new LogLineViewModel(line));
                 IsEmpty = Lines.Count == 0;
                 Message = "";
+
+                var settings = await _app.Client.GetSettingsAsync();
+                _applyingLoadedSettings = true;
+                try { TorrentDebugLogging = settings.TorrentDebugLogging; }
+                finally { _applyingLoadedSettings = false; }
             }, m => Message = m).ConfigureAwait(true);
         }
         finally { IsLoading = false; }
+    }
+
+    /// <summary>Hides everything logged so far. Nothing is deleted on disk, only what this and later Load calls show.</summary>
+    [RelayCommand]
+    private async Task ClearAsync()
+    {
+        await TryAsync(async () =>
+        {
+            await _app.Client.ClearLogAsync();
+            await LoadAsync();
+        }, m => Message = m).ConfigureAwait(true);
+    }
+
+    /// <summary>
+    /// Saves the toggle on its own. Reads the settings fresh first and changes only this one field, so a stale copy of
+    /// the rest (the player may have the Settings page open with unsaved edits of its own) is never overwritten.
+    /// </summary>
+    partial void OnTorrentDebugLoggingChanged(bool value)
+    {
+        if (_applyingLoadedSettings) return;
+        _ = SaveTorrentDebugLoggingAsync(value);
+    }
+
+    private async Task SaveTorrentDebugLoggingAsync(bool value)
+    {
+        await TryAsync(async () =>
+        {
+            var fresh = await _app.Client.GetSettingsAsync();
+            await _app.Client.SaveSettingsAsync(fresh with { TorrentDebugLogging = value });
+            Message = "Uloženo. Projeví se až po restartu agenta.";
+        }, m => Message = m).ConfigureAwait(true);
+    }
+
+    [RelayCommand] private void RestartPrompt() => IsConfirmingRestart = true;
+    [RelayCommand] private void CancelRestart() => IsConfirmingRestart = false;
+
+    /// <summary>Restarts the agent. The connection drops for a moment; the usual reconnect picks it back up.</summary>
+    [RelayCommand]
+    private async Task ConfirmRestartAsync()
+    {
+        IsConfirmingRestart = false;
+        await TryAsync(async () =>
+        {
+            await _app.Client.RestartAgentAsync();
+            Message = "Agent se restartuje…";
+        }, m => Message = m).ConfigureAwait(true);
+    }
+
+    /// <summary>
+    /// Puts every loaded line on the clipboard as plain text. The lines are coloured by separate controls per segment,
+    /// so dragging the mouse across more than one of them does not select text the normal way; this is the workaround.
+    /// </summary>
+    [RelayCommand]
+    private async Task CopyAsync()
+    {
+        await TryAsync(async () =>
+        {
+            await _app.Clipboard.SetTextAsync(string.Join(Environment.NewLine, Lines.Select(l => l.Text)));
+            Message = "Zkopírováno do schránky.";
+        }, m => Message = m).ConfigureAwait(true);
     }
 }
 
@@ -207,6 +326,23 @@ public sealed class RootItem
     public IRelayCommand RemoveCommand { get; }
 }
 
+/// <summary>One network adapter discovery is currently ignoring, with a button to re-enable it.</summary>
+public sealed class AdapterItem
+{
+    public AdapterItem(string id, string name, string? description, Action<AdapterItem> unignore)
+    {
+        Id = id;
+        Name = name;
+        Description = description;
+        UnignoreCommand = new RelayCommand(() => unignore(this));
+    }
+
+    public string Id { get; }
+    public string Name { get; }
+    public string? Description { get; }
+    public IRelayCommand UnignoreCommand { get; }
+}
+
 public sealed partial class SettingsViewModel : ViewModelBase
 {
     private readonly AppModel _app;
@@ -217,6 +353,10 @@ public sealed partial class SettingsViewModel : ViewModelBase
     public AppModel App => _app;
 
     public ObservableCollection<RootItem> Roots { get; } = [];
+    public ObservableCollection<AdapterItem> IgnoredAdapters { get; } = [];
+
+    /// <summary>Adapters that look virtual but the player un-ignored. Sent back on save; grows as items leave <see cref="IgnoredAdapters"/>.</summary>
+    private List<string> _unignoredAdapterIds = [];
 
     [ObservableProperty] public partial string NewRoot { get; set; } = "";
     [ObservableProperty] public partial bool SeedingEnabled { get; set; } = true;
@@ -224,6 +364,7 @@ public sealed partial class SettingsViewModel : ViewModelBase
     [ObservableProperty] public partial string MaxDownloadText { get; set; } = "";
     [ObservableProperty] public partial string Message { get; set; } = "";
     [ObservableProperty] public partial bool IsLoaded { get; set; }
+    [ObservableProperty] public partial bool HasIgnoredAdapters { get; set; }
 
     /// <summary>Whether the administrator's list of verified games is followed, and whether it loaded. Read only, it is set on the PC itself.</summary>
     [ObservableProperty] public partial string TrustText { get; set; } = "";
@@ -264,6 +405,9 @@ public sealed partial class SettingsViewModel : ViewModelBase
             SeedingEnabled = s.SeedingEnabled;
             MaxUploadText = s.MaxUploadMBps?.ToString() ?? "";
             MaxDownloadText = s.MaxDownloadMBps?.ToString() ?? "";
+            _unignoredAdapterIds = [.. s.AllowedVirtualAdapterIds ?? []];
+            var adapters = await _app.Client.GetNetworkAdaptersAsync();
+            SetIgnoredAdapters(adapters.Where(a => a.Ignored));
             var trust = await _app.Client.GetTrustAsync();
             TrustEnabled = trust.Mode != TrustMode.Off;
             TrustText = DescribeTrust(trust);
@@ -301,6 +445,20 @@ public sealed partial class SettingsViewModel : ViewModelBase
         foreach (var p in paths) Roots.Add(new RootItem(p, r => Roots.Remove(r)));
     }
 
+    private void SetIgnoredAdapters(IEnumerable<NetworkAdapterDto> adapters)
+    {
+        IgnoredAdapters.Clear();
+        foreach (var a in adapters) IgnoredAdapters.Add(new AdapterItem(a.Id, a.Name, a.Description, Unignore));
+        HasIgnoredAdapters = IgnoredAdapters.Count > 0;
+    }
+
+    private void Unignore(AdapterItem item)
+    {
+        IgnoredAdapters.Remove(item);
+        HasIgnoredAdapters = IgnoredAdapters.Count > 0;
+        if (!_unignoredAdapterIds.Contains(item.Id)) _unignoredAdapterIds.Add(item.Id);
+    }
+
     [RelayCommand]
     private async Task SaveAsync()
     {
@@ -312,8 +470,9 @@ public sealed partial class SettingsViewModel : ViewModelBase
 
         await TryAsync(async () =>
         {
-            var saved = await _app.Client.SaveSettingsAsync(new SettingsDto([.. Roots.Select(r => r.Path)], SeedingEnabled, up, down));
+            var saved = await _app.Client.SaveSettingsAsync(new SettingsDto([.. Roots.Select(r => r.Path)], SeedingEnabled, up, down, _unignoredAdapterIds));
             SetRoots(saved.GameRoots); // the agent normalises paths, show what it kept
+            _unignoredAdapterIds = [.. saved.AllowedVirtualAdapterIds ?? []];
             Message = "Uloženo.";
         }, m => Message = m).ConfigureAwait(true);
         await _app.RefreshGamesAsync().ConfigureAwait(true);

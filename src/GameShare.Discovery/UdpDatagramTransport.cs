@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
@@ -6,6 +7,11 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace GameShare.Discovery;
+
+/// <summary>One network adapter GameShare could use, for the settings screen. Not filtered by anything.</summary>
+/// <param name="IsLikelyVirtual">A virtualiser's adapter (VirtualBox, Hyper-V, VMware, WSL, …), skipped by default because it usually
+/// has no real peer on the other end and its address flaps against the real adapter's, stalling transfers.</param>
+public sealed record NetworkAdapterInfo(string Id, string Name, string? Description, bool IsLikelyVirtual);
 
 /// <summary>
 /// Sends every datagram to the multicast group and to the directed broadcast address of each active IPv4 network
@@ -17,6 +23,10 @@ public sealed class UdpDatagramTransport : IDatagramTransport
 {
     public static readonly IPAddress DefaultGroup = IPAddress.Parse("239.255.77.77");
 
+    /// <summary>Substrings of an adapter's name or description that mark it as made by virtualisation software, not a real network link.</summary>
+    private static readonly string[] VirtualAdapterHints =
+        ["virtualbox", "vmware", "hyper-v", "virtual ethernet", "wsl", "docker", "npcap", "tap-windows"];
+
     private readonly int _port;
     private readonly IPAddress _group;
     private readonly ILogger _log;
@@ -24,12 +34,18 @@ public sealed class UdpDatagramTransport : IDatagramTransport
     private readonly Socket _sender;
     private readonly HashSet<IPAddress> _joined = [];
     private readonly HashSet<string> _warned = [];
+    private readonly Func<IReadOnlySet<string>> _unignoredAdapterIds;
 
-    public UdpDatagramTransport(int port, IPAddress? group = null, ILogger? logger = null)
+    /// <param name="unignoredAdapterIds">
+    /// Ids of adapters that look virtual (see <see cref="IsLikelyVirtual"/>) but should be used anyway, because the player said so
+    /// in settings. Read on every send, so a change takes effect without restarting. Defaults to none un-ignored.
+    /// </param>
+    public UdpDatagramTransport(int port, IPAddress? group = null, ILogger? logger = null, Func<IReadOnlySet<string>>? unignoredAdapterIds = null)
     {
         _port = port;
         _group = group ?? DefaultGroup;
         _log = logger ?? NullLogger.Instance;
+        _unignoredAdapterIds = unignoredAdapterIds ?? (() => EmptyIds);
 
         _receiver = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
         _receiver.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true); // several agents or tests per machine
@@ -45,17 +61,46 @@ public sealed class UdpDatagramTransport : IDatagramTransport
         JoinNewInterfaces(GetInterfaces());
     }
 
-    private sealed record Nic(string Name, IPAddress Address, IPAddress Broadcast);
+    private static readonly IReadOnlySet<string> EmptyIds = new HashSet<string>();
 
-    /// <summary>Active IPv4 adapters. Read on every send, so a changed or newly plugged adapter is picked up.</summary>
-    private static List<Nic> GetInterfaces()
+    private sealed record Nic(string Id, string Name, IPAddress Address, IPAddress Broadcast);
+
+    /// <summary>Whether the adapter was created by virtualisation software rather than being a real network link.</summary>
+    public static bool IsLikelyVirtual(NetworkInterface ni) => IsLikelyVirtual(ni.Description, ni.Name);
+
+    /// <summary>Same check on plain strings: a <see cref="NetworkInterface"/> cannot be built by hand, so tests use this overload.</summary>
+    public static bool IsLikelyVirtual(string? description, string name)
     {
+        var text = $"{description} {name}";
+        return VirtualAdapterHints.Any(hint => text.Contains(hint, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>Every up, non-loopback IPv4 adapter on this PC, real or virtual, for the settings screen. Not filtered.</summary>
+    public static IReadOnlyList<NetworkAdapterInfo> ListAdapters()
+    {
+        var result = new List<NetworkAdapterInfo>();
+        foreach (var ni in NetworkInterface.GetAllNetworkInterfaces())
+        {
+            if (ni.NetworkInterfaceType is NetworkInterfaceType.Loopback or NetworkInterfaceType.Tunnel) continue;
+            if (!ni.GetIPProperties().UnicastAddresses.Any(a => a.Address.AddressFamily == AddressFamily.InterNetwork)) continue;
+            result.Add(new NetworkAdapterInfo(ni.Id, ni.Name, ni.Description, IsLikelyVirtual(ni)));
+        }
+        return result;
+    }
+
+    /// <summary>Active IPv4 adapters discovery may use. Read on every send, so a changed or newly plugged adapter is picked up.</summary>
+    private List<Nic> GetInterfaces()
+    {
+        var unignored = _unignoredAdapterIds();
         var result = new List<Nic>();
         foreach (var ni in NetworkInterface.GetAllNetworkInterfaces())
         {
             if (ni.OperationalStatus != OperationalStatus.Up) continue;
             if (ni.NetworkInterfaceType is NetworkInterfaceType.Loopback or NetworkInterfaceType.Tunnel) continue;
             if (!ni.SupportsMulticast) continue;
+            // A virtualiser's adapter usually has no real peer on the other end, and its address flapping against the
+            // real adapter's is what stalls transfers (see UdpDatagramTransportTests). Skipped unless un-ignored.
+            if (IsLikelyVirtual(ni) && !unignored.Contains(ni.Id)) continue;
 
             foreach (var ua in ni.GetIPProperties().UnicastAddresses)
             {
@@ -64,7 +109,7 @@ public sealed class UdpDatagramTransport : IDatagramTransport
                 var mask = ua.IPv4Mask.GetAddressBytes();
                 var bcast = new byte[4];
                 for (int i = 0; i < 4; i++) bcast[i] = (byte)(ip[i] | ~mask[i]);
-                result.Add(new Nic(ni.Name, ua.Address, new IPAddress(bcast)));
+                result.Add(new Nic(ni.Id, ni.Name, ua.Address, new IPAddress(bcast)));
             }
         }
         return result;

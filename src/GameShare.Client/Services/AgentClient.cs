@@ -23,10 +23,17 @@ public sealed class AgentClient : IAgentClient
     public Task<IReadOnlyList<PeerDto>> GetPeersAsync(CancellationToken ct = default) => ListAsync<PeerDto>("/api/peers", ct);
     public Task<IReadOnlyList<OfferedGameDto>> GetPeerGamesAsync(string machineId, CancellationToken ct = default) => ListAsync<OfferedGameDto>($"/api/peers/{machineId}/games", ct);
     public Task<IReadOnlyList<DownloadDto>> GetDownloadsAsync(CancellationToken ct = default) => ListAsync<DownloadDto>("/api/downloads", ct);
+    public Task<IReadOnlyList<UploadDto>> GetUploadsAsync(CancellationToken ct = default) => ListAsync<UploadDto>("/api/uploads", ct);
     public Task<SettingsDto> GetSettingsAsync(CancellationToken ct = default) => SendAsync<SettingsDto>(HttpMethod.Get, "/api/settings", null, Quick, ct);
     public Task<SettingsDto> SaveSettingsAsync(SettingsDto settings, CancellationToken ct = default) => SendAsync<SettingsDto>(HttpMethod.Put, "/api/settings", settings, Quick, ct);
     public Task<IReadOnlyList<GameRootDto>> GetGameRootsAsync(CancellationToken ct = default) => ListAsync<GameRootDto>("/api/settings/roots", ct);
+    public Task<IReadOnlyList<NetworkAdapterDto>> GetNetworkAdaptersAsync(CancellationToken ct = default) => ListAsync<NetworkAdapterDto>("/api/settings/adapters", ct);
     public Task<IReadOnlyList<string>> GetLogTailAsync(int maxLines = 500, CancellationToken ct = default) => ListAsync<string>($"/api/logs?lines={maxLines}", ct);
+    public async Task ClearLogAsync(CancellationToken ct = default) =>
+        await SendAsync<object?>(HttpMethod.Post, "/api/logs/clear", null, Quick, ct).ConfigureAwait(false);
+
+    public async Task RestartAgentAsync(CancellationToken ct = default) =>
+        await SendAsync<object?>(HttpMethod.Post, "/api/agent/restart", null, Quick, ct).ConfigureAwait(false);
 
     public Task<TrustStatusDto> GetTrustAsync(CancellationToken ct = default) => SendAsync<TrustStatusDto>(HttpMethod.Get, "/api/trust", null, Quick, ct);
     public Task<TrustStatusDto> RefreshTrustAsync(CancellationToken ct = default) => SendAsync<TrustStatusDto>(HttpMethod.Post, "/api/trust/refresh", null, Slow, ct);

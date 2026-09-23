@@ -699,6 +699,23 @@ public class DownloadsTests
         return (main, app, agent, events);
     }
 
+    /// <summary>Uploads are not pushed live over events like downloads, so the page loads them itself when opened.</summary>
+    [Fact]
+    public async Task Opening_the_transfers_page_loads_who_is_pulling_from_this_pc()
+    {
+        var (main, _, agent, _) = await StartAsync();
+        agent.Uploads = [new UploadDto(A, "BeamNG.drive", 5_000_000, [new UploadPeerDto("PC-01", "10.0.0.1", 5_000_000)])];
+
+        main.SelectedItem = main.Items.Single(i => i.Title == "Přenosy");
+        await Task.Yield();
+        await main.Downloads.LoadUploadsAsync();
+
+        Assert.Contains("GetUploads", agent.Calls);
+        var row = main.Downloads.Uploads.Single();
+        Assert.Equal("BeamNG.drive", row.GameName);
+        Assert.Equal("PC-01", row.Peers.Single().Name);
+    }
+
     [Fact]
     public async Task A_running_download_shows_progress_speed_and_only_the_sources_that_are_sending()
     {
@@ -787,6 +804,19 @@ public class DownloadsTests
         Assert.Contains("Cancel(7|False)", agent.Calls);
     }
 
+    /// <summary>A cancelled install is kept as Failed forever (its folder must stay recognised for a retry), so
+    /// "Zahodit" is the only way to make it actually go away. Unlike plain cancel, it deletes the files too.</summary>
+    [Fact]
+    public async Task Discard_deletes_the_files_unlike_a_plain_cancel()
+    {
+        var (main, _, agent, _) = await StartAsync(Download(3, A, "BeamNG.drive", "Failed", 40, error: "Cancelled"));
+        var d = main.Downloads.Downloads.Single();
+
+        await d.DiscardCommand.ExecuteAsync(null);
+
+        Assert.Contains("Cancel(3|True)", agent.Calls);
+    }
+
     [Fact]
     public async Task A_failed_download_shows_why_and_a_refused_action_shows_the_reason()
     {
@@ -804,7 +834,7 @@ public class DownloadsTests
     public async Task The_downloads_tab_badge_counts_active_downloads_and_follows_them()
     {
         var (main, _, _, events) = await StartAsync(Download(1, A, "BeamNG.drive", "Downloading", 10));
-        var tab = main.Items.Single(i => i.Title == "Stahování");
+        var tab = main.Items.Single(i => i.Title == "Přenosy");
         Assert.Equal(1, tab.Badge);
         Assert.True(tab.HasBadge);
 
@@ -1086,6 +1116,24 @@ public class NetworkAndSettingsTests
         await main.Settings.SaveCommand.ExecuteAsync(null);
 
         Assert.Equal("Game folder 'relative\\path' must be a full path such as D:\\Games.", main.Settings.Message);
+    }
+}
+
+public class LogTests
+{
+    [Fact]
+    public async Task Copy_puts_every_loaded_line_on_the_clipboard_as_plain_text()
+    {
+        var agent = new FakeAgent { LogLines = ["2026-09-23 08:00:00.000 INF one", "2026-09-23 08:00:01.000 WRN two"] };
+        var clipboard = new FakeClipboard();
+        var app = new AppModel(agent, new FakeEvents(), new ImmediateDispatcher(), clipboard: clipboard);
+        var log = new LogViewModel(app);
+        await log.LoadCommand.ExecuteAsync(null);
+
+        await log.CopyCommand.ExecuteAsync(null);
+
+        Assert.Equal("2026-09-23 08:00:00.000 INF one" + Environment.NewLine + "2026-09-23 08:00:01.000 WRN two", clipboard.Text);
+        Assert.Equal("Zkopírováno do schránky.", log.Message);
     }
 }
 

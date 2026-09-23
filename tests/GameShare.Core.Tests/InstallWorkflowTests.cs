@@ -301,6 +301,69 @@ public class InstallWorkflowTests
         Assert.NotNull(await pc.Db.FindInstalledAsync(offer.Manifest.ContentHash));
     }
 
+    /// <summary>
+    /// The kept partial files are only recognised through the cancelled download's own record. A scan that ran
+    /// before a retry used to have no way to know that, so it hashed whatever partial or corrupt bytes were on disk
+    /// and registered them as a brand new, self-consistently "valid" game version — which then got seeded to the LAN
+    /// as if it were the real thing, and blocked both the retry and forgetting the old download afterwards.
+    /// </summary>
+    [Fact]
+    public async Task A_scan_between_cancelling_and_retrying_does_not_register_the_partial_files_as_a_new_game()
+    {
+        await using var source = await Pc.StartAsync();
+        source.AddGame();
+        await source.Library.ScanAsync([source.GamesRoot]);
+        await source.Seeds.StartAllAsync();
+        var offer = await source.OnlyKnownGameAsync();
+
+        await using var pc = await Pc.StartAsync(downloadLimit: 1_000_000);
+        var d = await pc.Downloads.StartInstallAsync(offer.Manifest, offer.TorrentBytes!, pc.GamesRoot);
+        await Poll.UntilAsync(async () => (await pc.Downloads.GetAsync(d.Id))!.Percent >= 5, "some data on disk");
+        await pc.Downloads.CancelAsync(d.Id, deleteFiles: false);
+
+        var scan = await pc.Library.ScanAsync([pc.GamesRoot]);
+        Assert.Equal(0, scan.Added);
+        Assert.Equal(1, scan.Skipped);
+        Assert.Empty(await pc.Db.ListInstallationsAsync());
+
+        var retry = await pc.Downloads.StartInstallAsync(offer.Manifest, offer.TorrentBytes!, pc.GamesRoot);
+        await Poll.DownloadStateAsync(pc, retry.Id, DownloadState.Completed);
+        Assert.NotNull(await pc.Db.FindInstalledAsync(offer.Manifest.ContentHash));
+    }
+
+    /// <summary>
+    /// Right after the seed stops, a big file can still be briefly held open (by the engine's own asynchronous
+    /// teardown, or by something external like an indexer). Uninstall must ride that out instead of giving up on the
+    /// first try and leaving a half-deleted, untracked folder for a later install to trip over as "already exists".
+    /// </summary>
+    [Fact]
+    public async Task Uninstall_retries_past_a_file_still_briefly_locked_right_after_the_seed_stops()
+    {
+        await using var source = await Pc.StartAsync();
+        source.AddGame();
+        await source.Library.ScanAsync([source.GamesRoot]);
+        await source.Seeds.StartAllAsync();
+        var offer = await source.OnlyKnownGameAsync();
+
+        await using var pc = await Pc.StartAsync();
+        var d = await pc.Downloads.StartInstallAsync(offer.Manifest, offer.TorrentBytes!, pc.GamesRoot);
+        await Poll.DownloadStateAsync(pc, d.Id, DownloadState.Completed);
+        var inst = Assert.Single(await pc.Db.ListInstallationsAsync());
+
+        var lockedFile = Path.Combine(inst.InstallPath, "content", "big.pak");
+        Task uninstall;
+        using (new FileStream(lockedFile, FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            uninstall = pc.Downloads.UninstallAsync(inst.Id, deleteFiles: true);
+            await Task.Delay(400); // outlasts the first retry while the file is still locked
+            Assert.False(uninstall.IsCompleted, "the delete should still be retrying, not already given up");
+        } // releasing the lock here lets the next retry succeed
+        await uninstall;
+
+        Assert.False(Directory.Exists(inst.InstallPath));
+        Assert.Empty(await pc.Db.ListInstallationsAsync());
+    }
+
     [Fact]
     public async Task Bad_requests_are_refused_up_front_with_clear_messages_and_write_nothing()
     {

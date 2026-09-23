@@ -35,6 +35,28 @@
             <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap"
                        Text="Hry se posílají jen po místní síti, nikdy do internetu." />
 
+            <StackPanel IsVisible="{Binding HasIgnoredAdapters}" Spacing="6">
+                <TextBlock Classes="section" Text="IGNOROVANÉ SÍŤOVÉ ADAPTÉRY" />
+                <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap"
+                           Text="Tyhle adaptéry vypadají jako virtuální (VirtualBox, Hyper-V, …) a GameShare je proto v hledání ostatních PC přeskakuje – jejich adresa se totiž plete se skutečnou síťovkou a stahování kvůli tomu vypadává. Klidně je zase zapni, pokud přes ně chceš opravdu sdílet." />
+
+                <ItemsControl ItemsSource="{Binding IgnoredAdapters}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:AdapterItem">
+                            <Border Classes="card" Padding="12,8">
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <StackPanel Grid.Column="0">
+                                        <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Text="{Binding Description}" Classes="muted" FontSize="12" TextTrimming="CharacterEllipsis" />
+                                    </StackPanel>
+                                    <Button Grid.Column="1" Content="Zapnout" Command="{Binding UnignoreCommand}" />
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+
             <TextBlock Classes="section" Text="OMEZENÍ RYCHLOSTI" />
             <Grid ColumnDefinitions="Auto,140,Auto,140" RowDefinitions="Auto" HorizontalAlignment="Left">
                 <TextBlock Grid.Column="0" Text="Odesílání (MB/s)" VerticalAlignment="Center" Margin="0,0,10,0" />

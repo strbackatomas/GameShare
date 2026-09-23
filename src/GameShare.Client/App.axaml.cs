@@ -25,7 +25,8 @@ public partial class App : Application
         {
             MainWindow? window = null;
             var app = new AppModel(AgentClient.Create(AgentUrl), new AgentEventStream(AgentUrl), new AvaloniaDispatcher(),
-                folderPicker: new AvaloniaFolderPicker(() => window)); // looked up when a folder is picked, the window does not exist yet here
+                folderPicker: new AvaloniaFolderPicker(() => window), // looked up when a folder is picked, the window does not exist yet here
+                clipboard: new AvaloniaClipboard(() => window));
             var main = new MainViewModel(app);
             window = new MainWindow { DataContext = main };
             desktop.MainWindow = window;

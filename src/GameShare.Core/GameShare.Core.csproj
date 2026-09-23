@@ -18,4 +18,8 @@
     <ProjectReference Include="..\GameShare.Discovery\GameShare.Discovery.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="GameShare.Core.Tests" />
+  </ItemGroup>
+
 </Project>

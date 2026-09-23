@@ -5,7 +5,46 @@
              x:DataType="vm:DownloadsViewModel">
 
     <ScrollViewer>
-        <StackPanel Margin="24,20,24,24" MaxWidth="980" HorizontalAlignment="Stretch">
+        <StackPanel Margin="24,20,24,24" MaxWidth="980" HorizontalAlignment="Stretch" Spacing="6">
+
+            <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding HasUploads}">
+                <TextBlock Grid.Column="0" Classes="section" Text="ODESÍLÁNÍ" VerticalAlignment="Center" />
+                <Button Grid.Column="1" Content="Obnovit" Command="{Binding LoadUploadsCommand}" IsEnabled="{Binding !IsLoadingUploads}" />
+            </Grid>
+            <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap" IsVisible="{Binding HasUploads}"
+                       Text="Kdo si od tebe zrovna co stahuje a jak rychle." />
+
+            <ItemsControl ItemsSource="{Binding Uploads}" IsVisible="{Binding HasUploads}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:UploadRow">
+                        <Border Classes="card" Padding="12,8">
+                            <StackPanel>
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <TextBlock Grid.Column="0" Text="{Binding GameName}" Classes="title" />
+                                    <TextBlock Grid.Column="1" Text="{Binding SpeedText}" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                </Grid>
+                                <ItemsControl ItemsSource="{Binding Peers}" Margin="0,6,0,0">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:UploadPeerRow">
+                                            <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,0,20,0">
+                                                <TextBlock Text="{Binding Name}" FontSize="12" />
+                                                <TextBlock Text="{Binding SpeedText}" Classes="muted" FontSize="12" />
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <TextBlock Text="{Binding UploadsMessage}" IsVisible="{Binding UploadsMessage.Length}" Foreground="{StaticResource DangerBrush}" TextWrapping="Wrap" />
+
+            <TextBlock Classes="section" Text="STAHOVÁNÍ" Margin="0,16,0,0" IsVisible="{Binding HasUploads}" />
 
             <TextBlock Classes="muted" HorizontalAlignment="Center" Margin="0,40" TextAlignment="Center"
                        IsVisible="{Binding !Downloads.Count}" Text="Nic se právě nestahuje." />
@@ -29,6 +68,7 @@
                                     <Button Content="Pozastavit" Command="{Binding PauseCommand}" IsVisible="{Binding IsRunning}" />
                                     <Button Classes="primary" Content="Pokračovat" Command="{Binding ResumeCommand}" IsVisible="{Binding IsPaused}" />
                                     <Button Classes="primary" Content="Zkusit znovu" Command="{Binding ResumeCommand}" IsVisible="{Binding IsFailed}" />
+                                    <Button Content="Zahodit" Command="{Binding DiscardCommand}" IsVisible="{Binding IsFailed}" />
                                     <Button Classes="danger" Content="Zrušit" Command="{Binding CancelCommand}" IsVisible="{Binding HasProgress}" />
                                     <Button Content="Skrýt" Command="{Binding CancelCommand}" IsVisible="{Binding IsFinished}" />
                                 </StackPanel>

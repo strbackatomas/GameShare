@@ -14,13 +14,16 @@ public sealed partial class AppModel : ViewModelBase, IAsyncDisposable
     private readonly IEventStream _events;
     private readonly IUiDispatcher _ui;
 
-    public AppModel(IAgentClient client, IEventStream events, IUiDispatcher ui, IGameStarter? starter = null, IFolderPicker? folderPicker = null)
+    public AppModel(
+        IAgentClient client, IEventStream events, IUiDispatcher ui,
+        IGameStarter? starter = null, IFolderPicker? folderPicker = null, IClipboard? clipboard = null)
     {
         Client = client;
         _events = events;
         _ui = ui;
         Starter = starter ?? new ProcessGameStarter();
         FolderPicker = folderPicker ?? new NoFolderPicker();
+        Clipboard = clipboard ?? new NoClipboard();
     }
 
     public IAgentClient Client { get; }
@@ -30,6 +33,9 @@ public sealed partial class AppModel : ViewModelBase, IAsyncDisposable
 
     /// <summary>Lets the settings page offer a real folder dialog instead of a path typed by hand.</summary>
     public IFolderPicker FolderPicker { get; }
+
+    /// <summary>Lets the log view copy its lines as plain text, since dragging the mouse across them cannot select text.</summary>
+    public IClipboard Clipboard { get; }
 
     public ObservableCollection<GameCardViewModel> Games { get; } = [];
     public ObservableCollection<DownloadViewModel> Downloads { get; } = [];

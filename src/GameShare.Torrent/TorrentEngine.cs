@@ -43,6 +43,12 @@ public sealed record TorrentEngineOptions
 
     /// <summary>Address ranges allowed when <see cref="LanOnly"/> is on. Null means the private ranges. Mainly for tests.</summary>
     public IReadOnlyList<IpRange>? AllowedRanges { get; init; }
+
+    /// <summary>
+    /// Off by default. Subscribes to libtorrent's own Storage/PerformanceWarning/SessionLog/TorrentLog/PeerLog notifications,
+    /// which only show up if the logger's minimum level is Debug too. Noisy, meant for chasing a stalled or slow transfer.
+    /// </summary>
+    public bool DebugLogging { get; init; }
 }
 
 /// <summary>Inclusive IPv4 range.</summary>
@@ -79,10 +85,15 @@ public sealed class TorrentEngine : IDisposable
         options ??= new TorrentEngineOptions();
         _log = logger ?? NullLogger<TorrentEngine>.Instance;
 
-        _client = new TorrentClient(new TorrentClientConfig
-        {
-            NotificationCategories = NotificationCategories.Status | NotificationCategories.Peer | NotificationCategories.Error,
-        });
+        var categories = NotificationCategories.Status | NotificationCategories.Peer | NotificationCategories.Error;
+        if (options.DebugLogging)
+            // Storage (file open/close/move), PerformanceWarning (limits being hit) and libtorrent's own internal
+            // Session/Torrent/Peer logs. Left out: the per-block/per-request categories, which fire thousands of
+            // times a second and would drown everything else.
+            categories |= NotificationCategories.Storage | NotificationCategories.PerformanceWarning
+                | NotificationCategories.SessionLog | NotificationCategories.TorrentLog | NotificationCategories.PeerLog;
+
+        _client = new TorrentClient(new TorrentClientConfig { NotificationCategories = categories });
         _client.NotificationRaised += OnNotification;
 
         var pack = new SettingsPack()
@@ -310,6 +321,9 @@ public sealed class TorrentEngine : IDisposable
                 break;
             case PeerNotification p:
                 _log.LogInformation("Peer {Event}: {Address} on torrent {InfoHash}", p.NotificationType, p.Address, p.TorrentManager.InfoHash);
+                break;
+            case PerformanceWarningNotification w:
+                _log.LogWarning("libtorrent performance warning: {WarningCode}", w.WarningCode);
                 break;
             default:
                 _log.LogDebug("libtorrent: {Message}", n.Message);

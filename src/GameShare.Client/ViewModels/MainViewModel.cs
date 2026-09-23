@@ -31,7 +31,7 @@ public sealed partial class MainViewModel : ViewModelBase
         Items =
         [
             new NavItem("Knihovna", Library),
-            new NavItem("Stahování", Downloads, () => app.ActiveDownloadCount),
+            new NavItem("Přenosy", Downloads, () => app.ActiveDownloadCount),
             new NavItem("Síť", Network, () => app.Peers.Count),
             new NavItem("Nastavení", Settings),
             new NavItem("Protokol", Log),
@@ -55,11 +55,12 @@ public sealed partial class MainViewModel : ViewModelBase
 
     [ObservableProperty] public partial NavItem SelectedItem { get; set; }
 
-    /// <summary>Settings and the log are read from the agent when their page is opened, so they are never stale.</summary>
+    /// <summary>Settings, the log and uploads are read from the agent when their page is opened, so they are never stale.</summary>
     partial void OnSelectedItemChanged(NavItem value)
     {
         if (value.Page == Settings) _ = Settings.LoadAsync();
         else if (value.Page == Log) _ = Log.LoadAsync();
+        else if (value.Page == Downloads) _ = Downloads.LoadUploadsAsync();
     }
 
     private void RefreshBadges()

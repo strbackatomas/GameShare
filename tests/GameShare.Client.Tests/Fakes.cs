@@ -52,6 +52,10 @@ internal sealed class FakeAgent : IAgentClient
     public Task<IReadOnlyList<OfferedGameDto>> GetPeerGamesAsync(string machineId, CancellationToken ct = default) =>
         Do<IReadOnlyList<OfferedGameDto>>($"GetPeerGames({machineId})", () => PeerGames.TryGetValue(machineId, out var g) ? [.. g] : []);
     public Task<IReadOnlyList<DownloadDto>> GetDownloadsAsync(CancellationToken ct = default) => Do<IReadOnlyList<DownloadDto>>("GetDownloads", () => [.. Downloads]);
+
+    public List<UploadDto> Uploads { get; set; } = [];
+
+    public Task<IReadOnlyList<UploadDto>> GetUploadsAsync(CancellationToken ct = default) => Do<IReadOnlyList<UploadDto>>("GetUploads", () => [.. Uploads]);
     public Task<SettingsDto> GetSettingsAsync(CancellationToken ct = default) => Do("GetSettings", () => Settings);
 
     public Task<SettingsDto> SaveSettingsAsync(SettingsDto settings, CancellationToken ct = default) =>
@@ -63,10 +67,19 @@ internal sealed class FakeAgent : IAgentClient
     public Task<IReadOnlyList<GameRootDto>> GetGameRootsAsync(CancellationToken ct = default) =>
         Do<IReadOnlyList<GameRootDto>>("GetGameRoots", () => GameRoots.Count > 0 ? [.. GameRoots] : [.. Settings.GameRoots.Select(r => new GameRootDto(r, null))]);
 
+    public List<NetworkAdapterDto> Adapters { get; set; } = [];
+
+    public Task<IReadOnlyList<NetworkAdapterDto>> GetNetworkAdaptersAsync(CancellationToken ct = default) =>
+        Do<IReadOnlyList<NetworkAdapterDto>>("GetNetworkAdapters", () => [.. Adapters]);
+
     public List<string> LogLines { get; set; } = [];
 
     public Task<IReadOnlyList<string>> GetLogTailAsync(int maxLines = 500, CancellationToken ct = default) =>
         Do<IReadOnlyList<string>>($"GetLogTail({maxLines})", () => [.. LogLines]);
+
+    public Task ClearLogAsync(CancellationToken ct = default) => Do("ClearLog", () => (object?)null);
+
+    public Task RestartAgentAsync(CancellationToken ct = default) => Do("RestartAgent", () => (object?)null);
 
     public Task<TrustStatusDto> GetTrustAsync(CancellationToken ct = default) => Do("GetTrust", () => Trust);
     public Task<TrustStatusDto> RefreshTrustAsync(CancellationToken ct = default) => Do("RefreshTrust", () => Trust);
@@ -126,6 +139,18 @@ internal sealed class FakeFolderPicker : IFolderPicker
     {
         Calls++;
         return Task.FromResult(NextPath);
+    }
+}
+
+/// <summary>Records what was put on the clipboard, instead of touching the real one.</summary>
+internal sealed class FakeClipboard : IClipboard
+{
+    public string? Text { get; private set; }
+
+    public Task SetTextAsync(string text, CancellationToken ct = default)
+    {
+        Text = text;
+        return Task.CompletedTask;
     }
 }
 

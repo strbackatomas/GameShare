@@ -167,6 +167,9 @@ public sealed class SeedManager
     /// <summary>Which pieces of the game this PC has and can prove, or null when it is not being seeded.</summary>
     public bool[]? GetPiecesHave(StoredManifest stored) => FindTransfer(stored)?.GetPiecesHave();
 
+    /// <summary>Peers connected to this game's seed right now, sending or not. Empty when it is not being seeded.</summary>
+    public IReadOnlyList<PeerSnapshot> GetPeers(StoredManifest stored) => FindTransfer(stored)?.GetPeers() ?? [];
+
     private TorrentTransfer? FindTransfer(StoredManifest? stored) =>
         _engine.Transfers.FirstOrDefault(t => string.Equals(t.InfoHash, stored?.Manifest.TorrentInfoHash, StringComparison.OrdinalIgnoreCase));
 

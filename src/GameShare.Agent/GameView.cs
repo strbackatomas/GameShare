@@ -15,10 +15,11 @@ public sealed class GameView
     private readonly TrustService _trust;
     private readonly LaunchService _launch;
     private readonly RunningGames _running;
+    private readonly SeedManager _seeds;
 
     public GameView(
         GameLibrary library, DownloadManager downloads, PeerCatalog catalog, DiscoveryService discovery, GameChangeTracker changes, TrustService trust,
-        LaunchService launch, RunningGames running)
+        LaunchService launch, RunningGames running, SeedManager seeds)
     {
         _launch = launch;
         _running = running;
@@ -28,6 +29,7 @@ public sealed class GameView
         _downloads = downloads;
         _catalog = catalog;
         _discovery = discovery;
+        _seeds = seeds;
     }
 
     public async Task<IReadOnlyList<GameDto>> ListGamesAsync(CancellationToken ct = default)
@@ -134,6 +136,27 @@ public sealed class GameView
     }
 
     public static SeedDto ToDto(SeedEvent e, string contentHash) => new(contentHash, e.GameName, e.Installation.InstallPath);
+
+    /// <summary>Every installed game with at least one PC actively pulling it right now, fastest overall first.</summary>
+    public async Task<IReadOnlyList<UploadDto>> ListUploadsAsync(CancellationToken ct = default)
+    {
+        var names = _discovery.Peers.ToLookup(p => p.Address.ToString(), p => p.MachineName);
+        var result = new List<UploadDto>();
+        foreach (var g in await _library.ListAsync(ct).ConfigureAwait(false))
+        {
+            if (g.Installation is not { State: InstallationState.Installed }) continue;
+
+            var peers = _seeds.GetPeers(g.Stored)
+                .Where(p => p.UploadRate > 0)
+                .Select(p => new UploadPeerDto(names[StripPort(p.Address)].FirstOrDefault() ?? StripPort(p.Address), StripPort(p.Address), p.UploadRate))
+                .OrderByDescending(p => p.UploadRate)
+                .ToList();
+            if (peers.Count == 0) continue;
+
+            result.Add(new UploadDto(g.Stored.Manifest.ContentHash, g.Stored.Manifest.Name, peers.Sum(p => p.UploadRate), peers));
+        }
+        return result.OrderByDescending(u => u.TotalUploadRate).ToList();
+    }
 
     private static IReadOnlyList<string> PartialNames(IEnumerable<RemoteOffer> offers) =>
         offers.Where(o => !o.Game.IsComplete).Select(o => o.Peer.MachineName).Distinct(StringComparer.OrdinalIgnoreCase)

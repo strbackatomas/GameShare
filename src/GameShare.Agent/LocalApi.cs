@@ -1,9 +1,11 @@
+using System.Diagnostics;
 using System.Text.RegularExpressions;
 using GameShare.Core;
 using GameShare.Core.Data;
 using GameShare.Discovery;
 using GameShare.Protocol;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Hosting.WindowsServices;
 
 namespace GameShare.Agent;
 
@@ -28,6 +30,29 @@ public static partial class LocalApi
                 discovery.Peers.Count, games.Count(g => g.Installation is { State: InstallationState.Installed }), active);
         });
 
+        // Restarts the agent so a setting that is only read at startup (e.g. TorrentDebugLogging) takes effect.
+        // Waits for the normal graceful shutdown (hosted services get to stop cleanly, e.g. resume data is saved)
+        // before relaunching. A Windows service is left to its own configured failure/restart action (see
+        // scripts/install-agent.ps1) rather than self-launched, so it stays under the Service Control Manager.
+        api.MapPost("/agent/restart", (IHostApplicationLifetime lifetime) =>
+        {
+            lifetime.ApplicationStopped.Register(() =>
+            {
+                if (!WindowsServiceHelpers.IsWindowsService())
+                {
+                    var exe = Environment.ProcessPath;
+                    if (exe is not null)
+                    {
+                        try { Process.Start(exe, Environment.GetCommandLineArgs().Skip(1)); }
+                        catch { /* best effort; this process is exiting anyway */ }
+                    }
+                }
+                Environment.Exit(0);
+            });
+            lifetime.StopApplication();
+            return Results.Accepted();
+        });
+
         api.MapGet("/settings", (SettingsService settings) => settings.Current);
         api.MapPut("/settings", async (SettingsDto request, SettingsService settings, CancellationToken ct) =>
             await settings.UpdateAsync(request, ct));
@@ -36,14 +61,35 @@ public static partial class LocalApi
         api.MapGet("/settings/roots", (SettingsService settings) =>
             settings.Current.GameRoots.Select(r => new GameRootDto(r, DownloadManager.GetFreeSpace(r))).ToList());
 
+        // Network adapters discovery could use, and which of them it currently skips because they look virtual
+        // (VirtualBox, Hyper-V, …) and were not re-enabled in settings.
+        api.MapGet("/settings/adapters", (SettingsService settings) =>
+        {
+            var unignored = settings.Current.AllowedVirtualAdapterIds ?? [];
+            return UdpDatagramTransport.ListAdapters()
+                .Select(a => new NetworkAdapterDto(a.Id, a.Name, a.Description, a.IsLikelyVirtual, a.IsLikelyVirtual && !unignored.Contains(a.Id)))
+                .ToList();
+        });
+
         // The tail of today's log file, so the GUI can show what the agent is doing without a trip to the data folder.
-        api.MapGet("/logs", (int? lines, AgentOptions options) => TailLog(options.ResolveDataDir(), Math.Clamp(lines ?? 200, 1, 2000)));
+        api.MapGet("/logs", async (int? lines, AgentOptions options, GameShareDb db, CancellationToken ct) =>
+            await TailLogAsync(options.ResolveDataDir(), Math.Clamp(lines ?? 200, 1, 2000), db, ct).ConfigureAwait(false));
+
+        // Hides everything logged before now from the GUI. Nothing is deleted from disk, so it is still there for support.
+        api.MapPost("/logs/clear", async (GameShareDb db, CancellationToken ct) =>
+        {
+            await db.SetSettingAsync(LogClearedAtKey, DateTimeOffset.UtcNow.ToString("O"), ct).ConfigureAwait(false);
+            return Results.NoContent();
+        });
 
         // The administrator's list of verified games, and whether it loaded. Refreshing asks the source again now.
         api.MapGet("/trust", (TrustService trust) => trust.Status());
         api.MapPost("/trust/refresh", async (TrustService trust, CancellationToken ct) => await trust.RefreshAsync(ct));
 
         api.MapGet("/peers", (DiscoveryService discovery, GameView view) => discovery.Peers.Select(view.ToDto).ToList());
+
+        // Who is pulling data from this PC right now, and how fast. Only games with at least one active peer.
+        api.MapGet("/uploads", async (GameView view, CancellationToken ct) => await view.ListUploadsAsync(ct));
 
         // What one PC on the LAN offers, for the network view's expanded row. Empty for a PC that is unknown or offers nothing.
         api.MapGet("/peers/{machineId}/games", (string machineId, PeerCatalog catalog) =>
@@ -237,9 +283,15 @@ public static partial class LocalApi
             throw new ArgumentException("The game id must be 64 lowercase hexadecimal characters, the content hash from the game list.");
     }
 
-    /// <summary>The last <paramref name="maxLines"/> lines of the newest "agent-*.log" file (see AgentHost's file sink),
-    /// opened for shared read so a log still being written does not block this. Empty when nothing has logged yet.</summary>
-    private static List<string> TailLog(string dataDir, int maxLines)
+    private const string LogClearedAtKey = "log.clearedAt";
+
+    /// <summary>
+    /// The last <paramref name="maxLines"/> lines of the newest "agent-*.log" file (see AgentHost's file sink), opened for
+    /// shared read so a log still being written does not block this. Empty when nothing has logged yet.
+    /// Lines from before the last "/logs/clear" are left out: the file itself is never truncated while Serilog still has it
+    /// open for writing, doing that from a second handle would race Serilog's own write position and corrupt the file.
+    /// </summary>
+    private static async Task<List<string>> TailLogAsync(string dataDir, int maxLines, GameShareDb db, CancellationToken ct)
     {
         var dir = Path.Combine(dataDir, "logs");
         var newest = Directory.Exists(dir) ? Directory.EnumerateFiles(dir, "agent-*.log").OrderByDescending(f => f).FirstOrDefault() : null;
@@ -248,7 +300,41 @@ public static partial class LocalApi
         using var stream = new FileStream(newest, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
         using var reader = new StreamReader(stream);
         var lines = new List<string>();
-        for (string? line; (line = reader.ReadLine()) is not null;) lines.Add(line);
+        for (string? line; (line = await reader.ReadLineAsync(ct).ConfigureAwait(false)) is not null;) lines.Add(line);
+
+        var clearedAtRaw = await db.GetSettingAsync(LogClearedAtKey, ct).ConfigureAwait(false);
+        if (clearedAtRaw is not null && DateTimeOffset.TryParse(clearedAtRaw, out var clearedAt))
+            lines = FilterClearedLines(lines, clearedAt);
+
         return lines.Count <= maxLines ? lines : lines.GetRange(lines.Count - maxLines, maxLines);
+    }
+
+    /// <summary>
+    /// Drops every line logged before <paramref name="clearedAt"/>. A continuation line (a stack trace) has no
+    /// timestamp of its own: it belongs to whichever entry logged just before it, so it is kept or dropped along with
+    /// that entry rather than always being kept. Public so this can be tested without a running agent.
+    /// </summary>
+    public static List<string> FilterClearedLines(IReadOnlyList<string> lines, DateTimeOffset clearedAt)
+    {
+        var kept = new List<string>();
+        bool showing = true;
+        foreach (var l in lines)
+        {
+            if (TryParseLineTime(l, out var t)) showing = t >= clearedAt;
+            if (showing) kept.Add(l);
+        }
+        return kept;
+    }
+
+    /// <summary>AgentHost's Serilog template starts every line with "yyyy-MM-dd HH:mm:ss.fff" in local time. A continuation
+    /// line of a stack trace has none, and is kept regardless: it belongs to whichever entry logged just before it.</summary>
+    private static bool TryParseLineTime(string line, out DateTimeOffset time)
+    {
+        time = default;
+        if (line.Length < 23) return false;
+        if (!DateTime.TryParseExact(line[..23], "yyyy-MM-dd HH:mm:ss.fff", null, System.Globalization.DateTimeStyles.AssumeLocal, out var t))
+            return false;
+        time = new DateTimeOffset(t.ToUniversalTime());
+        return true;
     }
 }

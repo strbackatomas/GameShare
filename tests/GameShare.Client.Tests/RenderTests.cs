@@ -109,7 +109,7 @@ public class RenderTests
     public async Task Downloads_page_shows_progress_and_sources()
     {
         var main = await BuildAsync(Populated());
-        var frame = await ShowAsync(main, "Stahování", "downloads.png");
+        var frame = await ShowAsync(main, "Přenosy", "downloads.png");
         Assert.True(DistinctColours(frame) > 200);
     }
 
@@ -139,7 +139,7 @@ public class RenderTests
         var main = await BuildAsync(agent);
 
         var library = await ShowAsync(main, "Knihovna", "no-agent-library.png");
-        var downloads = await ShowAsync(main, "Stahování", "no-agent-downloads.png");
+        var downloads = await ShowAsync(main, "Přenosy", "no-agent-downloads.png");
         var network = await ShowAsync(main, "Síť", "no-agent-network.png");
 
         Assert.All(new[] { library, downloads, network }, f => Assert.True(DistinctColours(f) > 30));

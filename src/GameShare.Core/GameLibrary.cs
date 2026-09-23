@@ -234,11 +234,19 @@ public sealed class GameLibrary
         (await _db.ListInstallationsAsync(ct).ConfigureAwait(false))
             .FirstOrDefault(i => string.Equals(i.InstallPath, path, StringComparison.OrdinalIgnoreCase));
 
-    /// <summary>Folders an unfinished download is writing into. Scanning them would register half a game.</summary>
+    /// <summary>
+    /// Folders a download still claims, so a scan must leave them alone. An active one is still writing into it.
+    /// A failed install whose partial files were kept claims it too: nothing has registered that folder as a game, so
+    /// without this a scan would hash whatever partial or corrupt bytes are there and register it as a brand new
+    /// version, in place of the retry or repair the kept files were actually for. A completed install, and a failed
+    /// update or repair, already have their own <see cref="Installation"/> record and are verified through that instead.
+    /// </summary>
     private async Task<HashSet<string>> PathsBeingInstalledAsync(CancellationToken ct)
     {
         var busy = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var d in (await _db.ListDownloadsAsync(ct).ConfigureAwait(false)).Where(d => d.IsActive))
+        var claiming = (await _db.ListDownloadsAsync(ct).ConfigureAwait(false))
+            .Where(d => d.Kind == DownloadKind.Install && (d.IsActive || d.State == DownloadState.Failed));
+        foreach (var d in claiming)
         {
             var m = await _db.GetManifestAsync(d.ContentHash, ct).ConfigureAwait(false);
             if (m is not null) busy.Add(Path.GetFullPath(Path.Combine(d.TargetRoot, m.Manifest.FolderName)));

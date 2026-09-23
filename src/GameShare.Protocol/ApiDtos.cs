@@ -98,6 +98,12 @@ public sealed record DownloadDto(
 
 public sealed record SeedDto(string ContentHash, string GameName, string InstallPath);
 
+/// <summary>One PC currently pulling data from this one.</summary>
+public sealed record UploadPeerDto(string Name, string Address, long UploadRate);
+
+/// <summary>One game this PC is seeding, and who is pulling it right now. Only games with at least one active peer are listed.</summary>
+public sealed record UploadDto(string ContentHash, string GameName, long TotalUploadRate, IReadOnlyList<UploadPeerDto> Peers);
+
 public sealed record InstallRequest(string? TargetRoot);
 
 public sealed record ScanResultDto(
@@ -112,11 +118,25 @@ public sealed record GameChangesDto(
 public sealed record AddVolatileRequest(IReadOnlyList<string> Patterns);
 
 /// <param name="MaxUploadMBps">Megabytes (10^6 bytes) per second, null for unlimited.</param>
-public sealed record SettingsDto(IReadOnlyList<string> GameRoots, bool SeedingEnabled, int? MaxUploadMBps, int? MaxDownloadMBps);
+/// <param name="AllowedVirtualAdapterIds">
+/// Ids of network adapters that look virtual (VirtualBox, Hyper-V, …) but the player re-enabled for discovery anyway. Null is the
+/// same as empty, kept nullable only so old clients that do not send it are not treated as clearing the list.
+/// </param>
+/// <param name="TorrentDebugLogging">
+/// Off by default: libtorrent's own Storage/PerformanceWarning/SessionLog/TorrentLog/PeerLog notifications are noisy, only useful
+/// to chase a stalled or slow transfer. Read once when the transfer engine starts, so a change needs the agent restarted.
+/// </param>
+public sealed record SettingsDto(
+    IReadOnlyList<string> GameRoots, bool SeedingEnabled, int? MaxUploadMBps, int? MaxDownloadMBps,
+    IReadOnlyList<string>? AllowedVirtualAdapterIds = null, bool TorrentDebugLogging = false);
 
 /// <summary>One configured game folder, with how much room is left on its drive.</summary>
 /// <param name="FreeBytes">Null when it could not be read, for example a network share.</param>
 public sealed record GameRootDto(string Path, long? FreeBytes);
+
+/// <summary>One network adapter discovery could use, for the settings screen.</summary>
+/// <param name="Ignored">True when this adapter is currently skipped by discovery: it looks virtual and was not re-enabled.</param>
+public sealed record NetworkAdapterDto(string Id, string Name, string? Description, bool IsLikelyVirtual, bool Ignored);
 
 public enum LaunchState
 {
