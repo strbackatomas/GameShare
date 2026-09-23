@@ -1,3 +1,4 @@
+using GameShare.Protocol;
 using GameShare.Storage;
 
 namespace GameShare.Admin;
@@ -29,6 +30,9 @@ public static class AdminCli
         gameshare-admin gui
             Opens the graphical version of this tool, if it was published alongside this one.
 
+        gameshare-admin --version
+            Prints the version of this build.
+
         The password can also be given in the environment variable GAMESHARE_KEY_PASSWORD.
         Publish the list file at an https address or on a share and give that to the PCs as Agent:TrustListSource.
         """;
@@ -39,6 +43,7 @@ public static class AdminCli
         try
         {
             if (args.Length == 0 || args[0] is "-h" or "--help" or "help") { output.WriteLine(Usage); return args.Length == 0 ? 2 : 0; }
+            if (args[0] is "-v" or "--version" or "version") { output.WriteLine($"gameshare-admin {AppVersion.Current}"); return 0; }
             var (positional, options) = Parse(args[1..]);
 
             switch (args[0])

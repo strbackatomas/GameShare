@@ -2,5 +2,9 @@
   <!-- Applies to production code only. Test projects keep the SDK defaults. -->
   <PropertyGroup>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <!-- The one place the app's version is set. Follows semver.org; bump it and add an entry to CHANGELOG.md together,
+         see "Verzování" in README.md. Every project under src\ picks it up, so agent, client and peers on the LAN
+         always agree on what "the same version" means. -->
+    <Version>0.1.0</Version>
   </PropertyGroup>
 </Project>

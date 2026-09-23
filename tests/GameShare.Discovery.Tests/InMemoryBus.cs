@@ -61,7 +61,7 @@ internal sealed class Node : IAsyncDisposable
     public ConcurrentQueue<PeerEvent> Events { get; } = new();
     public string MachineId { get; }
 
-    public Node(string name, IDatagramTransport transport, TimeSpan? helloInterval = null, TimeSpan? timeout = null)
+    public Node(string name, IDatagramTransport transport, TimeSpan? helloInterval = null, TimeSpan? timeout = null, string? appVersion = null)
     {
         MachineId = "id-" + name;
         Transport = transport;
@@ -71,6 +71,7 @@ internal sealed class Node : IAsyncDisposable
                 MachineId = MachineId,
                 MachineName = name,
                 AgentPort = 5150,
+                AppVersion = appVersion,
                 HelloInterval = helloInterval ?? TimeSpan.FromMilliseconds(300),
                 PeerTimeout = timeout ?? TimeSpan.FromMilliseconds(1000),
             },

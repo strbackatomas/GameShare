@@ -12,6 +12,9 @@ public sealed record DiscoveryOptions
     /// <summary>Port of this agent's HTTP API, which peers use to fetch manifests and torrents.</summary>
     public required int AgentPort { get; init; }
 
+    /// <summary>This agent's GameShare version, announced to peers for display only. Opaque to discovery itself.</summary>
+    public string? AppVersion { get; init; }
+
     public TimeSpan HelloInterval { get; init; } = TimeSpan.FromSeconds(10);
 
     /// <summary>A peer not heard from for this long is considered gone. Must cover a few missed hellos.</summary>
@@ -76,7 +79,7 @@ public sealed class DiscoveryService
     private Task SendAsync(string type, CancellationToken ct, TimeSpan? timeout = null) =>
         SafeAsync(async () =>
         {
-            var message = new DiscoveryMessage(type, DiscoveryMessage.CurrentVersion, _options.MachineId, _options.MachineName, _options.AgentPort);
+            var message = new DiscoveryMessage(type, DiscoveryMessage.CurrentVersion, _options.MachineId, _options.MachineName, _options.AgentPort, _options.AppVersion);
             using var cts = timeout is null ? null : new CancellationTokenSource(timeout.Value);
             using var linked = cts is null ? null : CancellationTokenSource.CreateLinkedTokenSource(ct, cts.Token);
             await _transport.SendAsync(message.Serialize(), linked?.Token ?? ct).ConfigureAwait(false);

@@ -17,14 +17,21 @@
                         <Border Classes="card">
                             <StackPanel Spacing="10">
                                 <Button Classes="row" Command="{Binding ToggleExpandCommand}">
-                                    <Grid ColumnDefinitions="Auto,Auto,Auto,*,Auto">
+                                    <Grid ColumnDefinitions="Auto,Auto,Auto,*,Auto,Auto">
                                         <Ellipse Grid.Column="0" Width="10" Height="10" Fill="{StaticResource SuccessBrush}" VerticalAlignment="Center" Margin="0,0,14,0" />
                                         <TextBlock Grid.Column="1" Text="{Binding Chevron}" Classes="muted" VerticalAlignment="Center" Width="16" />
                                         <StackPanel Grid.Column="3" Spacing="2" Margin="6,0,0,0">
                                             <TextBlock Text="{Binding Name}" Classes="title" />
                                             <TextBlock Text="{Binding Address}" Classes="muted" FontSize="12" />
                                         </StackPanel>
-                                        <TextBlock Grid.Column="4" Text="{Binding GamesText}" Classes="muted" VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="4" Text="{Binding VersionText}" Classes="muted" FontSize="12" VerticalAlignment="Center"
+                                                   Margin="0,0,10,0" IsVisible="{Binding ShowVersionPlain}" />
+                                        <Border Grid.Column="4" Classes="chip" Background="{StaticResource WarnBrush}" VerticalAlignment="Center"
+                                                Margin="0,0,10,0" IsVisible="{Binding IsVersionMismatch}"
+                                                ToolTip.Tip="Tento PC má jinou verzi GameShare, může fungovat trochu jinak.">
+                                            <TextBlock Text="{Binding VersionText}" />
+                                        </Border>
+                                        <TextBlock Grid.Column="5" Text="{Binding GamesText}" Classes="muted" VerticalAlignment="Center" />
                                     </Grid>
                                 </Button>
 

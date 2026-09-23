@@ -9,6 +9,9 @@ namespace GameShare.Client.ViewModels;
 /// <summary>One line of a download's source list: which PC the data comes from and how fast.</summary>
 public sealed record PeerSpeed(string Name, string Speed);
 
+/// <summary>One row of the expanded peer table: every peer of a download, not just the ones currently sending.</summary>
+public sealed record PeerDetailRow(string Name, string Address, string DownloadText, string UploadText, string RoleText);
+
 public sealed partial class DownloadViewModel : ViewModelBase
 {
     private readonly AppModel _app;
@@ -49,6 +52,15 @@ public sealed partial class DownloadViewModel : ViewModelBase
     /// <summary>Where the data comes from right now, with each source's speed.</summary>
     public ObservableCollection<PeerSpeed> Sources { get; } = [];
 
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(Chevron))]
+    public partial bool IsExpanded { get; set; }
+
+    public string Chevron => IsExpanded ? "▾" : "▸";
+
+    /// <summary>Every peer of this download, for the expanded detail table.</summary>
+    public ObservableCollection<PeerDetailRow> PeerRows { get; } = [];
+
     public bool IsRunning => State is "Downloading" or "Queued" or "Verifying";
     public bool IsPaused => State == "Paused";
     public bool IsFinished => State == "Completed";
@@ -87,7 +99,15 @@ public sealed partial class DownloadViewModel : ViewModelBase
         var active = d.PeerDetails.Where(p => p.DownloadRate > 0).OrderByDescending(p => p.DownloadRate).ToList();
         Sources.Clear();
         foreach (var p in active) Sources.Add(new PeerSpeed(p.Name, Format.Speed(p.DownloadRate)));
+
+        // The expanded table shows every peer, sending or not.
+        PeerRows.Clear();
+        foreach (var p in d.PeerDetails.OrderByDescending(p => p.DownloadRate))
+            PeerRows.Add(new PeerDetailRow(p.Name, p.Address, Format.Speed(p.DownloadRate), Format.Speed(p.UploadRate), p.IsSeed ? "Seed" : "Peer"));
     }
+
+    [RelayCommand]
+    private void ToggleExpand() => IsExpanded = !IsExpanded;
 
     [RelayCommand(CanExecute = nameof(CanAct))]
     private Task PauseAsync() => Run(() => _app.Client.PauseAsync(Id));

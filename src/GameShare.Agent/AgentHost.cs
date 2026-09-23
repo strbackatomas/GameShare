@@ -3,6 +3,7 @@ using System.Text.Json.Serialization;
 using GameShare.Core;
 using GameShare.Core.Data;
 using GameShare.Discovery;
+using GameShare.Protocol;
 using GameShare.Torrent;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Serilog;
@@ -92,6 +93,7 @@ public static class AgentHost
                 MachineId = identity.MachineId,
                 MachineName = identity.MachineName,
                 AgentPort = options.PeerApiPort, // peers reach our read-only API here
+                AppVersion = AppVersion.Current,
                 HelloInterval = options.HelloInterval,
                 PeerTimeout = options.PeerTimeout,
             },

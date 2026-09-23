@@ -22,6 +22,10 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+# The one source of truth for the version is src\Directory.Build.props (see "Verzování" in README.md), read here just to show it.
+$version = ([xml](Get-Content (Join-Path $PSScriptRoot '..\src\Directory.Build.props'))).Project.PropertyGroup.Version
+Write-Host "Building GameShare v$version`n"
+
 function Publish-App($project, $target, [bool]$selfContained, [bool]$singleFile = $false) {
     if (Test-Path $target) { Remove-Item -Recurse -Force $target }
     $flag = if ($selfContained) { 'true' } else { 'false' }  # PowerShell would otherwise pass "True"/"False", dotnet wants lowercase
@@ -53,3 +57,5 @@ Write-Host "`nThe -net10 builds need the ASP.NET Core Runtime 10.0 (x64) on the 
 # One portable file: agent and client bundled together, no install, no admin rights. For a LAN-party guest.
 $standalone = Publish-App 'GameShare.Standalone' (Join-Path $Output 'standalone') $true $true
 Write-Host ("`nPublished standalone to artifacts\standalone\GameShare-LanParty.exe ({0}, one file, nothing to install)" -f (Format-Size $standalone))
+
+Write-Host "`nAll of it is v$version. Right-click an exe, Properties, Details shows the same number, so a mismatched PC is easy to spot."

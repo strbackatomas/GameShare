@@ -144,6 +144,20 @@ public class DiscoveryServiceTests
     }
 
     [Fact]
+    public async Task Peers_learn_each_others_app_version()
+    {
+        var bus = new InMemoryBus();
+        await using var a = new Node("PC-01", bus.Join("192.168.30.101"), appVersion: "0.1.0");
+        await using var b = new Node("PC-04", bus.Join("192.168.30.104"), appVersion: "0.2.0");
+        a.Start(); b.Start();
+
+        await Wait.UntilAsync(() => a.Service.Peers.Count == 1 && b.Service.Peers.Count == 1, "a and b see each other");
+
+        Assert.Equal("0.2.0", a.Service.Peers.Single().AppVersion);
+        Assert.Equal("0.1.0", b.Service.Peers.Single().AppVersion);
+    }
+
+    [Fact]
     public void Timeout_shorter_than_two_hellos_is_rejected_because_peers_would_flap()
     {
         var options = new DiscoveryOptions

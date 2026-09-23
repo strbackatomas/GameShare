@@ -6,8 +6,8 @@ namespace GameShare.Discovery.Tests;
 public class PeerRegistryTests
 {
     private static readonly DateTimeOffset T0 = new(2026, 9, 21, 12, 0, 0, TimeSpan.Zero);
-    private static DiscoveryMessage Hello(string id = "m1", string name = "PC-01", int port = 5150) =>
-        new(DiscoveryMessage.Hello, DiscoveryMessage.CurrentVersion, id, name, port);
+    private static DiscoveryMessage Hello(string id = "m1", string name = "PC-01", int port = 5150, string? appVersion = null) =>
+        new(DiscoveryMessage.Hello, DiscoveryMessage.CurrentVersion, id, name, port, appVersion);
     private static IPAddress Ip(string s) => IPAddress.Parse(s);
 
     [Fact]
@@ -38,6 +38,19 @@ public class PeerRegistryTests
         Assert.Equal(Ip("192.168.30.101"), e.Previous!.Address);
         Assert.Equal(Ip(ip), e.Peer.Address);
         Assert.Equal(Ip(ip), r.Snapshot().Single().Address);
+    }
+
+    [Fact]
+    public void Changed_app_version_is_reported_too_so_an_updated_peer_refreshes_its_badge()
+    {
+        var r = new PeerRegistry();
+        r.OnHello(Hello(appVersion: "0.1.0"), Ip("192.168.30.101"), T0);
+
+        var e = r.OnHello(Hello(appVersion: "0.2.0"), Ip("192.168.30.101"), T0.AddSeconds(10));
+
+        Assert.Equal(PeerEventKind.Changed, e!.Kind);
+        Assert.Equal("0.1.0", e.Previous!.AppVersion);
+        Assert.Equal("0.2.0", e.Peer.AppVersion);
     }
 
     [Fact]
@@ -87,10 +100,20 @@ public class DiscoveryMessageTests
     [Fact]
     public void Message_survives_a_round_trip()
     {
-        var m = new DiscoveryMessage(DiscoveryMessage.Hello, 1, "abc", "PC-04", 5150);
+        var m = new DiscoveryMessage(DiscoveryMessage.Hello, 1, "abc", "PC-04", 5150, "0.1.0");
 
         Assert.True(DiscoveryMessage.TryParse(m.Serialize(), out var back, out var error), error);
         Assert.Equal(m, back);
+    }
+
+    [Fact]
+    public void Appversion_is_optional_so_an_older_sender_still_parses()
+    {
+        // No appVersion field at all, as an agent built before this field existed would send.
+        var json = """{"type":"hello","version":1,"machineId":"a","machineName":"b","agentPort":1}""";
+
+        Assert.True(DiscoveryMessage.TryParse(Encoding.UTF8.GetBytes(json), out var m, out var error), error);
+        Assert.Null(m.AppVersion);
     }
 
     [Theory]
@@ -102,6 +125,7 @@ public class DiscoveryMessageTests
     [InlineData("""{"type":"hello","version":1,"machineId":"a","machineName":"","agentPort":1}""")]
     [InlineData("""{"type":"hello","version":1,"machineId":"a","machineName":"b","agentPort":0}""")]
     [InlineData("""{"type":"hello","version":1,"machineId":"a","machineName":"b","agentPort":70000}""")]
+    [InlineData("""{"type":"hello","version":1,"machineId":"a","machineName":"b","agentPort":1,"appVersion":"0123456789012345678901234567890123456789"}""")]
     public void Garbage_is_rejected_with_a_reason(string json)
     {
         Assert.False(DiscoveryMessage.TryParse(Encoding.UTF8.GetBytes(json), out _, out var error));

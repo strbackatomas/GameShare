@@ -63,6 +63,28 @@ self-contained folders by default; pass `-SourceDir artifacts\agent-net10 -Clien
 smaller ones instead. The script installs the agent as a Windows service, opens only the ports it needs on the Private and
 Domain profiles, and adds a Start menu entry for the client. It has not been run yet, see the end.
 
+## Verzování
+
+One version number for everything: agent, client, both admin tools and the standalone build. It is set once,
+in `<Version>` in `src\Directory.Build.props`, and follows [Semantic Versioning](https://semver.org/). Every
+build picks it up automatically (assembly version, file version, the `.exe` properties in Windows Explorer).
+
+- `GET /api/status` and the client's Settings page show the agent's and the client's own version, so a PC where
+  only one of the two was updated is easy to notice.
+- Each agent puts its version in its discovery hellos. It is informational only, shown next to a PC in the
+  Network view (with a small warning badge on a mismatch) — it plays no part in deciding whether a peer is
+  understood, that is still the separate discovery protocol version (`DiscoveryMessage.Version`), which is
+  checked strictly and always has (see "Mixed versions" in `docs/design-notes.md`).
+- `gameshare-admin --version` prints the CLI's build; `gameshare-admin-gui` shows it next to its title.
+- `scripts\publish.ps1` prints the version it is building at the start of the run.
+
+Bump the version and add an entry to `CHANGELOG.md` in the same change, then tag the commit once it is released:
+
+```
+git tag v0.1.0
+git push origin v0.1.0
+```
+
 ## Just visiting? `GameShare-LanParty.exe`
 
 `publish.ps1` also builds `artifacts\standalone\GameShare-LanParty.exe`: agent and client in one file, self-contained,

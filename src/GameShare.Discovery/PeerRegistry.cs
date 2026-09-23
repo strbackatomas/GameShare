@@ -3,13 +3,15 @@ using System.Net;
 namespace GameShare.Discovery;
 
 /// <summary>Another agent on the LAN. The address is what we saw on the wire, not what the peer claims.</summary>
+/// <param name="AppVersion">The peer's GameShare version, informational only. Null for a peer that predates this field.</param>
 public sealed record PeerInfo(
     string MachineId,
     string MachineName,
     IPAddress Address,
     int AgentPort,
     int ProtocolVersion,
-    DateTimeOffset LastSeen);
+    DateTimeOffset LastSeen,
+    string? AppVersion = null);
 
 public enum PeerEventKind { Joined, Changed, Left }
 
@@ -31,7 +33,7 @@ public sealed class PeerRegistry
     /// <returns>An event when the message is news, null for a plain heartbeat.</returns>
     public PeerEvent? OnHello(DiscoveryMessage message, IPAddress source, DateTimeOffset now)
     {
-        var peer = new PeerInfo(message.MachineId, message.MachineName, source, message.AgentPort, message.Version, now);
+        var peer = new PeerInfo(message.MachineId, message.MachineName, source, message.AgentPort, message.Version, now, message.AppVersion);
         lock (_gate)
         {
             if (!_peers.TryGetValue(peer.MachineId, out var old))
@@ -41,7 +43,8 @@ public sealed class PeerRegistry
             }
 
             _peers[peer.MachineId] = peer; // always refresh LastSeen
-            bool changed = !old.Address.Equals(peer.Address) || old.AgentPort != peer.AgentPort || old.MachineName != peer.MachineName;
+            bool changed = !old.Address.Equals(peer.Address) || old.AgentPort != peer.AgentPort || old.MachineName != peer.MachineName
+                || old.AppVersion != peer.AppVersion;
             return changed ? new PeerEvent(PeerEventKind.Changed, peer, old) : null;
         }
     }

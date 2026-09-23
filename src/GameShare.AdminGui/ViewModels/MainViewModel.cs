@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using GameShare.AdminGui.Services;
+using GameShare.Protocol;
 using GameShare.Storage;
 
 namespace GameShare.AdminGui.ViewModels;
@@ -32,6 +33,8 @@ public sealed partial class MainViewModel : ObservableObject
         PrivateKeyPath = saved.PrivateKeyPath ?? "";
         ListPath = saved.ListPath ?? "";
     }
+
+    public string Version => AppVersion.Current;
 
     public ObservableCollection<TrustedGameRow> VerifiedGames { get; } = [];
     public ObservableCollection<RevokedGameRow> RevokedGames { get; } = [];

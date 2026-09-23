@@ -17,6 +17,8 @@
         <SolidColorBrush x:Key="SuccessBrush" Color="#2FAE6B" />
         <SolidColorBrush x:Key="WarnBrush" Color="#D9922B" />
         <SolidColorBrush x:Key="DangerBrush" Color="#D2504A" />
+        <!-- Cyan: the one hue nothing else on the purple/orange palette uses, so a highlighted log value never blends into the background. -->
+        <SolidColorBrush x:Key="LogValueBrush" Color="#4FD1E0" />
     </Application.Resources>
 
     <Application.Styles>

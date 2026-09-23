@@ -30,26 +30,30 @@
                     <Image Source="avares://GameShare/Assets/logo.png" Width="40" Height="40" RenderOptions.BitmapInterpolationMode="HighQuality" />
                     <StackPanel VerticalAlignment="Center">
                         <TextBlock Text="GameShare" FontSize="18" FontWeight="Bold" />
-                        <TextBlock Text="LANka.seru.cz" Classes="muted" FontSize="11" />
+                        <TextBlock Classes="muted" FontSize="11">
+                            <Run Text="LANka.seru.cz" /><Run Text=" · v" /><Run Text="{Binding App.ClientVersion}" />
+                        </TextBlock>
                     </StackPanel>
                 </StackPanel>
 
-                <ListBox Grid.Column="1" ItemsSource="{Binding Items}" SelectedItem="{Binding SelectedItem}"
-                         Background="Transparent" BorderThickness="0" VerticalAlignment="Center">
-                    <ListBox.ItemsPanel>
-                        <ItemsPanelTemplate><StackPanel Orientation="Horizontal" Spacing="4" /></ItemsPanelTemplate>
-                    </ListBox.ItemsPanel>
-                    <ListBox.ItemTemplate>
-                        <DataTemplate x:DataType="vm:NavItem">
-                            <StackPanel Orientation="Horizontal" Spacing="8" Margin="6,2">
-                                <TextBlock Text="{Binding Title}" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center" />
-                                <Border Classes="chip" Background="{StaticResource BadgeBrush}" IsVisible="{Binding HasBadge}">
-                                    <TextBlock Text="{Binding Badge}" />
-                                </Border>
-                            </StackPanel>
-                        </DataTemplate>
-                    </ListBox.ItemTemplate>
-                </ListBox>
+                <ScrollViewer Grid.Column="1" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled" VerticalAlignment="Center">
+                    <ListBox ItemsSource="{Binding Items}" SelectedItem="{Binding SelectedItem}"
+                             Background="Transparent" BorderThickness="0" VerticalAlignment="Center">
+                        <ListBox.ItemsPanel>
+                            <ItemsPanelTemplate><StackPanel Orientation="Horizontal" Spacing="4" /></ItemsPanelTemplate>
+                        </ListBox.ItemsPanel>
+                        <ListBox.ItemTemplate>
+                            <DataTemplate x:DataType="vm:NavItem">
+                                <StackPanel Orientation="Horizontal" Spacing="8" Margin="6,2">
+                                    <TextBlock Text="{Binding Title}" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                    <Border Classes="chip" Background="{StaticResource BadgeBrush}" IsVisible="{Binding HasBadge}">
+                                        <TextBlock Text="{Binding Badge}" />
+                                    </Border>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </ScrollViewer>
 
                 <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                     <Ellipse Width="9" Height="9" Fill="{StaticResource SuccessBrush}" IsVisible="{Binding App.IsConnected}" VerticalAlignment="Center" />

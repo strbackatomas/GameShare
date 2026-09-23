@@ -24,7 +24,7 @@ public static partial class LocalApi
         {
             var games = await library.ListAsync(ct);
             var active = (await downloads.ListAsync(ct)).Count(d => d.State is DownloadState.Queued or DownloadState.Downloading or DownloadState.Verifying);
-            return new StatusDto(me.MachineId, me.MachineName, typeof(LocalApi).Assembly.GetName().Version?.ToString() ?? "0",
+            return new StatusDto(me.MachineId, me.MachineName, AppVersion.Current,
                 discovery.Peers.Count, games.Count(g => g.Installation is { State: InstallationState.Installed }), active);
         });
 

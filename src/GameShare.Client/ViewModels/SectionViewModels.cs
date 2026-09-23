@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Text.RegularExpressions;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using GameShare.Client.Services;
@@ -89,25 +90,69 @@ public sealed class NetworkViewModel(AppModel app) : ViewModelBase
     public ObservableCollection<PeerViewModel> Peers => App.Peers;
 }
 
+/// <summary>One piece of a log line: plain text, the leading timestamp (dimmed), or a value worth catching the eye
+/// (a number, byte count, id, address or path) so a wall of INF lines is not one flat colour to wade through.</summary>
+public sealed class LogSegment(string text, bool isValue = false, bool isTimestamp = false)
+{
+    public string Text { get; } = text;
+    public bool IsValue { get; } = isValue;
+    public bool IsTimestamp { get; } = isTimestamp;
+}
+
 /// <summary>One line of the agent's log, coloured by its level so a warning or error stands out from the rest.</summary>
 public sealed class LogLineViewModel
 {
+    // AgentHost's Serilog template starts every line with "yyyy-MM-dd HH:mm:ss.fff", then "{Level:u3}" right after it.
+    private static readonly Regex TimestampPattern = new(@"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}", RegexOptions.Compiled);
+
+    // Hex ids/hashes, IPv4 with an optional port, Windows/UNC paths, quoted text, and plain numbers (sizes, percentages,
+    // counts with thousands separators). Longest/most specific alternatives first, so e.g. an IP is not cut at its first dot.
+    private static readonly Regex ValuePattern = new(
+        """\b[0-9a-fA-F]{8,}\b|\b\d{1,3}(?:\.\d{1,3}){3}(?::\d+)?\b|[A-Za-z]:\\\S+|\\\\\S+|"[^"]*"|\b\d[\d,]*(?:\.\d+)?%?\b""",
+        RegexOptions.Compiled);
+
     public LogLineViewModel(string text)
     {
         Text = text;
         IsError = HasLevel(text, "ERR") || HasLevel(text, "FTL");
         IsWarn = HasLevel(text, "WRN");
         IsDebug = HasLevel(text, "DBG") || HasLevel(text, "VRB");
+        // A line already coloured whole by its level needs no further highlighting inside it.
+        Segments = IsError || IsWarn || IsDebug ? [new LogSegment(text)] : BuildSegments(text);
     }
 
     public string Text { get; }
     public bool IsError { get; }
     public bool IsWarn { get; }
     public bool IsDebug { get; }
+    public IReadOnlyList<LogSegment> Segments { get; }
 
     // AgentHost's Serilog template puts "{Level:u3}" right after the timestamp, so the 3-letter code always sits
     // between two single spaces: "...123 ERR message". A continuation line of a stack trace has none and stays plain.
     private static bool HasLevel(string text, string level) => text.Contains(' ' + level + ' ', StringComparison.Ordinal);
+
+    private static IReadOnlyList<LogSegment> BuildSegments(string text)
+    {
+        var segments = new List<LogSegment>();
+        int pos = 0;
+
+        var ts = TimestampPattern.Match(text);
+        if (ts.Success)
+        {
+            segments.Add(new LogSegment(ts.Value, isTimestamp: true));
+            pos = ts.Length;
+        }
+
+        foreach (Match m in ValuePattern.Matches(text, pos))
+        {
+            if (m.Index > pos) segments.Add(new LogSegment(text[pos..m.Index]));
+            segments.Add(new LogSegment(m.Value, isValue: true));
+            pos = m.Index + m.Length;
+        }
+        if (pos < text.Length) segments.Add(new LogSegment(text[pos..]));
+
+        return segments;
+    }
 }
 
 /// <summary>The tail of the agent's own log file, read on demand. No trip to the data folder needed to see what it is doing.</summary>
@@ -167,6 +212,9 @@ public sealed partial class SettingsViewModel : ViewModelBase
     private readonly AppModel _app;
 
     public SettingsViewModel(AppModel app) => _app = app;
+
+    /// <summary>For the "O aplikaci" section: client and agent version.</summary>
+    public AppModel App => _app;
 
     public ObservableCollection<RootItem> Roots { get; } = [];
 

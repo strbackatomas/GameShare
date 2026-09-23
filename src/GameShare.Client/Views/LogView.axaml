@@ -5,17 +5,26 @@
              x:DataType="vm:LogViewModel">
 
     <UserControl.Styles>
-        <Style Selector="TextBlock.log-line">
+        <Style Selector="TextBlock.log-segment">
             <Setter Property="FontFamily" Value="Consolas,Cascadia Mono,Courier New,monospace" />
             <Setter Property="FontSize" Value="12" />
         </Style>
-        <Style Selector="TextBlock.log-line.log-error">
+        <!-- A number, id, address or path inside an otherwise plain line: made to stand out from the sentence around it. -->
+        <Style Selector="TextBlock.log-segment.log-value">
+            <Setter Property="Foreground" Value="{StaticResource LogValueBrush}" />
+        </Style>
+        <!-- The leading timestamp: repeated on every line, so dimmed rather than fought for attention. -->
+        <Style Selector="TextBlock.log-segment.log-timestamp">
+            <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
+        </Style>
+        <!-- A line already coloured whole by its level (its one segment carries neither class above). -->
+        <Style Selector="ItemsControl.log-error TextBlock.log-segment">
             <Setter Property="Foreground" Value="{StaticResource DangerBrush}" />
         </Style>
-        <Style Selector="TextBlock.log-line.log-warn">
+        <Style Selector="ItemsControl.log-warn TextBlock.log-segment">
             <Setter Property="Foreground" Value="{StaticResource WarnBrush}" />
         </Style>
-        <Style Selector="TextBlock.log-line.log-debug">
+        <Style Selector="ItemsControl.log-debug TextBlock.log-segment">
             <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
         </Style>
     </UserControl.Styles>
@@ -36,8 +45,18 @@
                     <ItemsControl ItemsSource="{Binding Lines}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="vm:LogLineViewModel">
-                                <SelectableTextBlock Classes="log-line" Classes.log-error="{Binding IsError}" Classes.log-warn="{Binding IsWarn}"
-                                                      Classes.log-debug="{Binding IsDebug}" Text="{Binding Text}" TextWrapping="NoWrap" />
+                                <ItemsControl ItemsSource="{Binding Segments}"
+                                              Classes.log-error="{Binding IsError}" Classes.log-warn="{Binding IsWarn}" Classes.log-debug="{Binding IsDebug}">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:LogSegment">
+                                            <TextBlock Classes="log-segment" Classes.log-value="{Binding IsValue}" Classes.log-timestamp="{Binding IsTimestamp}"
+                                                       Text="{Binding Text}" TextWrapping="NoWrap" />
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>

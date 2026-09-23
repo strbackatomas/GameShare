@@ -33,6 +33,30 @@ public class ConnectionTests
     }
 
     [Fact]
+    public async Task Agent_version_is_read_from_status_and_compared_to_this_clients_own_build()
+    {
+        var (app, agent, _) = Create();
+        agent.Version = AppVersion.Current; // built and shipped together, so normally the same
+
+        await app.StartAsync();
+
+        Assert.Equal(AppVersion.Current, app.ClientVersion);
+        Assert.Equal(AppVersion.Current, app.AgentVersion);
+        Assert.False(app.HasVersionMismatch);
+    }
+
+    [Fact]
+    public async Task Mismatched_agent_version_is_flagged()
+    {
+        var (app, agent, _) = Create();
+        agent.Version = "9.9.9"; // simulates only one of the two having been updated
+
+        await app.StartAsync();
+
+        Assert.True(app.HasVersionMismatch);
+    }
+
+    [Fact]
     public async Task An_unreachable_agent_is_shown_as_such_and_the_window_does_not_fail()
     {
         var (app, agent, _) = Create();
@@ -836,6 +860,39 @@ public class NetworkAndSettingsTests
     }
 
     [Fact]
+    public async Task Peer_on_the_same_version_shows_it_as_plain_text_not_a_mismatch()
+    {
+        var (main, _, _, _) = await StartAsync(new FakeAgent { Version = "0.1.0", Peers = [Peer("p1", "PC-01", appVersion: "0.1.0")] });
+
+        var peer = main.Network.Peers.Single();
+        Assert.Equal("v0.1.0", peer.VersionText);
+        Assert.True(peer.ShowVersionPlain);
+        Assert.False(peer.IsVersionMismatch);
+    }
+
+    [Fact]
+    public async Task Peer_on_a_different_version_is_flagged_as_a_mismatch()
+    {
+        var (main, _, _, _) = await StartAsync(new FakeAgent { Version = "0.1.0", Peers = [Peer("p1", "PC-01", appVersion: "0.2.0")] });
+
+        var peer = main.Network.Peers.Single();
+        Assert.Equal("v0.2.0", peer.VersionText);
+        Assert.False(peer.ShowVersionPlain);
+        Assert.True(peer.IsVersionMismatch);
+    }
+
+    [Fact]
+    public async Task Peer_that_predates_the_version_field_shows_nothing_and_is_not_a_mismatch()
+    {
+        var (main, _, _, _) = await StartAsync(new FakeAgent { Peers = [Peer("p1", "PC-01")] }); // appVersion left null
+
+        var peer = main.Network.Peers.Single();
+        Assert.Equal("", peer.VersionText);
+        Assert.False(peer.ShowVersionPlain);
+        Assert.False(peer.IsVersionMismatch);
+    }
+
+    [Fact]
     public async Task Opening_the_settings_page_reads_the_current_settings_from_the_agent()
     {
         var agent = new FakeAgent { Settings = new SettingsDto([@"D:\Games", @"E:\Games"], false, 80, 120) };
@@ -876,6 +933,41 @@ public class NetworkAndSettingsTests
         Assert.False(main.Log.Lines[0].IsWarn); Assert.False(main.Log.Lines[0].IsError);
         Assert.True(main.Log.Lines[1].IsWarn); Assert.False(main.Log.Lines[1].IsError);
         Assert.True(main.Log.Lines[2].IsError); Assert.False(main.Log.Lines[2].IsWarn);
+    }
+
+    [Fact]
+    public async Task A_plain_log_line_splits_into_a_dimmed_timestamp_plain_words_and_highlighted_values()
+    {
+        var agent = new FakeAgent
+        {
+            LogLines = ["2026-09-22 10:00:00.000 INF Agent running. Local API on 127.0.0.1:47701, 3 game folder(s)"],
+        };
+        var (main, _, _, _) = await StartAsync(agent);
+
+        await main.Log.LoadAsync();
+
+        var segments = main.Log.Lines.Single().Segments;
+        Assert.Equal("2026-09-22 10:00:00.000", segments[0].Text);
+        Assert.True(segments[0].IsTimestamp);
+        Assert.False(segments[0].IsValue);
+
+        Assert.Contains(segments, s => s.Text == "127.0.0.1:47701" && s.IsValue);
+        Assert.Contains(segments, s => s.Text == "3" && s.IsValue);
+        Assert.Contains(segments, s => s.Text.Contains("Agent running") && !s.IsValue && !s.IsTimestamp);
+    }
+
+    [Fact]
+    public async Task A_warning_or_error_line_is_not_split_into_segments_it_is_already_coloured_whole()
+    {
+        var agent = new FakeAgent { LogLines = ["2026-09-22 10:00:00.000 WRN Free space is low: 512 MB left"] };
+        var (main, _, _, _) = await StartAsync(agent);
+
+        await main.Log.LoadAsync();
+
+        var segment = Assert.Single(main.Log.Lines.Single().Segments);
+        Assert.Equal(agent.LogLines[0], segment.Text);
+        Assert.False(segment.IsValue);
+        Assert.False(segment.IsTimestamp);
     }
 
     [Fact]

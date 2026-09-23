@@ -47,6 +47,15 @@
             <TextBlock Text="{Binding TrustText}" Classes="muted" TextWrapping="Wrap" />
             <Button Content="Načíst seznam znovu" Command="{Binding RefreshTrustCommand}" IsVisible="{Binding TrustEnabled}" HorizontalAlignment="Left" />
 
+            <TextBlock Classes="section" Text="O APLIKACI" />
+            <TextBlock Classes="muted" TextWrapping="Wrap">
+                <Run Text="Klient v" /><Run Text="{Binding App.ClientVersion}" />
+                <Run Text="   ·   Agent v" /><Run Text="{Binding App.AgentVersion}" />
+            </TextBlock>
+            <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap" Foreground="{StaticResource WarnBrush}"
+                       IsVisible="{Binding App.HasVersionMismatch}"
+                       Text="Klient a agent mají jinou verzi. Přepublikuj a nainstaluj oba znovu, ať jsou zase stejné." />
+
             <StackPanel Orientation="Horizontal" Spacing="14" Margin="0,22,0,0">
                 <Button Classes="primary" Content="Uložit" Command="{Binding SaveCommand}" MinWidth="110" HorizontalContentAlignment="Center" />
                 <TextBlock Text="{Binding Message}" VerticalAlignment="Center" TextWrapping="Wrap" />

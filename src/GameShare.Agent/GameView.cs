@@ -109,7 +109,7 @@ public sealed class GameView
         (await ListGamesAsync(ct).ConfigureAwait(false)).FirstOrDefault(g => g.ContentHash == contentHash);
 
     public PeerDto ToDto(PeerInfo p) =>
-        new(p.MachineId, p.MachineName, p.Address.ToString(), p.AgentPort, _catalog.OfferCount(p.MachineId), p.LastSeen);
+        new(p.MachineId, p.MachineName, p.Address.ToString(), p.AgentPort, _catalog.OfferCount(p.MachineId), p.LastSeen, p.AppVersion);
 
     public DownloadDto ToDto(DownloadStatus d)
     {
@@ -119,7 +119,7 @@ public sealed class GameView
             .Select(p =>
             {
                 var host = StripPort(p.Address);
-                return new DownloadPeerDto(names[host].FirstOrDefault() ?? host, host, p.DownloadRate, p.UploadRate);
+                return new DownloadPeerDto(names[host].FirstOrDefault() ?? host, host, p.DownloadRate, p.UploadRate, p.IsSeed);
             })
             .ToList();
 

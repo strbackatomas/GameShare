@@ -18,6 +18,7 @@ internal sealed class FakeAgent : IAgentClient
     public SettingsDto Settings { get; set; } = new(["D:\\Games"], true, null, null);
     public TrustStatusDto Trust { get; set; } = new(TrustMode.Off, null, false, null, null, null, 0, 0, null, null, null);
     public string MachineName { get; set; } = "PC-07";
+    public string Version { get; set; } = "1.0";
 
     /// <summary>When set, every call throws this, as if the agent were stopped.</summary>
     public AgentException? Failure { get; set; }
@@ -40,7 +41,7 @@ internal sealed class FakeAgent : IAgentClient
     }
 
     public Task<StatusDto> GetStatusAsync(CancellationToken ct = default) =>
-        Do("GetStatus", () => new StatusDto("id", MachineName, "1.0", Peers.Count, Games.Count(g => g.State == GameState.Installed), Downloads.Count));
+        Do("GetStatus", () => new StatusDto("id", MachineName, Version, Peers.Count, Games.Count(g => g.State == GameState.Installed), Downloads.Count));
 
     public Task<IReadOnlyList<GameDto>> GetGamesAsync(CancellationToken ct = default) => Do<IReadOnlyList<GameDto>>("GetGames", () => [.. Games]);
     public Task<IReadOnlyList<PeerDto>> GetPeersAsync(CancellationToken ct = default) => Do<IReadOnlyList<PeerDto>>("GetPeers", () => [.. Peers]);
@@ -154,9 +155,10 @@ internal static class Data
     public static DownloadDto Download(long id, string hash, string name, string state, double percent, long done = 0, long total = 1000, long speed = 0,
         string kind = "Install", (string Name, long Rate)[]? sources = null, double? eta = null, string? error = null) =>
         new(id, hash, name, state, done, total, percent, speed, sources?.Length ?? 0, eta, error,
-            (sources ?? []).Select(s => new DownloadPeerDto(s.Name, "10.0.0.1", s.Rate, 0)).ToList()) { Kind = kind };
+            (sources ?? []).Select(s => new DownloadPeerDto(s.Name, "10.0.0.1", s.Rate, 0, IsSeed: false)).ToList()) { Kind = kind };
 
-    public static PeerDto Peer(string id, string name, int games = 1) => new(id, name, "192.168.30.10", 47702, games, DateTimeOffset.UtcNow);
+    public static PeerDto Peer(string id, string name, int games = 1, string? appVersion = null) =>
+        new(id, name, "192.168.30.10", 47702, games, DateTimeOffset.UtcNow, appVersion);
 
     public static OfferedGameDto OfferedGame(string hash, string name, bool isComplete = true, double percentIntact = 100, string gameId = "game") =>
         new(hash, gameId, name, "0.38", 70_000_000_000) { IsComplete = isComplete, PercentIntact = percentIntact };

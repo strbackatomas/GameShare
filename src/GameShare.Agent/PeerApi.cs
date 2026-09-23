@@ -21,7 +21,7 @@ public static partial class PeerApi
     {
         var peer = app.MapGroup("/peer");
 
-        peer.MapGet("/hello", (AgentIdentity me) => new PeerHelloDto(me.MachineId, me.MachineName, DiscoveryMessage.CurrentVersion));
+        peer.MapGet("/hello", (AgentIdentity me) => new PeerHelloDto(me.MachineId, me.MachineName, DiscoveryMessage.CurrentVersion, AppVersion.Current));
 
         peer.MapGet("/games", async (GameShareDb db, SettingsService settings, SeedManager seeds, CancellationToken ct) =>
             (await OfferedAsync(db, settings, seeds, ct)).Select(o => new OfferedGameDto(

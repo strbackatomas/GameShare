@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using GameShare.Protocol;
 
@@ -39,32 +40,43 @@ public static class ManifestVerifier
         CancellationToken cancellationToken = default)
     {
         var root = Path.GetFullPath(gameDirectory);
-        var missing = new List<string>();
-        var badSize = new List<string>();
-        var badHash = new List<string>();
-        long done = 0;
 
+        // Cheap, no I/O: reject an unsafe manifest before any file is touched, instead of partway through.
         foreach (var file in manifest.Files)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-
             if (!ManifestValidator.IsSafeRelativePath(file.Path))
                 throw new InvalidDataException($"Refusing to verify unsafe manifest path '{file.Path}'.");
+        }
 
+        // Each file is independent, so many are checked (and, in Full mode, hashed) at once. This is what makes
+        // verifying a game with thousands of small files take seconds instead of minutes.
+        var missing = new ConcurrentBag<(int Index, string Path)>();
+        var badSize = new ConcurrentBag<(int Index, string Path)>();
+        var badHash = new ConcurrentBag<(int Index, string Path)>();
+        long done = 0;
+
+        var parallelOptions = new ParallelOptions
+        {
+            MaxDegreeOfParallelism = Environment.ProcessorCount,
+            CancellationToken = cancellationToken,
+        };
+
+        await Parallel.ForEachAsync(manifest.Files.Select((file, index) => (file, index)), parallelOptions, async (item, ct) =>
+        {
+            var (file, index) = item;
             var full = Path.Combine(root, file.Path.Replace('/', Path.DirectorySeparatorChar));
             var info = new FileInfo(full);
-            if (!info.Exists) { missing.Add(file.Path); continue; }
-            if (info.Length != file.Size) { badSize.Add(file.Path); continue; }
+            if (!info.Exists) { missing.Add((index, file.Path)); return; }
+            if (info.Length != file.Size) { badSize.Add((index, file.Path)); return; }
 
             if (mode == VerifyMode.Full)
             {
-                if (!string.Equals(await HashFileAsync(full, cancellationToken).ConfigureAwait(false), file.Hash, StringComparison.Ordinal))
-                    badHash.Add(file.Path);
+                if (!string.Equals(await HashFileAsync(full, ct).ConfigureAwait(false), file.Hash, StringComparison.Ordinal))
+                    badHash.Add((index, file.Path));
             }
 
-            done += file.Size;
-            bytesVerified?.Report(done);
-        }
+            bytesVerified?.Report(Interlocked.Add(ref done, file.Size));
+        }).ConfigureAwait(false);
 
         var known = new HashSet<string>(manifest.Files.Select(f => f.Path), StringComparer.Ordinal);
         var extra = Directory.Exists(root)
@@ -72,7 +84,11 @@ public static class ManifestVerifier
                 .Where(e => !known.Contains(e.RelativePath)).Select(e => e.RelativePath).ToList()
             : [];
 
-        return new VerificationResult(missing, badSize, badHash, extra);
+        return new VerificationResult(
+            missing.OrderBy(x => x.Index).Select(x => x.Path).ToList(),
+            badSize.OrderBy(x => x.Index).Select(x => x.Path).ToList(),
+            badHash.OrderBy(x => x.Index).Select(x => x.Path).ToList(),
+            extra);
     }
 
     /// <summary>Lowercase hex SHA-256 of one file. Tolerates the file being open in a running game.</summary>

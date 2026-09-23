@@ -14,7 +14,7 @@
                 <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="vm:DownloadViewModel">
                         <Border Classes="card">
-                            <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto,Auto,Auto">
+                            <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto">
 
                                 <StackPanel Grid.Row="0" Grid.Column="0" Orientation="Horizontal" Spacing="10">
                                     <TextBlock Text="{Binding Name}" Classes="title" />
@@ -62,9 +62,36 @@
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>
 
-                                <TextBlock Grid.Row="3" Grid.ColumnSpan="2" Text="{Binding Error}" Foreground="{StaticResource DangerBrush}"
+                                <Button Grid.Row="3" Grid.ColumnSpan="2" Classes="row" Command="{Binding ToggleExpandCommand}"
+                                        HorizontalAlignment="Left" Margin="0,6,0,0" IsVisible="{Binding PeerRows.Count}">
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <TextBlock Text="{Binding Chevron}" Classes="muted" FontSize="12" />
+                                        <TextBlock Text="Podrobnosti o peerech" Classes="muted" FontSize="12" />
+                                    </StackPanel>
+                                </Button>
+
+                                <ItemsControl Grid.Row="4" Grid.ColumnSpan="2" ItemsSource="{Binding PeerRows}" Margin="0,4,0,0"
+                                              IsVisible="{Binding IsExpanded}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:PeerDetailRow">
+                                            <Grid ColumnDefinitions="*,Auto,Auto,Auto" Margin="0,3">
+                                                <StackPanel Grid.Column="0" Spacing="0">
+                                                    <TextBlock Text="{Binding Name}" FontSize="13" />
+                                                    <TextBlock Text="{Binding Address}" Classes="muted" FontSize="11" />
+                                                </StackPanel>
+                                                <TextBlock Grid.Column="1" Text="{Binding DownloadText}" FontSize="12" Margin="12,0" VerticalAlignment="Center" />
+                                                <TextBlock Grid.Column="2" Text="{Binding UploadText}" Classes="muted" FontSize="12" Margin="0,0,12,0" VerticalAlignment="Center" />
+                                                <Border Grid.Column="3" Classes="chip" Background="{StaticResource BadgeBrush}" VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding RoleText}" />
+                                                </Border>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+
+                                <TextBlock Grid.Row="5" Grid.ColumnSpan="2" Text="{Binding Error}" Foreground="{StaticResource DangerBrush}"
                                            IsVisible="{Binding IsFailed}" TextWrapping="Wrap" Margin="0,10,0,0" />
-                                <TextBlock Grid.Row="4" Grid.ColumnSpan="2" Text="{Binding Message}" IsVisible="{Binding HasMessage}"
+                                <TextBlock Grid.Row="6" Grid.ColumnSpan="2" Text="{Binding Message}" IsVisible="{Binding HasMessage}"
                                            Foreground="{StaticResource DangerBrush}" TextWrapping="Wrap" Margin="0,8,0,0" />
                             </Grid>
                         </Border>

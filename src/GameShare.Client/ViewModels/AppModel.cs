@@ -39,6 +39,17 @@ public sealed partial class AppModel : ViewModelBase, IAsyncDisposable
     [ObservableProperty] public partial string MachineName { get; set; } = "";
     [ObservableProperty] public partial string ConnectionText { get; set; } = "Připojuji se k agentovi…";
 
+    /// <summary>This client's own build, always known. Shown in the header and compared against <see cref="AgentVersion"/>.</summary>
+    public string ClientVersion => AppVersion.Current;
+
+    /// <summary>What the agent this client is talking to reports. Normally the same as <see cref="ClientVersion"/>, they ship together.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasVersionMismatch))]
+    public partial string AgentVersion { get; set; } = "";
+
+    /// <summary>True once the agent has answered and its version differs from this client's own build.</summary>
+    public bool HasVersionMismatch => AgentVersion.Length > 0 && AgentVersion != ClientVersion;
+
     /// <summary>Downloads that are running or paused. Drives the badge on the navigation bar.</summary>
     public int ActiveDownloadCount => Downloads.Count(d => d.HasProgress);
 
@@ -75,6 +86,7 @@ public sealed partial class AppModel : ViewModelBase, IAsyncDisposable
         {
             var status = await Client.GetStatusAsync(ct).ConfigureAwait(true);
             MachineName = status.MachineName;
+            AgentVersion = status.Version;
             SyncGames(await Client.GetGamesAsync(ct).ConfigureAwait(true));
             SyncDownloads(await Client.GetDownloadsAsync(ct).ConfigureAwait(true));
             SyncPeers(await Client.GetPeersAsync(ct).ConfigureAwait(true));
@@ -213,7 +225,7 @@ public sealed partial class AppModel : ViewModelBase, IAsyncDisposable
         var vm = Peers.FirstOrDefault(v => v.MachineId == p.MachineId);
         if (vm is null)
         {
-            var newVm = new PeerViewModel(p, Client);
+            var newVm = new PeerViewModel(p, Client, ClientVersion);
             int i = 0;
             while (i < Peers.Count && string.Compare(Peers[i].Name, newVm.Name, StringComparison.OrdinalIgnoreCase) < 0) i++;
             Peers.Insert(i, newVm);

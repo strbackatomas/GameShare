@@ -71,6 +71,13 @@ public sealed class DownloadManager
         public long PeakDownloadRate { get; set; }
 
         /// <summary>
+        /// Exponential moving average of <see cref="TransferStatus.DownloadRate"/>, used only for <see cref="DownloadStatus.Eta"/>.
+        /// A torrent with few pieces (a small game) has a very noisy instant rate tick to tick, which would otherwise make the ETA
+        /// swing between minutes and days from one poll to the next. The displayed download rate itself is left raw.
+        /// </summary>
+        public double SmoothedDownloadRate { get; set; }
+
+        /// <summary>
         /// Orders resume saves against removing the transfer. A save that is still in flight when the torrent is removed
         /// leaves the library holding on to it, and adding it again then fails. Saves take this lock, removal retires first.
         /// </summary>
@@ -118,6 +125,15 @@ public sealed class DownloadManager
             var existing = await _db.FindInstalledAsync(manifest.ContentHash, ct).ConfigureAwait(false);
             if (existing is not null)
                 throw new InvalidOperationException($"{manifest.Name} is already installed at {existing.InstallPath}.");
+
+            // A different version of the same game is an update, not a second, parallel install.
+            foreach (var inst in await _db.ListInstallationsAsync(ct).ConfigureAwait(false))
+            {
+                var installedManifest = (await _db.GetManifestAsync(inst.ContentHash, ct).ConfigureAwait(false))?.Manifest;
+                if (installedManifest?.GameId == manifest.GameId)
+                    throw new InvalidOperationException(
+                        $"{manifest.Name} is already installed as a different version at {inst.InstallPath}. Use update instead of installing it again.");
+            }
 
             targetRoot = Path.GetFullPath(targetRoot);
             var installPath = Path.GetFullPath(Path.Combine(targetRoot, manifest.FolderName));
@@ -487,6 +503,9 @@ public sealed class DownloadManager
 
                 var s = a.Last = a.Transfer.GetStatus();
                 if (s.DownloadRate > a.PeakDownloadRate) a.PeakDownloadRate = s.DownloadRate;
+                a.SmoothedDownloadRate = a.SmoothedDownloadRate <= 0
+                    ? s.DownloadRate
+                    : (0.25 * s.DownloadRate) + (0.75 * a.SmoothedDownloadRate);
                 if (s.State == TransferState.Error)
                 {
                     await FailAsync(a, $"The transfer engine reported an error: {s}", ct).ConfigureAwait(false);
@@ -703,15 +722,23 @@ public sealed class DownloadManager
         ToStatus((await _db.GetDownloadAsync(id, ct).ConfigureAwait(false))!, manifest, live);
 
     private static DownloadStatus ToStatus(Active a) =>
-        ToStatus(a.Row, a.Manifest, a.Last ?? a.Transfer.GetStatus()) with { PeerDetails = a.Transfer.GetPeers() };
+        ToStatus(a.Row, a.Manifest, a.Last ?? a.Transfer.GetStatus(), a.SmoothedDownloadRate) with { PeerDetails = a.Transfer.GetPeers() };
 
-    private static DownloadStatus ToStatus(Download row, GameManifest manifest, TransferStatus? live)
+    private static DownloadStatus ToStatus(Download row, GameManifest manifest, TransferStatus? live, double? smoothedDownloadRate = null)
     {
         long done = live?.BytesDone ?? (row.State == DownloadState.Completed ? manifest.TotalSize : row.BytesDone);
+
+        TimeSpan? eta = null;
+        if (live is { State: TransferState.Downloading })
+        {
+            double rate = smoothedDownloadRate ?? live.DownloadRate;
+            if (rate > 0) eta = TimeSpan.FromSeconds((manifest.TotalSize - done) / rate);
+        }
+
         return new DownloadStatus(
             row.Id, row.ContentHash, manifest.Name, row.State, done, manifest.TotalSize,
             manifest.TotalSize == 0 ? 100 : Math.Min(100, done * 100.0 / manifest.TotalSize),
-            live?.DownloadRate ?? 0, live?.UploadRate ?? 0, live?.PeerCount ?? 0, live?.Eta, row.Error)
+            live?.DownloadRate ?? 0, live?.UploadRate ?? 0, live?.PeerCount ?? 0, eta, row.Error)
         {
             Kind = row.Kind, CompletedAt = row.CompletedAt, PeakDownloadRate = row.PeakDownloadRate,
             Duration = row.CompletedAt - row.CreatedAt,

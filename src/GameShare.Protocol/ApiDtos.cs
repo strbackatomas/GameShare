@@ -66,9 +66,10 @@ public sealed record GameDto(
     public string? UpdatesContentHash { get; init; }
 }
 
-public sealed record PeerDto(string MachineId, string MachineName, string Address, int Port, int GameCount, DateTimeOffset LastSeen);
+/// <param name="AppVersion">The peer's GameShare version, for example "0.1.0". Null for a peer that predates this field.</param>
+public sealed record PeerDto(string MachineId, string MachineName, string Address, int Port, int GameCount, DateTimeOffset LastSeen, string? AppVersion = null);
 
-public sealed record DownloadPeerDto(string Name, string Address, long DownloadRate, long UploadRate);
+public sealed record DownloadPeerDto(string Name, string Address, long DownloadRate, long UploadRate, bool IsSeed);
 
 /// <summary>A download, also used as the payload of every download event. Rates are bytes per second.</summary>
 public sealed record DownloadDto(
@@ -165,7 +166,7 @@ public sealed record StatusDto(string MachineId, string MachineName, string Vers
 
 // ---- Agent to agent API, served to other PCs on the LAN ----
 
-public sealed record PeerHelloDto(string MachineId, string MachineName, int ProtocolVersion);
+public sealed record PeerHelloDto(string MachineId, string MachineName, int ProtocolVersion, string? AppVersion = null);
 
 /// <summary>A game this PC is willing to serve: installed, verified and seeding.</summary>
 public sealed record OfferedGameDto(string ContentHash, string GameId, string Name, string? Version, long TotalSize)

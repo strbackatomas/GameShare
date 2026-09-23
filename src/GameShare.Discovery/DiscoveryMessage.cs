@@ -6,7 +6,13 @@ namespace GameShare.Discovery;
 /// The only thing agents say to each other over UDP. Small on purpose: everything else
 /// (games, manifests, torrents) is fetched over the agent HTTP API once a peer is known.
 /// </summary>
-public sealed record DiscoveryMessage(string Type, int Version, string MachineId, string MachineName, int AgentPort)
+/// <param name="Version">The discovery wire format. A peer speaking a different one is ignored entirely, see <see cref="CurrentVersion"/>.</param>
+/// <param name="AppVersion">
+/// The sender's GameShare version (for example "0.1.0"), shown to the user so mismatched PCs are easy to spot.
+/// Informational only: it plays no part in deciding whether a peer is understood, unlike <see cref="Version"/>.
+/// Optional so an older sender that predates this field still parses.
+/// </param>
+public sealed record DiscoveryMessage(string Type, int Version, string MachineId, string MachineName, int AgentPort, string? AppVersion = null)
 {
     public const string Hello = "hello";
     public const string Goodbye = "bye";
@@ -34,6 +40,7 @@ public sealed record DiscoveryMessage(string Type, int Version, string MachineId
         if (string.IsNullOrWhiteSpace(m.MachineId) || m.MachineId.Length > 64) { error = "bad machineId"; return false; }
         if (string.IsNullOrWhiteSpace(m.MachineName) || m.MachineName.Length > 64) { error = "bad machineName"; return false; }
         if (m.AgentPort is < 1 or > 65535) { error = $"bad agentPort {m.AgentPort}"; return false; }
+        if (m.AppVersion is { Length: > 32 }) { error = "bad appVersion"; return false; }
 
         message = m;
         error = "";

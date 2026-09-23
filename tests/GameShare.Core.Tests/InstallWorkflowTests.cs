@@ -353,6 +353,28 @@ public class InstallWorkflowTests
         Assert.Contains("already installed", already.Message);
     }
 
+    /// <summary>A different version of an already-installed game must be fetched as an update, not started as a second, parallel install.</summary>
+    [Fact]
+    public async Task Installing_a_different_version_of_an_already_installed_game_is_refused_in_favour_of_update()
+    {
+        await using var v2Source = await Pc.StartAsync();
+        v2Source.AddGame(customise: dir => TestGame.CorruptOneByte(Path.Combine(dir, "content", "big.pak")));
+        await v2Source.Library.ScanAsync([v2Source.GamesRoot]);
+        var v2 = (await v2Source.Library.ListAsync()).Single().Stored;
+
+        await using var pc = await Pc.StartAsync();
+        pc.AddGame();
+        await pc.Library.ScanAsync([pc.GamesRoot]);
+        var installed = Assert.Single(await pc.Db.ListInstallationsAsync());
+        Assert.NotEqual(installed.ContentHash, v2.Manifest.ContentHash); // same game, different version
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => pc.Downloads.StartInstallAsync(v2.Manifest, v2.TorrentBytes!, pc.GamesRoot));
+        Assert.Contains("already installed as a different version", ex.Message);
+        Assert.Contains(installed.InstallPath, ex.Message);
+        Assert.Empty(await pc.Db.ListDownloadsAsync());
+    }
+
     [Fact]
     public async Task Install_whose_files_fail_the_manifest_is_not_marked_installed_and_is_not_seeded()
     {
