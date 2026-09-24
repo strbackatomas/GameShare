@@ -12,6 +12,15 @@
                 <TextBlock Grid.Column="0" Text="{Binding ScanText}" Classes="muted" VerticalAlignment="Center" TextWrapping="Wrap" />
                 <Button Grid.Column="1" Content="Prohledat složky" Command="{Binding ScanCommand}" IsEnabled="{Binding !IsScanning}" />
             </Grid>
+            <ProgressBar Value="{Binding ScanPercent}" Maximum="100" IsVisible="{Binding HasScanBar}" Margin="0,8,0,0" />
+            <ProgressBar IsIndeterminate="True" Margin="0,8,0,0">
+                <ProgressBar.IsVisible>
+                    <MultiBinding Converter="{x:Static BoolConverters.And}">
+                        <Binding Path="IsScanning" />
+                        <Binding Path="!HasScanBar" />
+                    </MultiBinding>
+                </ProgressBar.IsVisible>
+            </ProgressBar>
 
             <TextBlock IsVisible="{Binding ShowEmptyHint}" Classes="muted" Margin="0,40" TextWrapping="Wrap" HorizontalAlignment="Center" TextAlignment="Center"
                        Text="Zatím tu nejsou žádné hry. Přidej složku s hrami v Nastavení, nebo počkej, až se objeví ostatní PC v síti." />

@@ -121,6 +121,10 @@ public sealed record InstallRequest(string? TargetRoot);
 public sealed record ScanResultDto(
     int Added, int Unchanged, int Skipped, IReadOnlyList<string> Errors, IReadOnlyList<string> MissingRoots, IReadOnlyList<string> Damaged);
 
+/// <summary>How far the running scan got: folder <see cref="Folder"/> of <see cref="Folders"/>, and while a new or changed game is hashed, its bytes.</summary>
+/// <param name="TotalBytes">0 while the folder is only being checked, which is quick.</param>
+public sealed record ScanProgressDto(int Folder, int Folders, string Name, long Bytes, long TotalBytes);
+
 /// <summary>What differs between an installed game and its manifest, from a full verification.</summary>
 /// <param name="SuggestedPatterns">Volatile patterns that would make the changed and added files stop counting. Suggestions only.</param>
 public sealed record GameChangesDto(

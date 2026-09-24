@@ -32,6 +32,11 @@ public sealed partial class AppModel : ViewModelBase, IAsyncDisposable
     /// <summary>What starts a game once the agent has said it may be started.</summary>
     public IGameStarter Starter { get; }
 
+    /// <summary>Something changed where games are looked for (a folder was added), so the library should scan and show it.</summary>
+    public event EventHandler? ScanRequested;
+
+    public void RequestScan() => ScanRequested?.Invoke(this, EventArgs.Empty);
+
     /// <summary>Runs the preparation of a game the player confirmed, before it is first played.</summary>
     public ISetupRunner SetupRunner { get; }
 

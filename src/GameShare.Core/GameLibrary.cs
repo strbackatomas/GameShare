@@ -9,6 +9,10 @@ namespace GameShare.Core;
 
 /// <summary>What a scan did. Failures are listed with the folder and reason, never hidden.</summary>
 /// <param name="Damaged">Installed games whose files changed or went missing. They are no longer offered until repaired or re-registered.</param>
+/// <summary>How far a scan got: which folder of how many, and for a folder being hashed, how many of its bytes.</summary>
+/// <param name="TotalBytes">0 while the folder is only being looked at, hashing a new or changed game sets it.</param>
+public sealed record ScanProgress(int Folder, int Folders, string Name, long Bytes, long TotalBytes);
+
 public sealed record ScanSummary(
     int Added, int Unchanged, int Skipped, IReadOnlyList<string> Errors, IReadOnlyList<string> MissingRoots, IReadOnlyList<string> Damaged);
 
@@ -57,7 +61,8 @@ public sealed class GameLibrary
     /// <summary>The gameshare.json of an installed game was edited: how it starts or is prepared changed, its files did not.</summary>
     public event EventHandler<Installation>? DefinitionChanged;
 
-    public async Task<ScanSummary> ScanAsync(IEnumerable<string> roots, CancellationToken cancellationToken = default)
+    /// <param name="progress">Reported for every folder, and while a folder is hashed, for every block read. Can be very frequent.</param>
+    public async Task<ScanSummary> ScanAsync(IEnumerable<string> roots, CancellationToken cancellationToken = default, IProgress<ScanProgress>? progress = null)
     {
         var missingRoots = new List<string>();
         var candidates = GameRootScanner.FindCandidateDirectories(roots, missingRoots);
@@ -69,10 +74,15 @@ public sealed class GameLibrary
         var damaged = new List<string>();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        foreach (var dir in candidates)
+        for (int index = 0; index < candidates.Count; index++)
         {
+            var dir = candidates[index];
             cancellationToken.ThrowIfCancellationRequested();
             var path = Path.GetFullPath(dir);
+            var number = index + 1;
+            var name = Path.GetFileName(path);
+            progress?.Report(new ScanProgress(number, candidates.Count, name, 0, 0));
+            Action<long, long>? hashing = progress is null ? null : (done, total) => progress.Report(new ScanProgress(number, candidates.Count, name, done, total));
             seen.Add(path);
 
             if (busy.Contains(path))
@@ -84,7 +94,7 @@ public sealed class GameLibrary
 
             try
             {
-                switch (await CheckFolderAsync(path, cancellationToken).ConfigureAwait(false))
+                switch (await CheckFolderAsync(path, cancellationToken, hashing).ConfigureAwait(false))
                 {
                     case FolderOutcome.Registered: added++; break;
                     case FolderOutcome.Unchanged: unchanged++; break;
@@ -116,12 +126,12 @@ public sealed class GameLibrary
 
     private enum FolderOutcome { Registered, Unchanged, Damaged }
 
-    private async Task<FolderOutcome> CheckFolderAsync(string path, CancellationToken ct)
+    private async Task<FolderOutcome> CheckFolderAsync(string path, CancellationToken ct, Action<long, long>? hashing = null)
     {
         var known = await FindByPathAsync(path, ct).ConfigureAwait(false);
         if (known is null)
         {
-            await RebuildAsync(path, null, null, null, ct).ConfigureAwait(false);
+            await RebuildAsync(path, null, null, null, ct, hashing).ConfigureAwait(false);
             return FolderOutcome.Registered;
         }
 
@@ -136,7 +146,7 @@ public sealed class GameLibrary
         if (intact && !VolatileRules.SameSet(stored!.Manifest.VolatilePatterns, patterns.Patterns))
         {
             // The definition file gained patterns, so files that used to count as content no longer do.
-            await RebuildAsync(path, known, stored.Manifest.VolatilePatterns, null, ct).ConfigureAwait(false);
+            await RebuildAsync(path, known, stored.Manifest.VolatilePatterns, null, ct, hashing).ConfigureAwait(false);
             return FolderOutcome.Registered;
         }
         if (intact) await SyncDefinitionAsync(path, known, stored!, definition, ct).ConfigureAwait(false);
@@ -221,9 +231,18 @@ public sealed class GameLibrary
         return await RebuildAsync(path, known, stored?.Manifest.VolatilePatterns, additionalPatterns, ct).ConfigureAwait(false);
     }
 
-    private async Task<LibraryGame> RebuildAsync(string path, Installation? known, IEnumerable<string>? recorded, IEnumerable<string>? additional, CancellationToken ct)
+    private async Task<LibraryGame> RebuildAsync(
+        string path, Installation? known, IEnumerable<string>? recorded, IEnumerable<string>? additional, CancellationToken ct, Action<long, long>? hashing = null)
     {
-        var (manifest, scan) = await ManifestBuilder.ScanAndBuildAsync(path, cancellationToken: ct, alreadyRecorded: recorded, additional: additional).ConfigureAwait(false);
+        IProgress<long>? bytesHashed = null;
+        if (hashing is not null)
+        {
+            // The size is only for showing progress: every file, a little more than what is hashed when some are volatile.
+            var total = new DirectoryInfo(path).EnumerateFiles("*", SearchOption.AllDirectories).Sum(f => f.Length);
+            hashing(0, total);
+            bytesHashed = new CallbackProgress(done => hashing(done, total));
+        }
+        var (manifest, scan) = await ManifestBuilder.ScanAndBuildAsync(path, bytesHashed, ct, alreadyRecorded: recorded, additional: additional).ConfigureAwait(false);
         var torrent = TorrentBuilder.Build(scan);
         manifest = manifest with { TorrentInfoHash = torrent.InfoHash };
 
@@ -317,4 +336,10 @@ public sealed class GameLibrary
             .OrderBy(g => g.Stored.Manifest.Name, StringComparer.OrdinalIgnoreCase)
             .ToList();
     }
+}
+
+/// <summary>Calls back on the reporting thread, unlike <see cref="Progress{T}"/>, which posts to a synchronisation context.</summary>
+internal sealed class CallbackProgress(Action<long> report) : IProgress<long>
+{
+    public void Report(long value) => report(value);
 }

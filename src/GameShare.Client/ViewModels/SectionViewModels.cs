@@ -16,6 +16,7 @@ public sealed partial class LibraryViewModel : ViewModelBase
     {
         _app = app;
         app.GamesChanged += (_, _) => Rebuild();
+        app.ScanRequested += async (_, _) => await ScanCommand.ExecuteAsync(null).ConfigureAwait(true);
         app.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(AppModel.IsConnected)) UpdateHint(); };
         Rebuild();
     }
@@ -34,6 +35,15 @@ public sealed partial class LibraryViewModel : ViewModelBase
     [ObservableProperty] public partial bool HasLanGames { get; set; }
     [ObservableProperty] public partial string ScanText { get; set; } = "";
     [ObservableProperty] public partial bool IsScanning { get; set; }
+
+    /// <summary>0 to 100 for the game being hashed right now, see <see cref="HasScanBar"/>.</summary>
+    [ObservableProperty] public partial double ScanPercent { get; set; }
+
+    /// <summary>A new or changed game is being hashed, which is what takes the time, so there is something to show a bar for.</summary>
+    [ObservableProperty] public partial bool HasScanBar { get; set; }
+
+    /// <summary>How often the agent is asked how far the scan got.</summary>
+    public TimeSpan ScanPollInterval { get; set; } = TimeSpan.FromMilliseconds(500);
 
     private void Rebuild()
     {
@@ -60,21 +70,57 @@ public sealed partial class LibraryViewModel : ViewModelBase
     [RelayCommand]
     private async Task ScanAsync()
     {
+        if (IsScanning) return;
         IsScanning = true;
         ScanText = "Prohledávám složky s hrami…";
         try
         {
-            await TryAsync(async () =>
+            var scan = _app.Client.ScanAsync();
+            // The scan answers only when it is done, which for a large new game is minutes. Ask how far it got meanwhile.
+            while (!scan.IsCompleted)
             {
-                var r = await _app.Client.ScanAsync();
+                await ShowScanProgressAsync().ConfigureAwait(true);
+                await Task.WhenAny(scan, Task.Delay(ScanPollInterval)).ConfigureAwait(true);
+            }
+            try
+            {
+                var r = await scan.ConfigureAwait(true);
                 ScanText = r.Damaged.Count > 0
-                    ? $"Nalezeno nových her: {r.Added}. Poškozené hry: {r.Damaged.Count}."
-                    : $"Nalezeno nových her: {r.Added}. Beze změny: {r.Unchanged}.";
+                    ? $"Hotovo. Nalezeno nových her: {r.Added}. Poškozené hry: {r.Damaged.Count}."
+                    : $"Hotovo. Nalezeno nových her: {r.Added}. Beze změny: {r.Unchanged}.";
+                if (r.MissingRoots.Count > 0) ScanText += $" Složka neexistuje: {string.Join(", ", r.MissingRoots)}.";
                 if (r.Errors.Count > 0) ScanText += $" Chyby: {string.Join("; ", r.Errors)}";
-            }, m => ScanText = m).ConfigureAwait(true);
+            }
+            catch (AgentException ex) when (ex.StatusCode == 409)
+            {
+                // The agent is scanning already (on its own schedule, or after the folders changed): follow that one to its end.
+                while (await ShowScanProgressAsync().ConfigureAwait(true)) await Task.Delay(ScanPollInterval).ConfigureAwait(true);
+                ScanText = "Prohledávání doběhlo.";
+            }
+            catch (AgentException ex) { ScanText = ex.Message; }
         }
-        finally { IsScanning = false; }
+        finally
+        {
+            IsScanning = false;
+            HasScanBar = false;
+        }
         await _app.RefreshGamesAsync().ConfigureAwait(true);
+    }
+
+    /// <returns>False when no scan runs any more.</returns>
+    private async Task<bool> ShowScanProgressAsync()
+    {
+        ScanProgressDto? p;
+        try { p = await _app.Client.GetScanProgressAsync().ConfigureAwait(true); }
+        catch (AgentException) { return true; } // a hiccup while the agent is busy hashing, ask again
+        if (p is null) return false;
+        if (p.Folders == 0) return true; // just started
+        HasScanBar = p.TotalBytes > 0;
+        ScanPercent = p.TotalBytes > 0 ? Math.Min(100, p.Bytes * 100.0 / p.TotalBytes) : 0;
+        ScanText = p.TotalBytes > 0
+            ? $"Počítám otisk hry {p.Name} ({p.Folder}/{p.Folders}): {Format.Percent(ScanPercent)} · {Format.Size(p.Bytes)} z {Format.Size(p.TotalBytes)}"
+            : $"Kontroluji {p.Name} ({p.Folder}/{p.Folders})…";
+        return true;
     }
 }
 
@@ -401,6 +447,7 @@ public sealed partial class SettingsViewModel : ViewModelBase
         await TryAsync(async () =>
         {
             var s = await _app.Client.GetSettingsAsync();
+            _saved = s;
             SetRoots(s.GameRoots);
             SeedingEnabled = s.SeedingEnabled;
             MaxUploadText = s.MaxUploadMBps?.ToString() ?? "";
@@ -436,13 +483,42 @@ public sealed partial class SettingsViewModel : ViewModelBase
     private void AddRootPath(string path)
     {
         Message = "";
-        if (!Roots.Any(r => string.Equals(r.Path, path, StringComparison.OrdinalIgnoreCase))) Roots.Add(new RootItem(path, r => Roots.Remove(r)));
+        if (Roots.Any(r => string.Equals(r.Path, path, StringComparison.OrdinalIgnoreCase))) return;
+        Roots.Add(new RootItem(path, RemoveRoot));
+        _ = SaveRootsAsync(added: true);
+    }
+
+    private void RemoveRoot(RootItem root)
+    {
+        Roots.Remove(root);
+        _ = SaveRootsAsync(added: false);
     }
 
     private void SetRoots(IEnumerable<string> paths)
     {
         Roots.Clear();
-        foreach (var p in paths) Roots.Add(new RootItem(p, r => Roots.Remove(r)));
+        foreach (var p in paths) Roots.Add(new RootItem(p, RemoveRoot));
+    }
+
+    /// <summary>What the agent has, as last loaded or saved. Saving the folders keeps the rest as it is there, not as half-typed here.</summary>
+    private SettingsDto? _saved;
+
+    /// <summary>
+    /// A folder added or removed is saved straight away: it is what the player came for, and the Save button at the bottom of the
+    /// page was easy to miss. A new folder is scanned at once, and the library shows how far that got.
+    /// </summary>
+    private async Task SaveRootsAsync(bool added)
+    {
+        if (_saved is null) return; // not loaded yet, the Save button still covers it
+        var ok = await TryAsync(async () =>
+        {
+            _saved = await _app.Client.SaveSettingsAsync(_saved with { GameRoots = [.. Roots.Select(r => r.Path)] });
+            SetRoots(_saved.GameRoots);
+        }, m => Message = m).ConfigureAwait(true);
+        if (!ok) return;
+        Message = added ? "Složka uložena. Hry v ní se teď hledají, průběh je vidět v Knihovně." : "Složka odebrána.";
+        if (added) _app.RequestScan();
+        else await _app.RefreshGamesAsync().ConfigureAwait(true);
     }
 
     private void SetIgnoredAdapters(IEnumerable<NetworkAdapterDto> adapters)
@@ -471,6 +547,7 @@ public sealed partial class SettingsViewModel : ViewModelBase
         await TryAsync(async () =>
         {
             var saved = await _app.Client.SaveSettingsAsync(new SettingsDto([.. Roots.Select(r => r.Path)], SeedingEnabled, up, down, _unignoredAdapterIds));
+            _saved = saved;
             SetRoots(saved.GameRoots); // the agent normalises paths, show what it kept
             _unignoredAdapterIds = [.. saved.AllowedVirtualAdapterIds ?? []];
             Message = "Uloženo.";

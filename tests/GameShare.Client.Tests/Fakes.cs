@@ -86,6 +86,11 @@ internal sealed class FakeAgent : IAgentClient
 
     public Task<ScanResultDto> ScanAsync(CancellationToken ct = default) => Do("Scan", () => new ScanResultDto(2, 5, 0, [], [], []));
 
+    /// <summary>What the agent says while a scan runs. Each call takes the next one, then null (no scan).</summary>
+    public Queue<ScanProgressDto> ScanProgress { get; } = new();
+    public Task<ScanProgressDto?> GetScanProgressAsync(CancellationToken ct = default) =>
+        Task.FromResult(ScanProgress.TryDequeue(out var p) ? p : null);
+
     public Task<DownloadDto> InstallAsync(string contentHash, string? targetRoot = null, CancellationToken ct = default) =>
         Do($"Install({contentHash}{(targetRoot is null ? "" : $"|{targetRoot}")})", () => NewDownload(contentHash, "Install"));
     public Task<DownloadDto> UpdateAsync(string contentHash, CancellationToken ct = default) => Do($"Update({contentHash})", () => NewDownload(contentHash, "Update"));

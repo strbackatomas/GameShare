@@ -49,6 +49,9 @@ public interface IAgentClient
     Task<TrustStatusDto> RefreshTrustAsync(CancellationToken ct = default);
 
     Task<ScanResultDto> ScanAsync(CancellationToken ct = default);
+
+    /// <summary>How far the running scan got, or null when none runs.</summary>
+    Task<ScanProgressDto?> GetScanProgressAsync(CancellationToken ct = default);
     Task<DownloadDto> InstallAsync(string contentHash, string? targetRoot = null, CancellationToken ct = default);
     Task<DownloadDto> UpdateAsync(string contentHash, CancellationToken ct = default);
     Task<DownloadDto> RepairAsync(string contentHash, CancellationToken ct = default);

@@ -159,6 +159,20 @@ public class RenderTests
     }
 
     [AvaloniaFact]
+    public async Task A_running_scan_shows_which_game_is_hashed_and_how_far()
+    {
+        var main = await BuildAsync(Populated());
+        main.Library.IsScanning = true;
+        main.Library.HasScanBar = true;
+        main.Library.ScanPercent = 42;
+        main.Library.ScanText = "Počítám otisk hry Battlefield 2 (3/16): 42 % · 1,4 GB z 3,3 GB";
+
+        var frame = await ShowAsync(main, "Knihovna", "library-scanning.png");
+
+        Assert.True(DistinctColours(frame) > 200);
+    }
+
+    [AvaloniaFact]
     public async Task Downloads_page_shows_progress_and_sources()
     {
         var main = await BuildAsync(Populated());

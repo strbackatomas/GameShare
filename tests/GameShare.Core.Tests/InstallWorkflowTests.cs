@@ -201,6 +201,31 @@ public class InstallWorkflowTests
     }
 
     [Fact]
+    public async Task A_scan_reports_each_folder_and_how_much_of_a_new_game_is_hashed()
+    {
+        await using var pc = await Pc.StartAsync();
+        pc.AddGame();
+        var reports = new List<ScanProgress>();
+
+        await pc.Library.ScanAsync([pc.GamesRoot], progress: new SyncProgress(reports.Add));
+
+        Assert.Equal((1, 1, "TestGame"), (reports[0].Folder, reports[0].Folders, reports[0].Name));
+        var hashing = reports.Where(r => r.TotalBytes > 0).ToList();
+        Assert.NotEmpty(hashing);
+        Assert.Equal(hashing[^1].TotalBytes, hashing[^1].Bytes); // ends with all of it
+        Assert.True(hashing.Select(r => r.Bytes).SequenceEqual(hashing.Select(r => r.Bytes).Order()));
+
+        reports.Clear();
+        await pc.Library.ScanAsync([pc.GamesRoot], progress: new SyncProgress(reports.Add));
+        Assert.All(reports, r => Assert.Equal(0, r.TotalBytes)); // a known, unchanged game is not hashed again
+    }
+
+    private sealed class SyncProgress(Action<ScanProgress> report) : IProgress<ScanProgress>
+    {
+        public void Report(ScanProgress value) => report(value);
+    }
+
+    [Fact]
     public async Task The_definition_travels_with_the_game_into_its_folder_and_an_edited_one_is_picked_up_by_a_scan()
     {
         await using var source = await Pc.StartAsync();

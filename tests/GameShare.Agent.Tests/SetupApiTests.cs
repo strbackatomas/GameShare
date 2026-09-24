@@ -80,6 +80,17 @@ public class SetupApiTests
     }
 
     [Fact]
+    public async Task Asking_how_far_a_scan_got_when_none_runs_says_so()
+    {
+        await using var pc = await StartAsync(Definition());
+        await pc.WaitForGameAsync(g => g.State == GameState.Installed, "the first scan to finish");
+
+        var response = await pc.SendAsync(HttpMethod.Get, "/api/games/scan");
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+    }
+
+    [Fact]
     public async Task A_required_redistributable_without_a_package_blocks_the_preparation_and_says_why()
     {
         await using var pc = await StartAsync(Definition("\"directx9\""));

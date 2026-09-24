@@ -1,3 +1,4 @@
+using GameShare.Agent.Tests;
 using GameShare.Client.Services;
 using GameShare.Client.ViewModels;
 using GameShare.Protocol;
@@ -1208,6 +1209,67 @@ public class NetworkAndSettingsTests
 
         Assert.Contains(@"SaveSettings(E:\Games|False|80|)", agent.Calls);
         Assert.Equal("Uloženo.", s.Message);
+    }
+
+    [Fact]
+    public async Task An_added_folder_is_saved_at_once_and_scanned_without_the_save_button()
+    {
+        var agent = new FakeAgent { Settings = new SettingsDto([@"D:\Games"], true, 50, null) };
+        var (main, _, _, _) = await StartAsync(agent);
+        var s = main.Settings;
+        await s.LoadAsync();
+        s.MaxUploadText = "10"; // typed, not saved: must not ride along
+
+        s.NewRoot = @"C:\Hry";
+        s.AddRootCommand.Execute(null);
+        await Poll.UntilAsync(() => Task.FromResult(agent.Calls.Contains("Scan")), "the new folder to be scanned");
+
+        Assert.Contains(@"SaveSettings(D:\Games;C:\Hry|True|50|)", agent.Calls);
+        Assert.Contains("Knihovně", s.Message);
+
+        s.Roots.First(r => r.Path == @"D:\Games").RemoveCommand.Execute(null);
+        await Poll.UntilAsync(() => Task.FromResult(agent.Calls.Contains(@"SaveSettings(C:\Hry|True|50|)")), "the removal to be saved");
+    }
+
+    [Fact]
+    public async Task While_a_scan_hashes_a_new_game_the_library_shows_which_and_how_far()
+    {
+        var agent = new FakeAgent();
+        agent.ScanProgress.Enqueue(new ScanProgressDto(1, 3, "Soldat", 0, 0));
+        agent.ScanProgress.Enqueue(new ScanProgressDto(2, 3, "Battlefield 2", 1L << 30, 4L << 30));
+        var (main, _, _, _) = await StartAsync(agent);
+        var library = main.Library;
+        library.ScanPollInterval = TimeSpan.FromMilliseconds(20);
+        agent.Gate = new TaskCompletionSource(); // holds the scan request open, like a long scan
+
+        var scan = library.ScanCommand.ExecuteAsync(null);
+        await Poll.UntilAsync(() => Task.FromResult(library.HasScanBar), "the hashing to show a bar");
+
+        Assert.True(library.IsScanning);
+        Assert.Equal(25, library.ScanPercent);
+        Assert.Contains("Battlefield 2 (2/3)", library.ScanText);
+        Assert.Contains("25 %", library.ScanText);
+
+        agent.Gate.SetResult();
+        await scan;
+        Assert.False(library.IsScanning);
+        Assert.False(library.HasScanBar);
+        Assert.StartsWith("Hotovo.", library.ScanText);
+    }
+
+    [Fact]
+    public async Task A_scan_the_agent_is_already_running_is_followed_to_its_end_instead_of_an_error()
+    {
+        var agent = new FakeAgent();
+        var (main, _, _, _) = await StartAsync(agent);
+        main.Library.ScanPollInterval = TimeSpan.FromMilliseconds(10);
+        agent.FailNext["Scan"] = new AgentException("A scan is already running. Wait for it to finish.", 409);
+        agent.ScanProgress.Enqueue(new ScanProgressDto(5, 15, "Wreckfest", 3L << 30, 21L << 30));
+
+        await main.Library.ScanCommand.ExecuteAsync(null);
+
+        Assert.Equal("Prohledávání doběhlo.", main.Library.ScanText);
+        Assert.Empty(agent.ScanProgress); // it did ask
     }
 
     [Fact]

@@ -39,6 +39,7 @@ public sealed class AgentClient : IAgentClient
     public Task<TrustStatusDto> RefreshTrustAsync(CancellationToken ct = default) => SendAsync<TrustStatusDto>(HttpMethod.Post, "/api/trust/refresh", null, Slow, ct);
 
     public Task<ScanResultDto> ScanAsync(CancellationToken ct = default) => SendAsync<ScanResultDto>(HttpMethod.Post, "/api/games/scan", null, Slow, ct);
+    public Task<ScanProgressDto?> GetScanProgressAsync(CancellationToken ct = default) => SendAsync<ScanProgressDto?>(HttpMethod.Get, "/api/games/scan", null, Quick, ct);
 
     public Task<DownloadDto> InstallAsync(string contentHash, string? targetRoot = null, CancellationToken ct = default) =>
         SendAsync<DownloadDto>(HttpMethod.Post, $"/api/games/{contentHash}/install", targetRoot is null ? null : new InstallRequest(targetRoot), Quick, ct);

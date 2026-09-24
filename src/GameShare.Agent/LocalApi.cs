@@ -105,6 +105,9 @@ public static partial class LocalApi
 
         api.MapPost("/games/scan", async (ScanService scan, CancellationToken ct) => await scan.ScanAsync(ct));
 
+        // How far the running scan got, the scheduled one or one the client started. 204 when none runs.
+        api.MapGet("/games/scan", (ScanService scan) => scan.Progress is { } p ? Results.Ok(p) : Results.NoContent());
+
         api.MapPost("/games/{contentHash}/install", async (
             string contentHash, [FromBody] InstallRequest? request,
             SettingsService settings, GameShareDb db, PeerCatalog catalog, DownloadManager downloads, GameView view, TrustService trust, CancellationToken ct) =>
