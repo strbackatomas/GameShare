@@ -58,4 +58,15 @@ Write-Host "`nThe -net10 builds need the ASP.NET Core Runtime 10.0 (x64) on the 
 $standalone = Publish-App 'GameShare.Standalone' (Join-Path $Output 'standalone') $true $true
 Write-Host ("`nPublished standalone to artifacts\standalone\GameShare-LanParty.exe ({0}, one file, nothing to install)" -f (Format-Size $standalone))
 
+# The administrator's public key, if it was put next to this script: handed out with the builds, so the portable exe checks games
+# against the LAN party's list by itself, and install-agent.ps1 finds it in the agent folder. Public, safe to hand out.
+$publicKey = Join-Path $PSScriptRoot 'trust-public.key'
+if (Test-Path $publicKey -PathType Leaf) {
+    foreach ($folder in 'standalone', 'agent', 'agent-net10') { Copy-Item $publicKey (Join-Path $Output $folder) -Force }
+    Write-Host "Added trust-public.key to artifacts\standalone, artifacts\agent and artifacts\agent-net10 (verified games on, Warn mode)"
+}
+else {
+    Write-Host "No scripts\trust-public.key, so the builds leave verified games off. Put the public key there to turn them on."
+}
+
 Write-Host "`nAll of it is v$version. Right-click an exe, Properties, Details shows the same number, so a mismatched PC is easy to spot."

@@ -30,6 +30,8 @@ this is wired into the build and where a peer's version shows up.
 - The trust list can be published in several places (`Agent:TrustListSource` separated by `;`, e.g. the web and a share). Every place
   is asked and the newest valid list wins. The installer uses `https://lanka.seru.cz/trust.json` by default, takes several with
   `-TrustListSource a,b`, and picks up a `trust-public.key` next to it (then defaulting to `Warn`).
+- The portable `GameShare-LanParty.exe` does the same with a `trust-public.key` next to it, and `publish.ps1` puts
+  `scripts\trust-public.key` next to the portable exe and into the agent folders.
 
 ### Changed
 - An installed game's folder gets its `gameshare.json` written, and a scan picks up an edited one, without the game becoming a new version.

@@ -136,6 +136,29 @@ public class TrustTests : IDisposable
     }
 
     [Fact]
+    public void A_key_file_next_to_the_portable_exe_turns_checking_on_against_the_lan_party_list()
+    {
+        var none = new AgentOptions();
+        Assert.Null(none.UseTrustKeyFileIn(_dir)); // no file, nothing changes
+        Assert.Equal(TrustMode.Off, none.TrustMode);
+
+        File.WriteAllText(Path.Combine(_dir, AgentOptions.PublicKeyFileName), _keys.PublicKey + Environment.NewLine);
+        var found = new AgentOptions();
+        Assert.NotNull(found.UseTrustKeyFileIn(_dir));
+        Assert.Equal((TrustMode.Warn, _keys.PublicKey, AgentOptions.DefaultTrustListSource), (found.TrustMode, found.TrustPublicKey, found.TrustListSource));
+        found.Validate();
+
+        var configured = new AgentOptions { TrustMode = TrustMode.Require, TrustListSource = ListPath, TrustPublicKey = _keys.PublicKey };
+        Assert.Null(configured.UseTrustKeyFileIn(_dir)); // what appsettings.json says wins
+        Assert.Equal(ListPath, configured.TrustListSource);
+
+        File.WriteAllText(Path.Combine(_dir, AgentOptions.PublicKeyFileName), "not a key");
+        var broken = new AgentOptions();
+        Assert.Contains("not a usable public key", broken.UseTrustKeyFileIn(_dir));
+        Assert.Equal(TrustMode.Off, broken.TrustMode); // a broken file never stops the program from starting
+    }
+
+    [Fact]
     public async Task Require_prepares_a_game_only_with_the_definition_the_administrator_signed()
     {
         const string definition = """

@@ -92,6 +92,11 @@ no service, no admin rights. Hand it to a LAN-party guest and they double-click 
 installed product (below) and, if this PC already runs the real agent, quietly becomes a thin client of it instead of
 starting its own. See "Standalone (LAN party) build" in `docs/design-notes.md`.
 
+Verified games work without an installer too: with `trust-public.key` next to the exe it checks games in `Warn` mode against
+`https://lanka.seru.cz/trust.json`. Put the key in `scripts\` before running `publish.ps1` and it is copied next to the exe (and into the
+agent folders, where `install-agent.ps1` finds it). An `appsettings.json` next to the exe with an `Agent` section still wins, for
+example `"TrustListSource": "https://lanka.seru.cz/trust.json;\\\\server\\hry\\trust.json"` to add a share.
+
 ## Ports and trust
 
 | Port | Listens on | Purpose | Who may connect |

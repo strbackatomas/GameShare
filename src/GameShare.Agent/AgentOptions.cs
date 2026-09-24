@@ -51,6 +51,32 @@ public sealed class AgentOptions
     /// <summary>An https:// address, or a file path such as \\server\share\trust.json, of the signed list. Needed unless <see cref="TrustMode"/> is Off.</summary>
     public string? TrustListSource { get; set; }
 
+    /// <summary>The name of the public key file the admin tools write, and that installers and the portable build pick up.</summary>
+    public const string PublicKeyFileName = "trust-public.key";
+
+    /// <summary>Where the LAN party publishes its list, asked when nothing else is configured.</summary>
+    public const string DefaultTrustListSource = "https://lanka.seru.cz/trust.json";
+
+    /// <summary>
+    /// For a build without an installer (the portable exe): when nothing about trust is configured and a public key file lies in
+    /// <paramref name="folder"/>, check games against the LAN party's list in Warn mode. A key file that is not a key is ignored,
+    /// so a broken file never keeps the program from starting.
+    /// </summary>
+    /// <returns>What was done, for the log, or null when nothing was changed.</returns>
+    public string? UseTrustKeyFileIn(string folder)
+    {
+        if (TrustMode != TrustMode.Off || !string.IsNullOrWhiteSpace(TrustPublicKey)) return null;
+        var path = Path.Combine(folder, PublicKeyFileName);
+        if (!File.Exists(path)) return null;
+        var key = File.ReadAllText(path).Trim();
+        try { Storage.TrustSigning.CheckPublicKey(key); }
+        catch (InvalidDataException ex) { return $"{path} is not a usable public key, verified games stay off: {ex.Message}"; }
+        TrustPublicKey = key;
+        TrustMode = TrustMode.Warn;
+        if (TrustListSources().Count == 0) TrustListSource = DefaultTrustListSource;
+        return $"Verified games on (Warn) with the key in {path}, list from {string.Join(", ", TrustListSources())}";
+    }
+
     /// <summary>
     /// The places of <see cref="TrustListSource"/>: several separated by ';' are all asked and the newest valid list among them is used,
     /// so a web server that is down or a share with an older copy does not matter.
