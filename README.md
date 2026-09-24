@@ -225,11 +225,17 @@ to scan and add a game, and a card per verified and per revoked version with Zru
 and writes the list at once, there is no separate save step. It remembers the last key and list file used (not the
 password) in the administrator's own profile, never on a share.
 
-Put `trust.json` on an https address or a share, and install the agents with the public key:
+Put `trust.json` on an https address, a share, or both, and install the agents with the public key. The installer asks
+`https://lanka.seru.cz/trust.json` unless told otherwise, and picks up `trust-public.key` lying next to it, so with that file copied
+beside the script this is enough (the mode is then `Warn`):
 
 ```
-scripts\install-agent.ps1 -GameRoots D:\Games -TrustMode Warn -TrustListSource https://example.org/trust.json -TrustPublicKey <key>
+scripts\install-agent.ps1 -GameRoots C:\Hry
+scripts\install-agent.ps1 -GameRoots C:\Hry -TrustMode Require -TrustListSource 'https://lanka.seru.cz/trust.json','\\server\hry\trust.json'
 ```
+
+Several places end up in `Agent:TrustListSource` separated by `;`. The agent asks all of them and uses the newest list that verifies,
+so a web server that is down, or a share with an older copy, changes nothing.
 
 - `Off` ignores the list. `Warn` marks games as verified or not and installs anything but a revoked version. `Require` installs only verified games,
   and nothing when no list can be loaded, because "cannot check" must not mean "allowed".

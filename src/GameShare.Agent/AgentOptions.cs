@@ -51,6 +51,13 @@ public sealed class AgentOptions
     /// <summary>An https:// address, or a file path such as \\server\share\trust.json, of the signed list. Needed unless <see cref="TrustMode"/> is Off.</summary>
     public string? TrustListSource { get; set; }
 
+    /// <summary>
+    /// The places of <see cref="TrustListSource"/>: several separated by ';' are all asked and the newest valid list among them is used,
+    /// so a web server that is down or a share with an older copy does not matter.
+    /// </summary>
+    public IReadOnlyList<string> TrustListSources() =>
+        (TrustListSource ?? "").Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+
     /// <summary>Public key of the administrator, one line of base64 as printed by gameshare-admin keygen.</summary>
     public string? TrustPublicKey { get; set; }
 
@@ -105,7 +112,7 @@ public sealed class AgentOptions
             throw new InvalidOperationException("Agent:LocalApiPort and Agent:PeerApiPort must differ, they are separate listeners with different trust.");
         if (TrustMode != TrustMode.Off)
         {
-            if (string.IsNullOrWhiteSpace(TrustListSource))
+            if (TrustListSources().Count == 0)
                 throw new InvalidOperationException($"Agent:TrustListSource is needed when Agent:TrustMode is {TrustMode}. Give the address or file of the signed list, or set the mode to Off.");
             if (string.IsNullOrWhiteSpace(TrustPublicKey))
                 throw new InvalidOperationException($"Agent:TrustPublicKey is needed when Agent:TrustMode is {TrustMode}. Use the public key printed by gameshare-admin keygen.");

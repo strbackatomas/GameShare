@@ -27,6 +27,10 @@ this is wired into the build and where a peer's version shows up.
 - `scripts/import-lan-installer.ps1`: one-time conversion of the old installer (`hry_install_v2\*.7z`, shortcuts, `-meta.json`,
   `_redist`) into a game root with a `gameshare.json` per game and a `_Redist` package.
 
+- The trust list can be published in several places (`Agent:TrustListSource` separated by `;`, e.g. the web and a share). Every place
+  is asked and the newest valid list wins. The installer uses `https://lanka.seru.cz/trust.json` by default, takes several with
+  `-TrustListSource a,b`, and picks up a `trust-public.key` next to it (then defaulting to `Warn`).
+
 ### Changed
 - An installed game's folder gets its `gameshare.json` written, and a scan picks up an edited one, without the game becoming a new version.
 - Registry paths are rewritten regardless of case (the old installer missed `C:\GAMES\STARCRAFT`), and a `.reg` file that writes

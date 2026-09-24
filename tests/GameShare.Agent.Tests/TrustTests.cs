@@ -108,6 +108,34 @@ public class TrustTests : IDisposable
     }
 
     [Fact]
+    public async Task Several_places_are_asked_and_the_newest_list_among_them_is_used_whatever_is_down()
+    {
+        // The web copy (here a second file) is newer than the one on the share, and a third place is not there at all.
+        var share = Path.Combine(_dir, "share-trust.json");
+        WriteList(3, [Fake('a')]);
+        File.Copy(ListPath, share);
+        await using var pc = await TestAgent.StartAsync("PC-01", TestAgent.DiscoveryPort(), preloadGame: true, bigFileBytes: SmallGame, tweak: o =>
+        {
+            Trust(TrustMode.Warn)(o);
+            o.TrustListSource = $"{Path.Combine(_dir, "missing.json")}; {share} ;{ListPath}";
+        });
+        var game = await InstalledAsync(pc);
+
+        WriteList(4, [game.ContentHash]); // only the newer place has it
+        var status = await RefreshAsync(pc);
+        Assert.Null(status.LastError);
+        Assert.Equal(4L, status.Sequence);
+        Assert.Contains("share-trust.json", status.Source);
+        await pc.WaitForGameAsync(g => g.Trust == TrustVerdict.Verified, "the game to be verified from the newest place");
+
+        File.Delete(ListPath);
+        File.Delete(share);
+        var down = await RefreshAsync(pc);
+        Assert.NotNull(down.LastError); // every place is gone: said, and the list in use stays
+        Assert.Equal(4L, down.Sequence);
+    }
+
+    [Fact]
     public async Task Require_prepares_a_game_only_with_the_definition_the_administrator_signed()
     {
         const string definition = """

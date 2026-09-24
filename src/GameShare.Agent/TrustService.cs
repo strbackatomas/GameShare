@@ -87,7 +87,7 @@ public sealed class TrustService
         var list = _current;
         var usable = Usable();
         return new TrustStatusDto(
-            Mode, Mode == TrustMode.Off ? null : _options.TrustListSource,
+            Mode, Mode == TrustMode.Off ? null : string.Join(", ", _options.TrustListSources()),
             usable is not null, list?.List.Sequence, list?.List.IssuedAt, list?.List.ValidUntil,
             list?.Games.Count ?? 0, list?.Revoked.Count ?? 0, _outcome.Refreshed, _outcome.Error,
             Mode == TrustMode.Off || string.IsNullOrEmpty(_options.TrustPublicKey) ? null : TrustSigning.KeyId(_options.TrustPublicKey));
@@ -122,10 +122,29 @@ public sealed class TrustService
             bool replaced = false;
             try
             {
-                var bytes = await FetchAsync(ct).ConfigureAwait(false);
-                var payload = TrustSigning.Open(bytes, _options.TrustPublicKey!);
-                replaced = Accept(payload);
-                if (replaced) SaveCache(bytes);
+                // Every place is asked. The newest list that verifies wins, so a stale copy on a share never beats the web, and the other way round.
+                var sources = _options.TrustListSources();
+                (TrustPayload Payload, byte[] Bytes)? best = null;
+                var failures = new List<string>();
+                foreach (var source in sources)
+                {
+                    try
+                    {
+                        var bytes = await FetchAsync(source, ct).ConfigureAwait(false);
+                        var payload = TrustSigning.Open(bytes, _options.TrustPublicKey!);
+                        if (best is null || payload.Sequence > best.Value.Payload.Sequence) best = (payload, bytes);
+                    }
+                    catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+                    catch (Exception ex) when (ex is InvalidDataException or IOException or HttpRequestException or TaskCanceledException or UnauthorizedAccessException)
+                    {
+                        var reason = ex is TaskCanceledException ? "did not answer in time." : ex.Message;
+                        failures.Add(sources.Count > 1 ? $"{source}: {reason}" : reason);
+                    }
+                }
+                if (best is not { } found) throw new InvalidDataException(string.Join(" ", failures));
+                if (failures.Count > 0) _log.LogInformation("Some trust list places could not be read, another one was: {Reasons}", string.Join("; ", failures));
+                replaced = Accept(found.Payload);
+                if (replaced) SaveCache(found.Bytes);
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
             catch (Exception ex) when (ex is InvalidDataException or InvalidOperationException or IOException or HttpRequestException or TaskCanceledException or UnauthorizedAccessException)
@@ -165,9 +184,8 @@ public sealed class TrustService
     private Loaded? Usable() =>
         _current is { } c && (c.List.ValidUntil is not { } until || until >= _time.GetUtcNow()) ? c : null;
 
-    private async Task<byte[]> FetchAsync(CancellationToken ct)
+    private async Task<byte[]> FetchAsync(string source, CancellationToken ct)
     {
-        var source = _options.TrustListSource!;
         if (Uri.TryCreate(source, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https")
         {
             using var response = await _http.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);

@@ -20,11 +20,15 @@ param(
     [int]$PeerApiPort = 47702,
     [int]$DiscoveryPort = 47800,
     [int]$TorrentPort = 6881,
-    # The administrator's signed list of verified games. Leave out to keep the check off.
+    # The administrator's signed list of verified games.
     # Mode: Off, Warn (mark games, install anything but a revoked version) or Require (install only verified games).
-    [ValidateSet('Off', 'Warn', 'Require')][string]$TrustMode = 'Off',
-    [string]$TrustListSource = '',   # an https:// address or a file path, see gameshare-admin
-    [string]$TrustPublicKey = ''     # printed by gameshare-admin keygen
+    # Left out, it is Warn when a public key is given or found next to this script, else Off.
+    [ValidateSet('', 'Off', 'Warn', 'Require')][string]$TrustMode = '',
+    # Where the list is published: https:// addresses and file paths (a share). All are asked, the newest valid list wins,
+    # so one being down does not matter. Add the share with -TrustListSource 'https://lanka.seru.cz/trust.json','\\server\share\trust.json'.
+    [string[]]$TrustListSource = @('https://lanka.seru.cz/trust.json'),
+    # Printed by the admin tools when the keys are made. Left out, trust-public.key next to this script or in -SourceDir is used.
+    [string]$TrustPublicKey = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -55,12 +59,26 @@ $settings.Agent.PeerApiPort = $PeerApiPort
 $settings.Agent.DiscoveryPort = $DiscoveryPort
 $settings.Agent.TorrentPort = $TorrentPort
 $settings.Agent.InitialGameRoots = @($GameRoots)
-if ($TrustMode -ne 'Off' -and (-not $TrustListSource -or -not $TrustPublicKey)) {
-    throw "-TrustMode $TrustMode needs both -TrustListSource and -TrustPublicKey."
+if (-not $TrustPublicKey) {
+    # The public key file the admin tools write next to the private one. Public, safe to hand out with the installer.
+    foreach ($candidate in @((Join-Path $PSScriptRoot 'trust-public.key'), (Join-Path $SourceDir 'trust-public.key'))) {
+        if (Test-Path $candidate -PathType Leaf) {
+            $TrustPublicKey = (Get-Content $candidate -Raw).Trim()
+            Write-Host "Using the public key from $candidate"
+            break
+        }
+    }
 }
+if (-not $TrustMode) { $TrustMode = if ($TrustPublicKey) { 'Warn' } else { 'Off' } }
+$sources = @($TrustListSource | Where-Object { $_ -and $_.Trim() } | ForEach-Object { $_.Trim() })
+if ($TrustMode -ne 'Off' -and ($sources.Count -eq 0 -or -not $TrustPublicKey)) {
+    throw "-TrustMode $TrustMode needs both -TrustListSource and -TrustPublicKey (or a trust-public.key file next to this script)."
+}
+Write-Host "Verified games: $TrustMode$(if ($TrustMode -ne 'Off') { ', list from ' + ($sources -join ', ') })"
 # The trust settings are set here, by the administrator, and are not in the client, so a player cannot switch the check off from the app.
+# Several places go into one setting separated by ';', the agent asks each of them.
 $settings.Agent | Add-Member -NotePropertyName TrustMode -NotePropertyValue $TrustMode -Force
-$settings.Agent | Add-Member -NotePropertyName TrustListSource -NotePropertyValue $TrustListSource -Force
+$settings.Agent | Add-Member -NotePropertyName TrustListSource -NotePropertyValue ($sources -join ';') -Force
 $settings.Agent | Add-Member -NotePropertyName TrustPublicKey -NotePropertyValue $TrustPublicKey -Force
 $settings | ConvertTo-Json -Depth 5 | Set-Content -Path $settingsPath -Encoding UTF8
 
