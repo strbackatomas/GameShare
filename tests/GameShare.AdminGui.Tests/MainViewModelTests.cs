@@ -154,6 +154,45 @@ public class MainViewModelTests : IDisposable
     // ---- scanning and adding ----
 
     [Fact]
+    public async Task A_scan_shows_how_far_it_got_and_ends_at_full()
+    {
+        var vm = Vm();
+        using var game = new TestGame("BeamNG.drive", largeFileBytes: 40_000_000);
+        vm.GameFolder = game.GameDir;
+        var seen = new List<double>();
+        var scanning = new List<bool>();
+        vm.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(MainViewModel.ScanPercent)) seen.Add(vm.ScanPercent);
+            if (e.PropertyName == nameof(MainViewModel.IsScanning)) scanning.Add(vm.IsScanning);
+        };
+
+        await vm.ScanCommand.ExecuteAsync(null);
+
+        Assert.Equal([true, false], scanning);          // shown while it runs, gone after
+        Assert.Equal(100, seen[^1]);
+        Assert.StartsWith("100 %", vm.ScanText); // "100 % · 39 MB z 39 MB"
+        Assert.True(vm.HasScanned);
+    }
+
+    [Fact]
+    public async Task A_scan_can_be_cancelled_and_nothing_is_offered_for_adding()
+    {
+        var vm = Vm();
+        using var game = new TestGame("BeamNG.drive", largeFileBytes: 400_000_000);
+        vm.GameFolder = game.GameDir;
+
+        var scan = vm.ScanCommand.ExecuteAsync(null);
+        Assert.True(vm.CancelScanCommand.CanExecute(null));
+        vm.CancelScanCommand.Execute(null);
+        await scan;
+
+        Assert.Equal("Skenování zrušeno.", vm.Message);
+        Assert.False(vm.HasScanned);
+        Assert.False(vm.IsScanning);
+    }
+
+    [Fact]
     public async Task Scanning_and_adding_a_game_signs_and_writes_a_list_that_opens_with_the_public_key()
     {
         var vm = await KeyedAsync();

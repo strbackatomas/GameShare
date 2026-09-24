@@ -199,17 +199,87 @@ public sealed partial class MainViewModel : ObservableObject
 
         _scanned = null;
         ScannedName = ScannedVersion = ScannedHash = ScannedDefinition = null;
-        await RunAsync(async () =>
+        var folder = GameFolder;
+        using var cancel = new CancellationTokenSource();
+        _scanCancel = cancel;
+        ScanPercent = 0;
+        ScanText = "Zjišťuji velikost hry…";
+        IsScanning = true;
+        try
         {
-            _scanned = await TrustWorkflow.ScanAsync(GameFolder).ConfigureAwait(true);
-            ScannedName = _scanned.Name;
-            ScannedVersion = _scanned.Version;
-            ScannedHash = _scanned.ContentHash;
-            ScannedDefinition = _scanned.DefinitionHash is { } d
-                ? $"S definicí z gameshare.json ({d[..12]}), podepíše se spolu se soubory."
-                : "Bez gameshare.json: hra půjde spustit, ale příprava a spouštění jako správce se na PC s povinným ověřením nepovolí.";
-            Message = "Naskenováno. Zkontroluj název a verzi, pak přidej do seznamu.";
-        }).ConfigureAwait(true);
+            await RunAsync(async () =>
+            {
+                var total = await Task.Run(() => TrustWorkflow.ContentBytes(folder), cancel.Token).ConfigureAwait(true);
+                var hashed = new LatestValue();
+                var started = _clock.Elapsed;
+                var scan = Task.Run(() => TrustWorkflow.ScanAsync(folder, cancel.Token, hashed), cancel.Token);
+                // The hashing reports every block it reads, far too often for a window. Show the latest a few times a second instead.
+                while (!scan.IsCompleted)
+                {
+                    ShowScanProgress(hashed.Value, total, _clock.Elapsed - started);
+                    await Task.WhenAny(scan, Task.Delay(250)).ConfigureAwait(true);
+                }
+                _scanned = await scan.ConfigureAwait(true);
+                ShowScanProgress(total, total, _clock.Elapsed - started);
+                ScannedName = _scanned.Name;
+                ScannedVersion = _scanned.Version;
+                ScannedHash = _scanned.ContentHash;
+                ScannedDefinition = _scanned.DefinitionHash is { } d
+                    ? $"S definicí z gameshare.json ({d[..12]}), podepíše se spolu se soubory."
+                    : "Bez gameshare.json: hra půjde spustit, ale příprava a spouštění jako správce se na PC s povinným ověřením nepovolí.";
+                Message = "Naskenováno. Zkontroluj název a verzi, pak přidej do seznamu.";
+            }).ConfigureAwait(true);
+        }
+        catch (OperationCanceledException) { Message = "Skenování zrušeno."; }
+        finally
+        {
+            IsScanning = false;
+            _scanCancel = null;
+        }
+    }
+
+    // ---- scan progress ----
+
+    private CancellationTokenSource? _scanCancel;
+    private readonly System.Diagnostics.Stopwatch _clock = System.Diagnostics.Stopwatch.StartNew();
+
+    /// <summary>A game is being hashed. Large games take minutes, so the window shows how far it got.</summary>
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(CancelScanCommand))]
+    public partial bool IsScanning { get; set; }
+
+    /// <summary>0 to 100.</summary>
+    [ObservableProperty] public partial double ScanPercent { get; set; }
+
+    /// <summary>"42 % · 1,4 z 3,3 GB · zbývá asi 2 min".</summary>
+    [ObservableProperty] public partial string ScanText { get; set; } = "";
+
+    [RelayCommand(CanExecute = nameof(IsScanning))]
+    private void CancelScan() => _scanCancel?.Cancel();
+
+    private void ShowScanProgress(long done, long total, TimeSpan elapsed)
+    {
+        done = Math.Min(done, total);
+        ScanPercent = total == 0 ? 100 : done * 100.0 / total;
+        var text = $"{ScanPercent:F0} % · {Gb(done)} z {Gb(total)}";
+        // A guess only once there is something to go by: the first seconds mostly measure the disk waking up.
+        if (done > 0 && done < total && elapsed > TimeSpan.FromSeconds(3))
+        {
+            var left = TimeSpan.FromSeconds(elapsed.TotalSeconds * (total - done) / done);
+            text += left.TotalMinutes >= 1 ? $" · zbývá asi {Math.Ceiling(left.TotalMinutes):F0} min" : $" · zbývá asi {Math.Max(1, left.Seconds)} s";
+        }
+        ScanText = text;
+    }
+
+    private static string Gb(long bytes) =>
+        bytes >= 1L << 30 ? $"{bytes / (double)(1L << 30):0.0} GB" : $"{bytes / (double)(1L << 20):0} MB";
+
+    /// <summary>Keeps only the latest value reported from the hashing thread, for the window to pick up when it is ready.</summary>
+    private sealed class LatestValue : IProgress<long>
+    {
+        private long _value;
+        public long Value => Interlocked.Read(ref _value);
+        public void Report(long value) => Interlocked.Exchange(ref _value, value);
     }
 
     [RelayCommand]

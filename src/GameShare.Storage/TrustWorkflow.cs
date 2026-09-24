@@ -39,12 +39,22 @@ public static class TrustWorkflow
     public static TrustPayload LoadOrStartList(string listPath, string publicKey, DateTimeOffset now) =>
         File.Exists(listPath) ? TrustSigning.Open(File.ReadAllBytes(listPath), publicKey) : TrustPayload.Empty(now);
 
+    /// <summary>
+    /// Roughly how much <see cref="ScanAsync"/> will hash: every file but the definition. Files the definition marks as volatile are
+    /// counted too, so the real amount can be a little less. Good enough for a progress bar.
+    /// </summary>
+    public static long ContentBytes(string gameFolder) =>
+        new DirectoryInfo(gameFolder).EnumerateFiles("*", SearchOption.AllDirectories)
+            .Where(f => !string.Equals(f.Name, ContentScanner.DefinitionFileName, StringComparison.OrdinalIgnoreCase) || f.DirectoryName != Path.GetFullPath(gameFolder).TrimEnd('\\'))
+            .Sum(f => f.Length);
+
     /// <summary>Scans a game folder as it is now (a clean install, no saves) into a candidate entry. Nothing is added yet.</summary>
     /// <exception cref="DirectoryNotFoundException"><paramref name="gameFolder"/> is not a folder.</exception>
-    public static async Task<TrustedGame> ScanAsync(string gameFolder, CancellationToken ct = default)
+    /// <param name="bytesHashed">How many bytes are hashed so far. Hashing a large game takes minutes, see <see cref="ContentBytes"/> for the total.</param>
+    public static async Task<TrustedGame> ScanAsync(string gameFolder, CancellationToken ct = default, IProgress<long>? bytesHashed = null)
     {
         if (!Directory.Exists(gameFolder)) throw new DirectoryNotFoundException($"'{gameFolder}' is not a folder.");
-        var (manifest, _) = await ManifestBuilder.ScanAndBuildAsync(gameFolder, cancellationToken: ct).ConfigureAwait(false);
+        var (manifest, _) = await ManifestBuilder.ScanAndBuildAsync(gameFolder, bytesHashed, ct).ConfigureAwait(false);
         return new TrustedGame(manifest.ContentHash, manifest.GameId, manifest.Name, manifest.Version)
         {
             DefinitionHash = manifest.Definition is { } definition ? DefinitionHasher.Compute(definition) : null,

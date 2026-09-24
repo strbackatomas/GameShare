@@ -57,7 +57,15 @@
                         <TextBox Grid.Column="0" Text="{Binding GameFolder}" PlaceholderText="Složka hry, čistá instalace bez uložených pozic" Margin="0,0,8,0" />
                         <Button Grid.Column="1" Content="Procházet…" Command="{Binding BrowseGameFolderCommand}" Margin="0,0,8,0" />
                         <Button Grid.Column="2" Content="Upravit definici…" Command="{Binding EditDefinitionCommand}" Margin="0,0,8,0" />
-                        <Button Grid.Column="3" Content="Skenovat" Command="{Binding ScanCommand}" />
+                        <Button Grid.Column="3" Content="Skenovat" Command="{Binding ScanCommand}" IsEnabled="{Binding !IsScanning}" />
+                    </Grid>
+
+                    <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto" IsVisible="{Binding IsScanning}">
+                        <ProgressBar Grid.Row="0" Grid.Column="0" Value="{Binding ScanPercent}" Maximum="100" Height="8" VerticalAlignment="Center" Margin="0,0,8,0" />
+                        <Button Grid.Row="0" Grid.Column="1" Content="Zrušit" Command="{Binding CancelScanCommand}" />
+                        <TextBlock Grid.Row="1" Grid.ColumnSpan="2" Classes="muted" FontSize="12" Margin="0,4,0,0">
+                            <Run Text="Skenuji a počítám otisk každého souboru: " /><Run Text="{Binding ScanText}" />
+                        </TextBlock>
                     </Grid>
 
                     <Border IsVisible="{Binding IsEditing}" Padding="12" CornerRadius="6" BorderBrush="{StaticResource LineBrush}" BorderThickness="1">
