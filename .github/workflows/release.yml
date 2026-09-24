@@ -1,0 +1,55 @@
+# Builds and publishes a GitHub release when a version tag is pushed:
+#
+#   git tag v0.3.0
+#   git push origin v0.3.0
+#
+# The tag must match <Version> in src/Directory.Build.props. The release notes are that version's section of CHANGELOG.md.
+# The zips keep the same names in every release, so .../releases/latest/download/GameShare-LanParty.zip always gets the newest.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Check the tag, the version and the public key
+        shell: pwsh
+        run: |
+          $version = ([xml](Get-Content src/Directory.Build.props)).Project.PropertyGroup.Version
+          if ("v$version" -ne '${{ github.ref_name }}') { throw "Tag ${{ github.ref_name }} does not match <Version>$version</Version> in src/Directory.Build.props." }
+          # Without the key the builds would go out with verified games off, better to stop here than to find out at the LAN party.
+          if (-not (Test-Path scripts/trust-public.key)) { throw "scripts/trust-public.key is not in the repository." }
+          "VERSION=$version" >> $env:GITHUB_ENV
+
+      - name: Build
+        shell: pwsh
+        run: ./scripts/publish.ps1
+
+      - name: Pack
+        shell: pwsh
+        run: ./scripts/package-release.ps1
+
+      - name: Publish the release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # This version's section of CHANGELOG.md, from its heading to the next one.
+          $changelog = Get-Content CHANGELOG.md -Raw -Encoding utf8
+          $match = [regex]::Match($changelog, "(?ms)^## \[$([regex]::Escape($env:VERSION))\][^\n]*\n(.*?)(?=^## \[|\z)")
+          $notes = if ($match.Success) { $match.Groups[1].Value.Trim() } else { "GameShare $env:VERSION" }
+          Set-Content release-notes.md $notes -Encoding utf8
+          # Not a pre-release, even while the version starts with 0: .../releases/latest skips pre-releases, and the web page links there.
+          gh release create '${{ github.ref_name }}' (Get-ChildItem artifacts/release/*.zip).FullName --title "GameShare $env:VERSION" --notes-file release-notes.md

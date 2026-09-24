@@ -1,0 +1,166 @@
+<!-- GameShare – produktová stránka pro LANka.seru.cz. Vložte celé do bloku „Vlastní HTML“ (Custom HTML). Styly jsou schované pod třídou .gs, šablonu webu neovlivní. -->
+<div class="gs">
+<style>
+.gs{--gs-bg:#0f1420;--gs-card:#171e2e;--gs-line:#26304a;--gs-text:#e6ebf5;--gs-muted:#9aa6bf;--gs-accent:#4fd18b;--gs-accent2:#5aa9ff;--gs-warn:#ffc857;background:var(--gs-bg);color:var(--gs-text);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:17px;line-height:1.6;border-radius:18px;padding:0;overflow:hidden;max-width:1100px;margin:0 auto 2em;box-sizing:border-box}
+.gs *,.gs *::before,.gs *::after{box-sizing:border-box}
+.gs h1,.gs h2,.gs h3,.gs p,.gs ul,.gs li{margin:0;padding:0;color:inherit;font-family:inherit;letter-spacing:normal;text-transform:none;border:0;background:none}
+.gs ul{list-style:none}
+.gs a{color:var(--gs-accent);text-decoration:none}
+.gs a:hover{text-decoration:underline}
+.gs-sec{padding:56px 40px;border-top:1px solid var(--gs-line)}
+.gs-hero{padding:72px 40px 64px;text-align:center;border-top:0;background:radial-gradient(ellipse at 50% -20%,rgba(79,209,139,.28),transparent 60%),radial-gradient(ellipse at 100% 100%,rgba(90,169,255,.18),transparent 55%)}
+.gs-badge{display:inline-block;font-size:13px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--gs-warn);border:1px solid rgba(255,200,87,.45);background:rgba(255,200,87,.08);padding:5px 14px;border-radius:999px;margin-bottom:22px}
+.gs h1{font-size:clamp(34px,6vw,60px);line-height:1.1;font-weight:800;margin-bottom:18px}
+.gs h1 span{color:var(--gs-accent)}
+.gs-lead{font-size:clamp(17px,2.2vw,21px);color:var(--gs-muted);max-width:720px;margin:0 auto 32px}
+.gs-btns{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
+.gs-btn{display:inline-block;padding:13px 26px;border-radius:10px;font-weight:700;font-size:16px}
+.gs .gs-btn-main{background:var(--gs-accent);color:#07130c}
+.gs .gs-btn-ghost{border:1px solid var(--gs-line);color:var(--gs-text)}
+.gs .gs-btn:hover{text-decoration:none;filter:brightness(1.1)}
+.gs h2{font-size:clamp(26px,3.6vw,36px);line-height:1.2;font-weight:800;margin-bottom:12px}
+.gs-sub{color:var(--gs-muted);max-width:760px;margin-bottom:32px}
+.gs-grid{display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
+.gs-card{background:var(--gs-card);border:1px solid var(--gs-line);border-radius:14px;padding:24px}
+.gs-card h3{font-size:19px;font-weight:700;margin-bottom:8px}
+.gs-card p{color:var(--gs-muted);font-size:16px}
+.gs-ico{font-size:30px;line-height:1;margin-bottom:14px;display:block}
+.gs-pain li{padding:10px 0 10px 34px;position:relative;border-bottom:1px dashed var(--gs-line);color:var(--gs-muted)}
+.gs-pain li:last-child{border-bottom:0}
+.gs-pain li::before{content:"😩";position:absolute;left:0;top:10px}
+.gs-steps{counter-reset:gs-step}
+.gs-step{position:relative}
+.gs-step::before{counter-increment:gs-step;content:counter(gs-step);position:absolute;top:22px;left:24px;width:38px;height:38px;border-radius:50%;background:var(--gs-accent);color:#07130c;font-weight:800;display:flex;align-items:center;justify-content:center;font-size:18px}
+.gs-step{padding:72px 24px 24px}
+.gs-quote{font-size:clamp(20px,2.8vw,26px);font-weight:700;text-align:center;max-width:800px;margin:0 auto}
+.gs-quote small{display:block;font-size:15px;font-weight:400;color:var(--gs-muted);margin-top:10px}
+.gs-status{display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap}
+.gs-status .gs-card{flex:1 1 280px}
+.gs-check li{padding:6px 0 6px 30px;position:relative}
+.gs-check li::before{position:absolute;left:0;top:6px}
+.gs-check .ok::before{content:"✅"}
+.gs-check .wip::before{content:"🔧"}
+.gs-check .todo::before{content:"⏳"}
+.gs-faq .gs-card{margin-bottom:12px}
+.gs-shot{padding:0 40px 56px;margin:0}
+.gs-win{max-width:960px;margin:0 auto;border:1px solid var(--gs-line);border-radius:12px;overflow:hidden;background:var(--gs-card);box-shadow:0 24px 60px rgba(0,0,0,.45),0 0 0 1px rgba(79,209,139,.08)}
+.gs-win-bar{display:flex;align-items:center;gap:7px;padding:10px 14px;border-bottom:1px solid var(--gs-line);font-size:13px;color:var(--gs-muted)}
+.gs-win-bar i{width:11px;height:11px;border-radius:50%;background:var(--gs-line);display:inline-block}
+.gs-win-bar span{margin-left:8px}
+.gs .gs-win img{display:block;width:100%;height:auto;max-width:none;margin:0;border:0;border-radius:0;box-shadow:none}
+.gs-shot figcaption{text-align:center;color:var(--gs-muted);font-size:14px;margin-top:14px}
+.gs-dl .gs-card{display:flex;flex-direction:column}
+.gs-dl .gs-card p{flex:1 1 auto;margin-bottom:18px}
+.gs .gs-dl-main{background:linear-gradient(160deg,rgba(79,209,139,.16),var(--gs-card) 60%);border-color:rgba(79,209,139,.45)}
+.gs .gs-dl-main p{color:var(--gs-text)}
+.gs .gs-dl .gs-btn{text-align:center}
+.gs-note{color:var(--gs-muted);font-size:14px;margin-top:18px}
+.gs-foot{padding:32px 40px;text-align:center;color:var(--gs-muted);font-size:14px;border-top:1px solid var(--gs-line)}
+@media (max-width:640px){.gs{border-radius:0;font-size:16px}.gs-sec,.gs-hero,.gs-foot,.gs-shot{padding-left:16px;padding-right:16px}.gs-sec{padding-top:40px;padding-bottom:40px}.gs-hero{padding-top:48px;padding-bottom:44px}}
+</style>
+<!-- ÚVOD -->
+<section class="gs-hero">
+<span class="gs-badge">🚧 Připravujeme na příští lanku</span>
+<h1>Game<span>Share</span></h1>
+<p class="gs-lead">Launcher pro naši lanku. Hru, kterou má aspoň jeden počítač v síti, si stáhne každý další – rychle, bez flashek, bez hledání instalaček a bez „pošli mi to ještě jednou“.</p>
+<div class="gs-btns">
+<a class="gs-btn gs-btn-main" href="#gs-jak">Jak to funguje</a>
+<a class="gs-btn gs-btn-ghost" href="#gs-stazeni">Ke stažení</a>
+</div>
+</section>
+<!-- SCREENSHOT: nahraj obrázek do Médií, zkopíruj jeho adresu (URL souboru) a vlož ji místo celého src="data:..." níže. Ideálně poměr 16:10, šířka aspoň 1600 px. -->
+<figure class="gs-shot">
+<div class="gs-win">
+<div class="gs-win-bar"><i></i><i></i><i></i><span>GameShare</span></div>
+<img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1600 1000'%3E%3Crect width='1600' height='1000' fill='%23171e2e'/%3E%3Crect x='40' y='40' width='1520' height='920' rx='20' fill='none' stroke='%2326304a' stroke-width='4' stroke-dasharray='18 14'/%3E%3Ctext x='800' y='490' fill='%239aa6bf' font-family='sans-serif' font-size='56' text-anchor='middle'%3ESem přijde screenshot%3C/text%3E%3Ctext x='800' y='560' fill='%2326304a' font-family='sans-serif' font-size='32' text-anchor='middle'%3E1600 × 1000%3C/text%3E%3C/svg%3E" alt="GameShare – seznam her dostupných na lance" width="1600" height="1000" loading="lazy">
+</div>
+<figcaption>Takhle to vypadá: hry z celé lanky na jednom místě.</figcaption>
+</figure>
+<!-- PROBLÉM -->
+<section class="gs-sec">
+<h2>Známe to všichni</h2>
+<p class="gs-sub">Lanka začíná v pátek v šest. Hrát se začne… no, někdy.</p>
+<ul class="gs-pain">
+<li>Instalačky jsou na jednom disku, jedna flashka koluje po místnosti a fronta roste.</li>
+<li>Půlka lidí má jinou verzi hry a spolu se nepřipojí.</li>
+<li>„Chybí mi nějaké DLL.“ Takže ještě DirectX, Visual C++ a modlitba.</li>
+<li>Někdo si hru nainstaluje do jiné složky a najednou nefunguje registr.</li>
+<li>Než se nainstaluje poslední, první už to chtějí vypnout a hrát něco jiného.</li>
+</ul>
+</section>
+<!-- JAK TO FUNGUJE -->
+<section class="gs-sec" id="gs-jak">
+<h2>Jak to funguje</h2>
+<p class="gs-sub">Žádný server, žádný cloud. Hry jsou připravené na několika erárních (pořadatelských) PC, kde GameShare běží jako služba a hry nabízí celou lanku. Ostatní počítače si je od nich – a od sebe navzájem – stáhnou. Čím víc lidí hru má, tím rychleji ji dostanou další.</p>
+<div class="gs-grid gs-steps">
+<div class="gs-card gs-step"><h3>Spustíš GameShare</h3><p>Na svém PC nic neinstaluješ – jen dvakrát klikneš na <strong>GameShare-LanParty.exe</strong>. Sám najde erární PC i ostatní a ukáže, jaké hry jsou k mání.</p></div>
+<div class="gs-card gs-step"><h3>Klikneš na hru</h3><p>Stahuje se ze všech, kdo ji mají, najednou. Soubory jdou rovnou do složky hry, žádné rozbalování ZIPů.</p></div>
+<div class="gs-card gs-step"><h3>Hra se připraví</h3><p>DirectX, Visual C++, záznamy v registru, režim kompatibility – co hra potřebuje, to se nastaví. Ukáže se ti, co se bude dít, a ty potvrdíš.</p></div>
+<div class="gs-card gs-step"><h3>Hraješ</h3><p>Tlačítko <strong>Hrát</strong> a jde se na to. A tvůj počítač mezitím hru nabízí dalším, kdo ji ještě nemají.</p></div>
+</div>
+</section>
+<!-- CITÁT -->
+<section class="gs-sec">
+<p class="gs-quote">„Kdo hru dostal, ten ji rovnou posílá dál.“<small>Takže když si ji stáhne pět lidí, šestý ji tahá z pěti počítačů naráz.</small></p>
+</section>
+<!-- VLASTNOSTI -->
+<section class="gs-sec">
+<h2>Co to umí</h2>
+<p class="gs-sub">Hlavně to, aby se na lance víc hrálo a míň instalovalo.</p>
+<div class="gs-grid">
+<div class="gs-card"><span class="gs-ico">⚡</span><h3>Rychle a ze všech stran</h3><p>Hra se stahuje z více počítačů současně. Žádné úzké hrdlo u jednoho disku.</p></div>
+<div class="gs-card"><span class="gs-ico">🏠</span><h3>Jen po lance</h3><p>Data neopustí místní síť. Nic se nenahrává na internet a nikdo zvenku se nepřipojí.</p></div>
+<div class="gs-card"><span class="gs-ico">🛡️</span><h3>Ověřené hry</h3><p>Pořadatel vede podepsaný seznam her. Hned je vidět, že máš stejnou verzi jako ostatní – a ne něco, co se k ní jen podobá.</p></div>
+<div class="gs-card"><span class="gs-ico">🧰</span><h3>Příprava hry za tebe</h3><p>Knihovny, registr, kompatibilita, profil v Dokumentech. Všechno, co dřív dělal starý instalátor, jen přehledně a na jedno potvrzení.</p></div>
+<div class="gs-card"><span class="gs-ico">🩹</span><h3>Oprava jedním klikem</h3><p>Rozbitá hra? GameShare zjistí, co chybí nebo nesedí, a dotáhne jen to od ostatních.</p></div>
+<div class="gs-card"><span class="gs-ico">💾</span><h3>Uložené pozice v klidu</h3><p>Savy a nastavení si hra může přepisovat, jak chce. GameShare pozná, co je obsah hry a co tvoje hraní.</p></div>
+<div class="gs-card"><span class="gs-ico">🎮</span><h3>Víc spouštěčů u hry</h3><p>Hra, editor, dedikovaný server – vše pěkně v menu u tlačítka Hrát, i s ikonkou.</p></div>
+<div class="gs-card"><span class="gs-ico">🎒</span><h3>Na tvém PC bez instalace</h3><p>Jeden soubor <strong>GameShare-LanParty.exe</strong>, dvakrát kliknout a jsi v tom. Po lance ho prostě zavřeš a na PC nic nezůstane běžet.</p></div>
+</div>
+</section>
+<!-- STAV -->
+<section class="gs-sec" id="gs-stav">
+<h2>Kde to zrovna je</h2>
+<p class="gs-sub">Poctivě: je to rozdělané. Na jednom stroji to funguje, teď to chce pořádnou zkoušku na skutečné lance – a to budete vy. 🙂</p>
+<div class="gs-status">
+<div class="gs-card">
+<ul class="gs-check">
+<li class="ok">Sdílení a stahování her po síti</li>
+<li class="ok">Automatické hledání ostatních počítačů</li>
+<li class="ok">Kontrola a oprava her</li>
+<li class="ok">Tlačítko Hrát a výběr spouštěče</li>
+<li class="ok">Podepsaný seznam ověřených her</li>
+<li class="ok">Příprava hry (knihovny, registr, …)</li>
+<li class="wip">Převod her ze starého instalátoru</li>
+<li class="todo">První ostrý test na lance</li>
+</ul>
+</div>
+<div class="gs-card">
+<h3>Co od vás budeme potřebovat</h3>
+<p>Na příští lance to zkusíme nasadit. Až to spadne (protože to spadne 😄), dejte vědět, co jste zrovna dělali. Čím víc chyb najdeme teď, tím míň jich uvidíme potom.</p>
+</div>
+</div>
+</section>
+<!-- KE STAŽENÍ: odkazy vedou vždy na nejnovější vydání na GitHubu (releases/latest/download/…). -->
+<section class="gs-sec gs-dl" id="gs-stazeni">
+<h2>Ke stažení</h2>
+<p class="gs-sub">Vždycky nejnovější verze. Pro Windows 10 a 11 (64bit). První verze se tu objeví před lankou – do té doby tlačítka nikam nevedou.</p>
+<div class="gs-grid">
+<div class="gs-card gs-dl-main"><span class="gs-ico">🎮</span><h3>Pro hráče</h3><p>Tohle chceš ty. Rozbal, spusť <strong>GameShare-LanParty.exe</strong> a hraj. Nic se neinstaluje.</p><a class="gs-btn gs-btn-main" href="https://github.com/strbackatomas/GameShare/releases/latest/download/GameShare-LanParty.zip">Stáhnout GameShare</a></div>
+<div class="gs-card"><span class="gs-ico">🖥️</span><h3>Pro erární PC</h3><p>Služba, která běží na pozadí a nabízí hry celé lance, plus aplikace a instalační skript. Instaluje pořadatel. Menší verze pro PC s .NET 10: <a href="https://github.com/strbackatomas/GameShare/releases/latest/download/GameShare-Agent-net10.zip">GameShare-Agent-net10.zip</a>.</p><a class="gs-btn gs-btn-ghost" href="https://github.com/strbackatomas/GameShare/releases/latest/download/GameShare-Agent.zip">GameShare-Agent.zip</a></div>
+<div class="gs-card"><span class="gs-ico">🔑</span><h3>Pro pořadatele</h3><p>Nástroj pro správu seznamu ověřených her – v okně i pro příkazovou řádku. Hráči ho nepotřebují.</p><a class="gs-btn gs-btn-ghost" href="https://github.com/strbackatomas/GameShare/releases/latest/download/GameShare-Admin.zip">GameShare-Admin.zip</a></div>
+</div>
+<p class="gs-note">Starší verze a co je v které nového: <a href="https://github.com/strbackatomas/GameShare/releases">všechny verze na GitHubu</a>.</p>
+<p class="gs-note">Windows může napoprvé ukázat modré okno „Systém Windows ochránil váš počítač“. Klikni na <strong>Další informace → Přesto spustit</strong>. Aplikace zatím není podepsaná certifikátem, jinak je v pořádku.</p>
+</section>
+<!-- FAQ -->
+<section class="gs-sec gs-faq">
+<h2>Časté otázky</h2>
+<p class="gs-sub">Ty, které padly u piva.</p>
+<div class="gs-card"><h3>Není to jen torrent?</h3><p>Uvnitř ano, stahování opravdu běží přes BitTorrent. Jenže jen v rámci naší sítě, bez trackeru, bez internetu a s tlačítkem Hrát na konci.</p></div>
+<div class="gs-card"><h3>Musím něco instalovat?</h3><p>Ne. Stačí jeden soubor <strong>GameShare-LanParty.exe</strong>, který jen spustíš. Služba se instaluje jen na erární PC, o ty se postará pořadatel. Jen když hra potřebuje třeba DirectX, Windows se jednou zeptá na povolení.</p></div>
+<div class="gs-card"><h3>Zpomalí mi to hraní?</h3><p>Ne. Když spustíš hru, GameShare jí uhne z cesty a nabízení ostatním přibrzdí.</p></div>
+<div class="gs-card"><h3>Kde si to stáhnu?</h3><p>Nahoře v sekci <a href="#gs-stazeni">Ke stažení</a>, jakmile bude hotová první verze – a na lance ho dostaneš i přímo od pořadatele.</p></div>
+</section>
+<section class="gs-foot">GameShare · vyvíjeno pro <a href="https://lanka.seru.cz/">LANka.seru.cz</a> · méně instalování, víc hraní 🎮</section>
+</div>

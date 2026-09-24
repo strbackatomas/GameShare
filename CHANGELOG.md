@@ -8,6 +8,25 @@ this is wired into the build and where a peer's version shows up.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-09-24
+
+### Added
+- Releases on GitHub: pushing a `v*` tag builds everything and publishes `GameShare-LanParty.zip`, `GameShare-Agent.zip`,
+  `GameShare-Agent-net10.zip` and `GameShare-Admin.zip` under the same names every time (`.github/workflows/release.yml`,
+  `scripts/package-release.ps1`).
+- A product page for the web (`docs/web/`), as WordPress blocks and as one Custom HTML block.
+
+### Changed
+- The game card shows states and the administrator's verdict as small symbols with the words in a tooltip, keeps only the main
+  action (Hrát, or choosing the program) as a button, and puts everything else into one menu.
+- The administrator's verdict is a shield: green with a tick for a vouched-for game, orange with "!" for one nobody vouches for,
+  red with a cross for a withdrawn one. A game whose files changed shows a pencil instead.
+
+### Fixed
+- A game that writes into its own folder the moment it starts (UT2004 and its `UT2004.ini`) no longer quits on its first starts:
+  the seed lets go of the game's files as soon as the client asks to start it, not up to five seconds later. A game that stops
+  right after it was started says so on its card, and "Hra se spouští…" no longer stays.
+
 ## [0.3.0] - 2026-09-24
 
 ### Added

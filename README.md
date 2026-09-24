@@ -78,12 +78,19 @@ build picks it up automatically (assembly version, file version, the `.exe` prop
 - `gameshare-admin --version` prints the CLI's build; `gameshare-admin-gui` shows it next to its title.
 - `scripts\publish.ps1` prints the version it is building at the start of the run.
 
-Bump the version and add an entry to `CHANGELOG.md` in the same change, then tag the commit once it is released:
+Bump the version and add an entry to `CHANGELOG.md` in the same change, then tag the commit to release it:
 
 ```
-git tag v0.1.0
-git push origin v0.1.0
+git tag v0.4.0
+git push origin v0.4.0
 ```
+
+Pushing the tag is the whole release. `.github/workflows/release.yml` checks that the tag matches `<Version>` and that
+`scripts\trust-public.key` is committed, runs `publish.ps1` and `scripts\package-release.ps1`, and publishes a GitHub release
+with that version's section of `CHANGELOG.md` as its notes. The zips keep the same names in every release
+(`GameShare-LanParty.zip`, `GameShare-Agent.zip`, `GameShare-Agent-net10.zip`, `GameShare-Admin.zip`), so
+`https://github.com/strbackatomas/GameShare/releases/latest/download/<name>` always gets the newest one. The release is never
+marked as a pre-release, because `latest` skips those. `package-release.ps1` also runs locally, into `artifacts\release`.
 
 ## Just visiting? `GameShare-LanParty.exe`
 
