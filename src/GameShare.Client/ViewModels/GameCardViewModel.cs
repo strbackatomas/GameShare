@@ -33,8 +33,16 @@ public sealed partial class GameCardViewModel : ViewModelBase
     [ObservableProperty] public partial string PeersText { get; set; } = "";
     [ObservableProperty] public partial string? InstallPath { get; set; }
 
+    /// <summary>The game's picture as the agent serves it (.ico or .png), turned into an image by the view. Null until loaded, or when there is none.</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsInstalled), nameof(IsDamaged), nameof(IsDownloading), nameof(IsAvailable), nameof(CanInstall), nameof(CanUpdate), nameof(ShowInstallButton), nameof(StateText), nameof(CanPlay), nameof(NeedsExecutable), nameof(ShowUninstallButton))]
+    [NotifyPropertyChangedFor(nameof(HasIconImage))]
+    public partial byte[]? IconData { get; set; }
+
+    public bool HasIconImage => IconData is not null;
+    private bool _iconRequested;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsInstalled), nameof(IsDamaged), nameof(IsDownloading), nameof(IsAvailable), nameof(CanInstall), nameof(CanUpdate), nameof(ShowInstallButton), nameof(StateText), nameof(CanPlay), nameof(NeedsExecutable), nameof(ShowUninstallButton), nameof(HasOtherLaunchOptions), nameof(HasPlayMenu))]
     public partial GameState State { get; set; }
 
     [ObservableProperty]
@@ -50,14 +58,75 @@ public sealed partial class GameCardViewModel : ViewModelBase
 
     /// <summary>Ready: it can be started. NeedsExecutable: the player picks which program starts it. Only for a game installed here.</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(CanPlay), nameof(NeedsExecutable))]
+    [NotifyPropertyChangedFor(nameof(CanPlay), nameof(NeedsExecutable), nameof(HasOtherLaunchOptions), nameof(HasPlayMenu))]
     public partial LaunchState Launch { get; set; }
 
     /// <summary>A program of the game is running on this PC. Its files are then not rewritten, so repairing and updating wait.</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(CanPlay), nameof(CanModify))]
+    [NotifyPropertyChangedFor(nameof(CanPlay), nameof(CanModify), nameof(HasOtherLaunchOptions), nameof(HasPlayMenu))]
     [NotifyCanExecuteChangedFor(nameof(UpdateCommand), nameof(RepairCommand), nameof(RegisterCommand), nameof(UninstallPromptCommand), nameof(ConfirmUninstallCommand))]
     public partial bool IsRunning { get; set; }
+
+    /// <summary>The game's other programs (an editor, a server, a launcher with options), offered next to the play button.</summary>
+    public ObservableCollection<LaunchOptionViewModel> OtherLaunchOptions { get; } = [];
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasOtherLaunchOptions), nameof(HasPlayMenu))]
+    public partial int OtherLaunchOptionCount { get; set; }
+
+    public bool HasOtherLaunchOptions => CanPlay && OtherLaunchOptionCount > 0;
+
+    /// <summary>The menu next to the play button: the game's other programs, and preparing the game again.</summary>
+    public bool HasPlayMenu => CanPlay && (OtherLaunchOptionCount > 0 || HasSetup);
+
+    // ---- preparing the PC before the game is first played ----
+
+    /// <summary>The game's definition has setup steps (redistributables, registry, compatibility, profile).</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasPlayMenu))]
+    public partial bool HasSetup { get; set; }
+
+    /// <summary>The setup did not run on this PC for this version and folder yet. Play shows the preparation first.</summary>
+    [ObservableProperty] public partial bool NeedsSetup { get; set; }
+
+    /// <summary>The preparation is shown for the player to confirm.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanRunSetup))]
+    public partial bool IsShowingSetup { get; set; }
+
+    public ObservableCollection<SetupStepViewModel> SetupSteps { get; } = [];
+
+    /// <summary>Why the preparation must not run, as the agent put it.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanRunSetup), nameof(HasSetupBlocked))]
+    public partial string? SetupBlocked { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasSetupWarning))]
+    public partial string? SetupWarning { get; set; }
+
+    /// <summary>"Pokračovat" asks for administrator rights, so the player knows a Windows prompt comes.</summary>
+    [ObservableProperty] public partial bool SetupNeedsAdmin { get; set; }
+
+    /// <summary>The shared redistributables package the game needs, offered on the LAN, not installed here.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasMissingRedist))]
+    public partial string? MissingRedistContentHash { get; set; }
+
+    public bool HasSetupBlocked => SetupBlocked is not null;
+    public bool HasSetupWarning => SetupWarning is not null;
+    public bool HasMissingRedist => MissingRedistContentHash is not null;
+    public bool CanRunSetup => IsShowingSetup && SetupBlocked is null && !IsBusy;
+
+    private SetupPlanDto? _setupPlan;
+    private int _entryAfterSetup;
+
+    /// <summary>The play button starts the game with administrator rights, so the player will see a UAC prompt.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(PlayTip))]
+    public partial bool PlayNeedsAdmin { get; set; }
+
+    public string? PlayTip => PlayNeedsAdmin ? "Spustí se jako správce, Windows se zeptá na potvrzení." : null;
 
     /// <summary>The programs of the game to choose from, once the player asked to choose.</summary>
     public ObservableCollection<string> Executables { get; } = [];
@@ -65,7 +134,7 @@ public sealed partial class GameCardViewModel : ViewModelBase
     [ObservableProperty] public partial string? SelectedExecutable { get; set; }
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(CanPlay))]
+    [NotifyPropertyChangedFor(nameof(CanPlay), nameof(HasOtherLaunchOptions), nameof(HasPlayMenu))]
     public partial bool IsChoosingExecutable { get; set; }
 
     /// <summary>The configured game folders to install into, once there is more than one and the player is asked to pick.</summary>
@@ -96,7 +165,7 @@ public sealed partial class GameCardViewModel : ViewModelBase
 
     /// <summary>An operation on this game is running, so its buttons are off.</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(CanAct), nameof(CanModify))]
+    [NotifyPropertyChangedFor(nameof(CanAct), nameof(CanModify), nameof(CanRunSetup))]
     [NotifyCanExecuteChangedFor(nameof(PlayCommand), nameof(ChooseExecutableCommand), nameof(SaveExecutableCommand), nameof(InstallCommand), nameof(ConfirmInstallCommand),
         nameof(UpdateCommand), nameof(RepairCommand), nameof(CheckCommand), nameof(MarkVolatileCommand), nameof(RegisterCommand), nameof(UninstallPromptCommand), nameof(ConfirmUninstallCommand))]
     public partial bool IsBusy { get; set; }
@@ -167,6 +236,14 @@ public sealed partial class GameCardViewModel : ViewModelBase
         Details = string.IsNullOrEmpty(g.Version) ? Format.Size(g.TotalSize) : $"{g.Version} · {Format.Size(g.TotalSize)}";
         PeersText = g.State == GameState.AvailableOnLan && g.PeerNames.Count > 0 ? DescribePeers(g) : "";
         Launch = g.Launch;
+        ApplyLaunchOptions(g.LaunchOptions);
+        HasSetup = g.Definition?.Setup is { IsEmpty: false } && g.Definition.Kind == GameKind.Game;
+        NeedsSetup = g.NeedsSetup;
+        if (g.HasIcon && !_iconRequested)
+        {
+            _iconRequested = true;
+            _ = LoadIconAsync();
+        }
         IsRunning = g.IsRunning;
         Trust = g.Trust;
         TrustNote = g.TrustNote;
@@ -193,6 +270,22 @@ public sealed partial class GameCardViewModel : ViewModelBase
             : text + $" (jen část: {string.Join(", ", g.PartialPeerNames)})";
     }
 
+    private async Task LoadIconAsync()
+    {
+        try { IconData = await _app.Client.GetIconAsync(ContentHash).ConfigureAwait(true); }
+        catch (Exception) { _iconRequested = false; } // tried again with the next refresh
+    }
+
+    private void ApplyLaunchOptions(IReadOnlyList<LaunchOptionDto> options)
+    {
+        PlayNeedsAdmin = options.FirstOrDefault(o => o.Index == 0)?.RunAsAdmin == true;
+        var others = options.Where(o => o.Index != 0).ToList();
+        if (others.SequenceEqual(OtherLaunchOptions.Select(o => o.Option))) return;
+        OtherLaunchOptions.Clear();
+        foreach (var o in others) OtherLaunchOptions.Add(new LaunchOptionViewModel(o, StartAsync));
+        OtherLaunchOptionCount = OtherLaunchOptions.Count;
+    }
+
     public void ApplyProgress(DownloadDto d)
     {
         Percent = d.Percent;
@@ -203,7 +296,116 @@ public sealed partial class GameCardViewModel : ViewModelBase
 
     /// <summary>The agent checks the game and says what to start, the client starts it. A refusal is shown as the agent worded it.</summary>
     [RelayCommand(CanExecute = nameof(CanAct))]
-    private async Task PlayAsync()
+    private Task PlayAsync() => StartAsync(0);
+
+    /// <summary>Starts one of the game's programs, 0 being the game itself. A game not prepared on this PC yet is prepared first.</summary>
+    private async Task StartAsync(int entry)
+    {
+        if (IsBusy) return;
+        if (NeedsSetup)
+        {
+            await OpenSetupAsync(entry).ConfigureAwait(true);
+            return;
+        }
+        await LaunchAsync(entry).ConfigureAwait(true);
+    }
+
+    /// <summary>Asks the agent what preparing this PC does and shows it. Nothing runs until the player agrees.</summary>
+    private async Task OpenSetupAsync(int entry)
+    {
+        IsBusy = true;
+        Message = "Zjišťuji, co hra potřebuje…";
+        _entryAfterSetup = entry;
+        try
+        {
+            if (!await TryAsync(async () => _setupPlan = await _app.Client.GetSetupPlanAsync(ContentHash), m => Message = m).ConfigureAwait(true)) return;
+            Message = null;
+            var plan = _setupPlan!;
+            SetupSteps.Clear();
+            foreach (var step in plan.Steps) SetupSteps.Add(new SetupStepViewModel(step));
+            SetupBlocked = plan.Blocked;
+            SetupWarning = plan.Warning;
+            SetupNeedsAdmin = plan.NeedsAdmin;
+            MissingRedistContentHash = plan.MissingRedistContentHash;
+            IsShowingSetup = true;
+        }
+        finally { IsBusy = false; }
+
+        // Nothing left to do here (every redistributable is on the PC already, say): note it and play without asking.
+        if (IsShowingSetup && _setupPlan is { Blocked: null } p && p.Steps.All(s => s.AlreadyDone))
+            await FinishSetupAsync(p).ConfigureAwait(true);
+    }
+
+    /// <summary>The player agreed: one UAC prompt for the machine's steps, the player's own steps here, then the game starts.</summary>
+    [RelayCommand(CanExecute = nameof(CanRunSetup))]
+    private async Task RunSetupAsync()
+    {
+        if (_setupPlan is not { } plan) return;
+        IsBusy = true;
+        Message = plan.NeedsAdmin ? "Připravuji hru, potvrď dotaz Windows na oprávnění…" : "Připravuji hru…";
+        IReadOnlyList<SetupStepResultDto> results;
+        try { results = await _app.SetupRunner.RunAsync(plan).ConfigureAwait(true); }
+        finally { IsBusy = false; }
+
+        foreach (var result in results)
+            SetupSteps.FirstOrDefault(s => s.Title == result.Title)?.Report(result);
+        var failed = results.Where(r => !r.Ok).ToList();
+        if (failed.Count > 0)
+        {
+            Message = failed.Count == 1 && failed[0].Title == "Oprávnění správce"
+                ? failed[0].Message
+                : $"Příprava se nepovedla: {string.Join("; ", failed.Select(f => $"{f.Title}: {f.Message}"))}";
+            return;
+        }
+        await FinishSetupAsync(plan).ConfigureAwait(true);
+    }
+
+    private async Task FinishSetupAsync(SetupPlanDto plan)
+    {
+        if (!await TryAsync(() => _app.Client.SetupDoneAsync(ContentHash, plan.SetupHash), m => Message = m).ConfigureAwait(true)) return;
+        NeedsSetup = false;
+        IsShowingSetup = false;
+        await LaunchAsync(_entryAfterSetup).ConfigureAwait(true);
+    }
+
+    /// <summary>Plays without preparing, for a player who knows the game runs without it. Asked again next time.</summary>
+    [RelayCommand]
+    private async Task SkipSetupAsync()
+    {
+        IsShowingSetup = false;
+        await LaunchAsync(_entryAfterSetup).ConfigureAwait(true);
+    }
+
+    [RelayCommand]
+    private void CancelSetup()
+    {
+        IsShowingSetup = false;
+        Message = null;
+    }
+
+    /// <summary>Installs the shared redistributables package the game needs. Play prepares the game once it is there.</summary>
+    [RelayCommand(CanExecute = nameof(CanAct))]
+    private async Task InstallRedistAsync()
+    {
+        if (MissingRedistContentHash is not { } hash) return;
+        if (await TryAsync(() => _app.Client.InstallAsync(hash), m => Message = m).ConfigureAwait(true))
+        {
+            IsShowingSetup = false;
+            Message = "Instaluje se balíček knihoven. Až bude hotový, klikni znovu na Hrát.";
+        }
+        await _app.RefreshDownloadsAsync().ConfigureAwait(true);
+    }
+
+    /// <summary>Runs the preparation again: for another player on this PC, or when the game still does not start.</summary>
+    [RelayCommand(CanExecute = nameof(CanAct))]
+    private async Task PrepareAgainAsync()
+    {
+        if (!await TryAsync(() => _app.Client.ResetSetupAsync(ContentHash), m => Message = m).ConfigureAwait(true)) return;
+        NeedsSetup = true;
+        await OpenSetupAsync(0).ConfigureAwait(true);
+    }
+
+    private async Task LaunchAsync(int entry)
     {
         IsBusy = true;
         Message = null;
@@ -211,9 +413,9 @@ public sealed partial class GameCardViewModel : ViewModelBase
         {
             await TryAsync(async () =>
             {
-                var info = await _app.Client.LaunchAsync(ContentHash);
+                var info = await _app.Client.LaunchAsync(ContentHash, entry);
                 _app.Starter.Start(info);
-                Message = "Hra se spouští…";
+                Message = info.RunAsAdmin ? "Hra se spouští jako správce, potvrď dotaz Windows…" : "Hra se spouští…";
             }, m => Message = m).ConfigureAwait(true);
         }
         finally { IsBusy = false; }
@@ -412,8 +614,14 @@ public sealed partial class GameCardViewModel : ViewModelBase
         await _app.RefreshDownloadsAsync().ConfigureAwait(true);
     }
 
+    partial void OnIsShowingSetupChanged(bool value) => RunSetupCommand.NotifyCanExecuteChanged();
+    partial void OnSetupBlockedChanged(string? value) => RunSetupCommand.NotifyCanExecuteChanged();
+
     partial void OnIsBusyChanged(bool value)
     {
+        RunSetupCommand.NotifyCanExecuteChanged();
+        InstallRedistCommand.NotifyCanExecuteChanged();
+        PrepareAgainCommand.NotifyCanExecuteChanged();
         InstallCommand.NotifyCanExecuteChanged();
         ConfirmInstallCommand.NotifyCanExecuteChanged();
         UpdateCommand.NotifyCanExecuteChanged();
@@ -424,6 +632,45 @@ public sealed partial class GameCardViewModel : ViewModelBase
         UninstallPromptCommand.NotifyCanExecuteChanged();
         ConfirmUninstallCommand.NotifyCanExecuteChanged();
     }
+}
+
+/// <summary>One step of a game's preparation as the player sees it before agreeing, and how it went afterwards.</summary>
+public sealed partial class SetupStepViewModel(SetupStepDto step) : ObservableObject
+{
+    public string Title => step.Title;
+    public string Details => string.Join(Environment.NewLine, step.Details);
+    public bool HasDetails => step.Details.Count > 0;
+    public bool NeedsAdmin => step.NeedsAdmin && !step.AlreadyDone;
+    public bool AlreadyDone => step.AlreadyDone;
+
+    /// <summary>Empty until the step ran: then "hotovo" or what went wrong.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasOutcome))]
+    public partial string? Outcome { get; set; }
+
+    [ObservableProperty] public partial bool Failed { get; set; }
+
+    /// <summary>The player opened what the step writes: registry keys and values, the installer and its arguments.</summary>
+    [ObservableProperty] public partial bool ShowDetails { get; set; }
+
+    public bool HasOutcome => Outcome is not null;
+
+    public void Report(SetupStepResultDto result)
+    {
+        Failed = !result.Ok;
+        Outcome = result.Ok ? result.Message ?? "Hotovo." : $"Nepovedlo se: {result.Message}";
+    }
+}
+
+/// <summary>One of a game's other programs, as an item in the menu next to the play button.</summary>
+public sealed partial class LaunchOptionViewModel(LaunchOptionDto option, Func<int, Task> start)
+{
+    public LaunchOptionDto Option { get; } = option;
+
+    public string Text => (string.IsNullOrWhiteSpace(Option.Name) ? Option.Executable : Option.Name) + (Option.RunAsAdmin ? "  (jako správce)" : "");
+
+    [RelayCommand]
+    private Task PlayAsync() => start(Option.Index);
 }
 
 /// <summary>A configured game folder as an item to pick from, with free space folded into the text shown.</summary>

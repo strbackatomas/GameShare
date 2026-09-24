@@ -61,11 +61,34 @@ public sealed class AgentClient : IAgentClient
     public async Task UninstallAsync(string contentHash, CancellationToken ct = default) =>
         await SendAsync<object?>(HttpMethod.Delete, $"/api/games/{contentHash}", null, Quick, ct).ConfigureAwait(false);
 
-    public Task<LaunchInfoDto> LaunchAsync(string contentHash, CancellationToken ct = default) =>
-        SendAsync<LaunchInfoDto>(HttpMethod.Post, $"/api/games/{contentHash}/launch", null, Slow, ct);
+    public Task<LaunchInfoDto> LaunchAsync(string contentHash, int entry = 0, CancellationToken ct = default) =>
+        SendAsync<LaunchInfoDto>(HttpMethod.Post, entry == 0 ? $"/api/games/{contentHash}/launch" : $"/api/games/{contentHash}/launch?entry={entry}", null, Slow, ct);
 
     public Task<IReadOnlyList<string>> GetExecutablesAsync(string contentHash, CancellationToken ct = default) =>
         ListAsync<string>($"/api/games/{contentHash}/executables", ct);
+
+    // Planning hashes the installers, which can take a moment for large ones.
+    public Task<SetupPlanDto> GetSetupPlanAsync(string contentHash, CancellationToken ct = default) =>
+        SendAsync<SetupPlanDto>(HttpMethod.Get, $"/api/games/{contentHash}/setup", null, Slow, ct);
+
+    public Task<GameDto?> SetupDoneAsync(string contentHash, string setupHash, CancellationToken ct = default) =>
+        SendAsync<GameDto?>(HttpMethod.Post, $"/api/games/{contentHash}/setup/done", new SetupDoneRequest(setupHash), Quick, ct);
+
+    public Task<GameDto?> ResetSetupAsync(string contentHash, CancellationToken ct = default) =>
+        SendAsync<GameDto?>(HttpMethod.Delete, $"/api/games/{contentHash}/setup", null, Quick, ct);
+
+    public async Task<byte[]?> GetIconAsync(string contentHash, CancellationToken ct = default)
+    {
+        using var limit = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        limit.CancelAfter(Quick);
+        try
+        {
+            using var response = await _http.GetAsync($"/api/games/{contentHash}/icon", limit.Token).ConfigureAwait(false);
+            return response.IsSuccessStatusCode ? await response.Content.ReadAsByteArrayAsync(limit.Token).ConfigureAwait(false) : null;
+        }
+        catch (HttpRequestException) { return null; } // a picture is not worth an error message
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested) { return null; }
+    }
 
     public Task<GameDto?> ChooseExecutableAsync(string contentHash, string executable, string? arguments, CancellationToken ct = default) =>
         SendAsync<GameDto?>(HttpMethod.Put, $"/api/games/{contentHash}/launcher", new LauncherChoiceRequest(executable, arguments), Quick, ct);

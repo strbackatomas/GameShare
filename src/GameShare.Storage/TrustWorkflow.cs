@@ -45,7 +45,10 @@ public static class TrustWorkflow
     {
         if (!Directory.Exists(gameFolder)) throw new DirectoryNotFoundException($"'{gameFolder}' is not a folder.");
         var (manifest, _) = await ManifestBuilder.ScanAndBuildAsync(gameFolder, cancellationToken: ct).ConfigureAwait(false);
-        return new TrustedGame(manifest.ContentHash, manifest.GameId, manifest.Name, manifest.Version);
+        return new TrustedGame(manifest.ContentHash, manifest.GameId, manifest.Name, manifest.Version)
+        {
+            DefinitionHash = manifest.Definition is { } definition ? DefinitionHasher.Compute(definition) : null,
+        };
     }
 
     /// <summary>Signs and writes the list. Every change goes through here, so a list on disk is always signed.</summary>

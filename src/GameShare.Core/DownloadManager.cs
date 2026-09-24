@@ -588,6 +588,16 @@ public sealed class DownloadManager
                 return;
             }
 
+            // The folder carries its definition, so a later scan here and the PCs that install from this one read the same thing.
+            if (a.Manifest.Definition is { } definition)
+            {
+                try { await GameDefinitionFile.WriteAsync(a.InstallPath, definition).ConfigureAwait(false); }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    _log.LogWarning(ex, "Could not write {File} into {Path}", ContentScanner.DefinitionFileName, a.InstallPath);
+                }
+            }
+
             Installation installation;
             switch (a.Row.Kind)
             {

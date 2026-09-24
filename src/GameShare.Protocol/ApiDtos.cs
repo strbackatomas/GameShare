@@ -32,6 +32,15 @@ public sealed record GameDto(
     /// <summary>Whether the game can be started from the client. Only for a game that is installed here.</summary>
     public LaunchState Launch { get; init; } = LaunchState.None;
 
+    /// <summary>A picture is served at /api/games/{contentHash}/icon. Only for a game installed here, it is read from this PC's copy.</summary>
+    public bool HasIcon { get; init; }
+
+    /// <summary>The game has setup steps that were not run on this PC for its current version and folder. Play prepares it first.</summary>
+    public bool NeedsSetup { get; init; }
+
+    /// <summary>The programs of the game that can be started, the game itself first. Empty when <see cref="Launch"/> is not Ready.</summary>
+    public IReadOnlyList<LaunchOptionDto> LaunchOptions { get; init; } = [];
+
     /// <summary>A program of this game is running on this PC right now. Its files are not rewritten and its seed steps aside meanwhile.</summary>
     public bool IsRunning { get; init; }
 
@@ -40,6 +49,9 @@ public sealed record GameDto(
 
     /// <summary>For a revoked version, the administrator's reason.</summary>
     public string? TrustNote { get; init; }
+
+    /// <summary>What the signed list says about <see cref="Definition"/>.</summary>
+    public DefinitionVerdict DefinitionTrust { get; init; } = DefinitionVerdict.NotChecked;
 
     /// <summary>Files of this game that were seen changing while it was in use, and new files it created. Only for a damaged game installed here.</summary>
     public int ChangedFileCount { get; init; }
@@ -148,10 +160,74 @@ public enum LaunchState
 }
 
 /// <summary>What the client starts. Checked by the agent: a program of the game, still as it was verified, inside the game folder.</summary>
-public sealed record LaunchInfoDto(string ExecutablePath, string? Arguments, string WorkingDirectory);
+/// <param name="RunAsAdmin">The definition asks for administrator rights, so the client starts it through the UAC prompt.</param>
+public sealed record LaunchInfoDto(string ExecutablePath, string? Arguments, string WorkingDirectory, bool RunAsAdmin = false);
+
+/// <summary>One program of a game the player can start, as listed in its definition and checked by the agent.</summary>
+/// <param name="Index">What to pass to the launch call. 0 is the game itself.</param>
+/// <param name="Name">What the definition calls it, null for the game itself.</param>
+public sealed record LaunchOptionDto(int Index, string? Name, string Executable, bool RunAsAdmin);
 
 /// <summary>The player's pick of the program to start, for this PC.</summary>
 public sealed record LauncherChoiceRequest(string Executable, string? Arguments = null);
+
+public enum SetupStepKind
+{
+    /// <summary>A redistributable installer (DirectX, Visual C++, .NET) or one shipped with the game, run silently.</summary>
+    Redist,
+    /// <summary>A registry key deleted with everything below it, for a clean import.</summary>
+    RegistryDelete,
+    /// <summary>Registry content from a .reg file of the game, with its paths pointing at this PC's game folder.</summary>
+    RegistryImport,
+    /// <summary>A Windows compatibility mode for a program of the game, for the player (HKCU).</summary>
+    Compatibility,
+    /// <summary>A folder of the game copied into the player's profile, unless the target exists already.</summary>
+    Profile,
+}
+
+/// <summary>One thing preparing a PC for a game does, as the agent checked it and the player confirms it.</summary>
+/// <param name="Title">What the player reads, in Czech.</param>
+/// <param name="NeedsAdmin">Run in the one elevated process after the UAC prompt. Otherwise run by the client as the player.</param>
+public sealed record SetupStepDto(SetupStepKind Kind, string Title, bool NeedsAdmin)
+{
+    /// <summary>Redist: the installer. Compatibility: the program. Profile: the folder to copy. Absolute paths on this PC.</summary>
+    public string? File { get; init; }
+
+    /// <summary>SHA-256 the installer must still have when it is started, the hash the game's manifest has for it.</summary>
+    public string? FileHash { get; init; }
+
+    /// <summary>Redist: the silent arguments. Compatibility: the Windows layers, such as "WINXPSP3".</summary>
+    public string? Arguments { get; init; }
+
+    /// <summary>RegistryDelete: the key, HKLM\… or HKCU\…. Profile: the target, which may start with {Documents}, {AppData} or {LocalAppData}.</summary>
+    public string? Target { get; init; }
+
+    /// <summary>RegistryImport: the exact .reg text imported, already pointing at this PC's game folder.</summary>
+    public string? Content { get; init; }
+
+    /// <summary>What the step writes, for the player to look at before agreeing: registry keys and values, say.</summary>
+    public IReadOnlyList<string> Details { get; init; } = [];
+
+    /// <summary>Already true on this PC (a redistributable that is installed), shown but not run.</summary>
+    public bool AlreadyDone { get; init; }
+}
+
+/// <summary>Everything preparing this PC for a game does, checked by the agent. The client shows it, the player confirms, the client runs it.</summary>
+/// <param name="SetupHash">Identifies this preparation: the game's setup and where it is installed. Sent back when it is done.</param>
+/// <param name="Blocked">Why the preparation must not run, in words the player can act on. Null when it may.</param>
+/// <param name="Warning">Something the player should know before agreeing, for example that nobody signed the definition.</param>
+/// <param name="MissingRedistContentHash">The shared redistributables package this game needs, on the LAN but not on this PC.</param>
+public sealed record SetupPlanDto(
+    string ContentHash, string GameName, string SetupHash, IReadOnlyList<SetupStepDto> Steps, DefinitionVerdict DefinitionTrust,
+    string? Blocked = null, string? Warning = null, string? MissingRedistContentHash = null)
+{
+    public bool NeedsAdmin => Steps.Any(s => s.NeedsAdmin && !s.AlreadyDone);
+}
+
+public sealed record SetupDoneRequest(string SetupHash);
+
+/// <summary>How running a preparation went, step by step. Written by the elevated process for the client to read back.</summary>
+public sealed record SetupStepResultDto(string Title, bool Ok, string? Message);
 
 /// <summary>How strictly this PC follows the administrator's signed list of verified games.</summary>
 public enum TrustMode
@@ -162,6 +238,18 @@ public enum TrustMode
     Warn,
     /// <summary>Only verified games are installed. Without a usable list nothing is.</summary>
     Require,
+}
+
+/// <summary>What the administrator's signed list says about a game's definition: how it starts and what preparing a PC for it does.</summary>
+public enum DefinitionVerdict
+{
+    NotChecked,
+    /// <summary>The definition is the one the administrator signed together with the files.</summary>
+    Verified,
+    /// <summary>The list has no signed definition for this version: the version is not listed, or it was listed before definitions were signed.</summary>
+    NotSigned,
+    /// <summary>The administrator signed a different definition. This one came from some PC and is not used for anything that needs trust.</summary>
+    Different,
 }
 
 public enum TrustVerdict

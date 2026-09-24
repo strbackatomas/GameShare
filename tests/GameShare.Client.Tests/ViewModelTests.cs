@@ -456,6 +456,176 @@ public class LibraryTests
     }
 
     [Fact]
+    public async Task A_games_other_programs_are_offered_next_to_play_and_start_by_their_index()
+    {
+        var (main, app, agent, _) = await StartAsync(Installed() with
+        {
+            LaunchOptions =
+            [
+                new LaunchOptionDto(0, null, "System/UT2004.exe", false),
+                new LaunchOptionDto(2, "UnrealEd", "System/UnrealEd.exe", false),
+                new LaunchOptionDto(3, "Server", "Server.exe", true),
+            ],
+        });
+        var card = main.Library.MyGames.Single();
+
+        Assert.True(card.HasOtherLaunchOptions);
+        Assert.Equal(["UnrealEd", "Server  (jako správce)"], card.OtherLaunchOptions.Select(o => o.Text));
+
+        agent.LaunchInfo = new LaunchInfoDto(@"D:\Games\UT\Server.exe", null, @"D:\Games\UT", RunAsAdmin: true);
+        await card.OtherLaunchOptions[1].PlayCommand.ExecuteAsync(null);
+
+        Assert.Contains($"Launch({A}#3)", agent.Calls);
+        Assert.True(Assert.Single(StarterOf(app).Started).RunAsAdmin);
+        Assert.Contains("správce", card.Message);
+    }
+
+    [Fact]
+    public async Task A_game_with_one_program_offers_no_menu_and_one_that_runs_as_admin_says_so()
+    {
+        var (main, _, _, _) = await StartAsync(Installed() with { LaunchOptions = [new LaunchOptionDto(0, null, "Game.exe", true)] });
+        var card = main.Library.MyGames.Single();
+
+        Assert.False(card.HasOtherLaunchOptions);
+        Assert.True(card.PlayNeedsAdmin);
+        Assert.NotNull(card.PlayTip);
+    }
+
+    [Fact]
+    public async Task The_icon_is_fetched_once_for_a_game_that_has_one()
+    {
+        var agent = new FakeAgent { Games = [Installed() with { HasIcon = true }] };
+        agent.Icons[A] = [0, 0, 1, 0];
+        var app = new AppModel(agent, new FakeEvents(), new ImmediateDispatcher(), new FakeStarter());
+        var main = new MainViewModel(app);
+        await app.StartAsync();
+
+        await app.RefreshGamesAsync();
+
+        Assert.Equal(agent.Icons[A], main.Library.MyGames.Single().IconData);
+        Assert.True(main.Library.MyGames.Single().HasIconImage);
+    }
+
+    private static async Task<(GameCardViewModel Card, AppModel App, FakeAgent Agent, FakeSetupRunner Runner)> WithSetupAsync(SetupPlanDto plan)
+    {
+        var agent = new FakeAgent { Games = [Installed() with { NeedsSetup = true }], SetupPlan = plan };
+        var runner = new FakeSetupRunner();
+        var app = new AppModel(agent, new FakeEvents(), new ImmediateDispatcher(), new FakeStarter(), setupRunner: runner);
+        var main = new MainViewModel(app);
+        await app.StartAsync();
+        return (main.Library.MyGames.Single(), app, agent, runner);
+    }
+
+    private static SetupPlanDto Plan(string? blocked = null, params SetupStepDto[] steps) =>
+        new(A, "BeamNG.drive", "setup-hash", steps.Length > 0 ? steps :
+            [new SetupStepDto(SetupStepKind.Redist, "Nainstalovat DirectX 9", true), new SetupStepDto(SetupStepKind.Profile, "Zkopírovat profil", false)],
+            DefinitionVerdict.Verified, blocked);
+
+    [Fact]
+    public async Task Play_on_a_game_that_needs_preparing_shows_the_steps_and_runs_nothing_yet()
+    {
+        var (card, app, agent, runner) = await WithSetupAsync(Plan());
+
+        await card.PlayCommand.ExecuteAsync(null);
+
+        Assert.True(card.IsShowingSetup);
+        Assert.Equal(["Nainstalovat DirectX 9", "Zkopírovat profil"], card.SetupSteps.Select(s => s.Title));
+        Assert.True(card.SetupNeedsAdmin);
+        Assert.True(card.CanRunSetup);
+        Assert.Empty(runner.Ran);
+        Assert.Empty(StarterOf(app).Started);
+        Assert.DoesNotContain(agent.Calls, c => c.StartsWith("Launch"));
+    }
+
+    [Fact]
+    public async Task Once_the_player_agrees_the_preparation_runs_is_noted_and_the_game_starts()
+    {
+        var (card, app, agent, runner) = await WithSetupAsync(Plan());
+        await card.PlayCommand.ExecuteAsync(null);
+
+        await card.RunSetupCommand.ExecuteAsync(null);
+
+        Assert.Single(runner.Ran);
+        Assert.Contains($"SetupDone({A}|setup-hash)", agent.Calls);
+        Assert.Single(StarterOf(app).Started);
+        Assert.False(card.IsShowingSetup);
+        Assert.False(card.NeedsSetup);
+
+        await card.PlayCommand.ExecuteAsync(null); // the second time it just plays
+        Assert.Single(runner.Ran);
+        Assert.Equal(2, StarterOf(app).Started.Count);
+    }
+
+    [Fact]
+    public async Task A_failed_step_keeps_the_panel_open_with_what_went_wrong_and_nothing_is_noted_or_started()
+    {
+        var (card, app, agent, runner) = await WithSetupAsync(Plan());
+        runner.Results = [new SetupStepResultDto("Nainstalovat DirectX 9", false, "DXSETUP.exe skončil s chybou 5.")];
+        await card.PlayCommand.ExecuteAsync(null);
+
+        await card.RunSetupCommand.ExecuteAsync(null);
+
+        Assert.True(card.IsShowingSetup);
+        Assert.True(card.SetupSteps[0].Failed);
+        Assert.Contains("chybou 5", card.SetupSteps[0].Outcome);
+        Assert.Contains("nepovedla", card.Message);
+        Assert.DoesNotContain(agent.Calls, c => c.StartsWith("SetupDone"));
+        Assert.Empty(StarterOf(app).Started);
+    }
+
+    [Fact]
+    public async Task A_blocked_preparation_cannot_be_run_but_the_game_can_still_be_played_without_it()
+    {
+        var (card, app, _, _) = await WithSetupAsync(Plan(blocked: "Správce definici této hry nepodepsal."));
+        await card.PlayCommand.ExecuteAsync(null);
+
+        Assert.True(card.HasSetupBlocked);
+        Assert.False(card.CanRunSetup);
+        Assert.False(card.RunSetupCommand.CanExecute(null));
+
+        await card.SkipSetupCommand.ExecuteAsync(null);
+        Assert.Single(StarterOf(app).Started);
+        Assert.True(card.NeedsSetup); // asked again next time
+    }
+
+    [Fact]
+    public async Task When_everything_is_on_the_pc_already_play_goes_straight_to_the_game()
+    {
+        var (card, app, agent, runner) = await WithSetupAsync(Plan(null, new SetupStepDto(SetupStepKind.Redist, "Nainstalovat DirectX 9", true) { AlreadyDone = true }));
+
+        await card.PlayCommand.ExecuteAsync(null);
+
+        Assert.Empty(runner.Ran);
+        Assert.Contains($"SetupDone({A}|setup-hash)", agent.Calls);
+        Assert.Single(StarterOf(app).Started);
+    }
+
+    [Fact]
+    public async Task A_missing_redistributables_package_is_offered_for_install()
+    {
+        var (card, _, agent, _) = await WithSetupAsync(Plan("Nejdřív nainstaluj balíček.") with { MissingRedistContentHash = B });
+        await card.PlayCommand.ExecuteAsync(null);
+
+        Assert.True(card.HasMissingRedist);
+        await card.InstallRedistCommand.ExecuteAsync(null);
+
+        Assert.Contains(agent.Calls, c => c.StartsWith($"Install({B}"));
+        Assert.False(card.IsShowingSetup);
+    }
+
+    [Fact]
+    public async Task Preparing_again_forgets_it_was_done_and_shows_the_steps()
+    {
+        var (card, _, agent, _) = await WithSetupAsync(Plan());
+        agent.Games[0] = agent.Games[0] with { NeedsSetup = false };
+
+        await card.PrepareAgainCommand.ExecuteAsync(null);
+
+        Assert.Contains($"ResetSetup({A})", agent.Calls);
+        Assert.True(card.IsShowingSetup);
+    }
+
+    [Fact]
     public async Task When_the_agent_refuses_to_start_a_game_nothing_is_started_and_the_reason_is_shown()
     {
         var (main, app, agent, _) = await StartAsync(Installed());
@@ -892,10 +1062,12 @@ public class NetworkAndSettingsTests
     [Fact]
     public async Task Peer_on_the_same_version_shows_it_as_plain_text_not_a_mismatch()
     {
-        var (main, _, _, _) = await StartAsync(new FakeAgent { Version = "0.1.0", Peers = [Peer("p1", "PC-01", appVersion: "0.1.0")] });
+        // Compared with this build's own version, so the test follows every version bump.
+        var mine = AppVersion.Current;
+        var (main, _, _, _) = await StartAsync(new FakeAgent { Version = mine, Peers = [Peer("p1", "PC-01", appVersion: mine)] });
 
         var peer = main.Network.Peers.Single();
-        Assert.Equal("v0.1.0", peer.VersionText);
+        Assert.Equal("v" + mine, peer.VersionText);
         Assert.True(peer.ShowVersionPlain);
         Assert.False(peer.IsVersionMismatch);
     }
@@ -903,10 +1075,10 @@ public class NetworkAndSettingsTests
     [Fact]
     public async Task Peer_on_a_different_version_is_flagged_as_a_mismatch()
     {
-        var (main, _, _, _) = await StartAsync(new FakeAgent { Version = "0.1.0", Peers = [Peer("p1", "PC-01", appVersion: "0.2.0")] });
+        var (main, _, _, _) = await StartAsync(new FakeAgent { Version = AppVersion.Current, Peers = [Peer("p1", "PC-01", appVersion: "0.0.1")] });
 
         var peer = main.Network.Peers.Single();
-        Assert.Equal("v0.2.0", peer.VersionText);
+        Assert.Equal("v0.0.1", peer.VersionText);
         Assert.False(peer.ShowVersionPlain);
         Assert.True(peer.IsVersionMismatch);
     }

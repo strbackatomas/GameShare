@@ -155,6 +155,83 @@ public class LaunchRulesTests
         Assert.Contains("working directory", problem);
     }
 
+    private static GameDefinition DefWith(params LaunchEntry[] entries) => new() { GameId = "g", Name = "G", Launch = entries };
+
+    [Fact]
+    public void A_definition_can_list_several_programs_and_each_is_planned_with_its_own_settings()
+    {
+        var manifest = Manifest(DefWith(
+                new LaunchEntry { Executable = "System/UT2004.exe" },
+                new LaunchEntry { Name = "Editor", Executable = @"System\UnrealEd.exe", WorkingDirectory = "System" },
+                new LaunchEntry { Name = "Server", Executable = "Server.exe", Arguments = "-lan", RunAsAdmin = true }),
+            "System/UT2004.exe", "System/UnrealEd.exe", "Server.exe");
+
+        Assert.Equal(new LaunchPlan("System/UT2004.exe", null, "."), LaunchRules.Plan(manifest, null, 0, out _));
+        Assert.Equal(new LaunchPlan("System/UnrealEd.exe", null, "System") { Name = "Editor" }, LaunchRules.Plan(manifest, null, 1, out _));
+        Assert.Equal(new LaunchPlan("Server.exe", "-lan", ".") { Name = "Server", RunAsAdmin = true }, LaunchRules.Plan(manifest, null, 2, out _));
+        Assert.Null(LaunchRules.Plan(manifest, null, 3, out var problem));
+        Assert.Null(problem);
+    }
+
+    [Fact]
+    public void Every_entry_is_checked_and_one_that_is_not_a_game_file_is_left_out()
+    {
+        var manifest = Manifest(DefWith(
+                new LaunchEntry { Executable = "Game.exe" },
+                new LaunchEntry { Name = "Evil", Executable = @"C:\Windows\System32\cmd.exe" },
+                new LaunchEntry { Name = "Editor", Executable = "Editor.exe" }),
+            "Game.exe", "Editor.exe");
+
+        Assert.Null(LaunchRules.Plan(manifest, null, 1, out var problem));
+        Assert.NotNull(problem);
+        Assert.Equal([0, 2], LaunchRules.Entries(manifest, null).Select(e => e.Index));
+    }
+
+    [Fact]
+    public void The_players_choice_replaces_only_the_game_itself_and_never_asks_for_admin_rights()
+    {
+        var manifest = Manifest(DefWith(
+                new LaunchEntry { Executable = "Game.exe", RunAsAdmin = true },
+                new LaunchEntry { Name = "Editor", Executable = "Editor.exe" }),
+            "Game.exe", "Editor.exe", "Other.exe");
+        var choice = new LauncherChoice("Other.exe", null);
+
+        Assert.Equal(new LaunchPlan("Other.exe", null, "."), LaunchRules.Plan(manifest, choice, 0, out _));
+        Assert.Equal("Editor.exe", LaunchRules.Plan(manifest, choice, 1, out _)!.Executable);
+    }
+
+    [Fact]
+    public void The_old_single_executable_fields_still_work_and_launch_wins_when_both_are_there()
+    {
+        var old = Manifest(Def("Game.exe", "-x"), "Game.exe", "New.exe");
+        var both = Manifest(Def("Game.exe") with { Launch = [new LaunchEntry { Executable = "New.exe" }] }, "Game.exe", "New.exe");
+
+        Assert.Equal(new LaunchPlan("Game.exe", "-x", "."), Assert.Single(LaunchRules.Entries(old, null)).Plan);
+        Assert.Equal("New.exe", Assert.Single(LaunchRules.Entries(both, null)).Plan.Executable);
+    }
+
+    [Theory]
+    [InlineData("registry-import.reg", "registry-import.reg")]
+    [InlineData(@"_redist\Setup.EXE", "_redist/setup.exe")]
+    public void A_file_named_by_a_definition_is_found_as_the_manifest_spells_it(string written, string listed)
+    {
+        var file = LaunchRules.GameFile(Manifest(null, listed, "Game.exe"), written, out var problem);
+
+        Assert.Null(problem);
+        Assert.Equal(listed, file!.Path);
+    }
+
+    [Theory]
+    [InlineData(@"..\evil.reg")]
+    [InlineData(@"C:\evil.reg")]
+    [InlineData("missing.reg")]
+    [InlineData("")]
+    public void A_file_outside_the_game_or_not_in_it_is_refused(string written)
+    {
+        Assert.Null(LaunchRules.GameFile(Manifest(null, "registry-import.reg"), written, out var problem));
+        Assert.NotNull(problem);
+    }
+
     [Fact]
     public void The_candidates_are_the_programs_of_the_game_nearest_the_root_first()
     {

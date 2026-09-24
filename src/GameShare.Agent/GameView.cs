@@ -16,12 +16,16 @@ public sealed class GameView
     private readonly LaunchService _launch;
     private readonly RunningGames _running;
     private readonly SeedManager _seeds;
+    private readonly IconService _icons;
+    private readonly SetupService _setup;
 
     public GameView(
         GameLibrary library, DownloadManager downloads, PeerCatalog catalog, DiscoveryService discovery, GameChangeTracker changes, TrustService trust,
-        LaunchService launch, RunningGames running, SeedManager seeds)
+        LaunchService launch, RunningGames running, SeedManager seeds, IconService icons, SetupService setup)
     {
         _launch = launch;
+        _icons = icons;
+        _setup = setup;
         _running = running;
         _changes = changes;
         _trust = trust;
@@ -73,7 +77,11 @@ public sealed class GameView
                 SuggestedPatterns = seen.SuggestedPatterns,
                 Trust = trust,
                 TrustNote = trustNote,
+                DefinitionTrust = _trust.CheckDefinition(m.ContentHash, m.Definition),
                 Launch = await _launch.StateAsync(m, g.Installation, ct).ConfigureAwait(false),
+                LaunchOptions = await _launch.OptionsAsync(m, g.Installation, ct).ConfigureAwait(false),
+                HasIcon = await _icons.HasIconAsync(m, g.Installation, ct).ConfigureAwait(false),
+                NeedsSetup = await _setup.NeedsSetupAsync(m, g.Installation, ct).ConfigureAwait(false),
                 IsRunning = g.Installation is not null && _running.IsRunning(g.Installation),
                 UpdatesContentHash = g.Installation is null && installedByGame.TryGetValue(m.GameId, out var installed) ? installed : null,
                 PartialPeerNames = PartialNames(offers[m.ContentHash]),

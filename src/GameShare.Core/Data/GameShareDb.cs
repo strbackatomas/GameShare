@@ -134,6 +134,9 @@ public sealed class GameShareDb
             INSERT INTO manifests (content_hash, game_id, name, version, folder_name, total_size, piece_length, torrent_info_hash, manifest_json, torrent, created_at)
             VALUES ($hash, $gameId, $name, $version, $folder, $size, $piece, $infoHash, $json, $torrent, $now)
             ON CONFLICT(content_hash) DO UPDATE SET
+                game_id           = excluded.game_id,
+                name              = excluded.name,
+                version           = excluded.version,
                 manifest_json     = excluded.manifest_json,
                 torrent_info_hash = COALESCE(excluded.torrent_info_hash, torrent_info_hash),
                 torrent           = COALESCE(excluded.torrent, torrent);

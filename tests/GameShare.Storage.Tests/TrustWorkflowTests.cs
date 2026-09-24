@@ -91,6 +91,35 @@ public class TrustWorkflowTests : IDisposable
     }
 
     [Fact]
+    public async Task A_scanned_game_with_a_definition_is_signed_together_with_it()
+    {
+        using var game = new TestGame("Battlefield 2");
+        await File.WriteAllTextAsync(Path.Combine(game.GameDir, "gameshare.json"), DefinitionTests.Battlefield);
+        var keys = TrustWorkflow.GenerateKeys(_dir);
+
+        var candidate = await TrustWorkflow.ScanAsync(game.GameDir);
+        TrustWorkflow.Publish(TrustListEditor.Add(TrustPayload.Empty(Now), [candidate], Now), keys.PrivateKeyPath, null, P("trust.json"));
+
+        var definition = await GameDefinitionFile.TryLoadAsync(game.GameDir);
+        var signed = Assert.Single(TrustWorkflow.LoadOrStartList(P("trust.json"), keys.PublicKey, Now).Games);
+        Assert.Equal(DefinitionHasher.Compute(definition!), signed.DefinitionHash);
+
+        using var plain = new TestGame("Plain");
+        Assert.Null((await TrustWorkflow.ScanAsync(plain.GameDir)).DefinitionHash); // nothing to sign
+    }
+
+    [Fact]
+    public void A_list_made_before_definitions_were_signed_still_opens()
+    {
+        // The payload exactly as an older gameshare-admin wrote it, no definitionHash at all. Open reads the verified payload this way.
+        var hash = new string('a', 64);
+        var list = GameShare.Protocol.GameShareJson.Deserialize<TrustPayload>(
+            $$"""{"sequence":1,"issuedAt":"2026-09-01T00:00:00+00:00","validUntil":null,"games":[{"contentHash":"{{hash}}","gameId":"g","name":"G","version":"1"}],"revoked":[]}""");
+
+        Assert.Null(Assert.Single(list.Games).DefinitionHash);
+    }
+
+    [Fact]
     public void Publish_refuses_a_key_file_that_does_not_exist()
     {
         var list = TrustPayload.Empty(Now);

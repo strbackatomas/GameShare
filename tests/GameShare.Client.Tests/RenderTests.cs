@@ -106,6 +106,59 @@ public class RenderTests
     }
 
     [AvaloniaFact]
+    public async Task A_games_icon_is_decoded_and_shown_with_the_menu_of_its_other_programs()
+    {
+        var agent = Populated();
+        agent.Games[0] = agent.Games[0] with
+        {
+            HasIcon = true,
+            LaunchOptions = [new LaunchOptionDto(0, null, "BeamNG.drive.exe", true), new LaunchOptionDto(1, "Editor", "Bin64/World Editor.exe", false)],
+        };
+        var ico = GameShare.Storage.ExeIcon.Extract(Path.Combine(Environment.SystemDirectory, "notepad.exe"))!;
+        agent.Icons[A] = ico;
+
+        var decoded = Views.IconConverter.Instance.Convert(ico, typeof(object), null, System.Globalization.CultureInfo.InvariantCulture);
+        Assert.IsType<Bitmap>(decoded); // an .ico as the agent serves it is an image Avalonia can show
+
+        var main = await BuildAsync(agent);
+        await ShowAsync(main, "Knihovna", "library-icons.png");
+
+        var card = main.Library.MyGames.Single(g => g.ContentHash == A);
+        Assert.True(card.HasIconImage);
+        Assert.True(card.HasOtherLaunchOptions);
+        Assert.True(card.PlayNeedsAdmin);
+    }
+
+    [AvaloniaFact]
+    public async Task The_preparation_of_a_game_lists_its_steps_before_anything_runs()
+    {
+        var agent = Populated();
+        agent.Games[0] = agent.Games[0] with { NeedsSetup = true };
+        agent.SetupPlan = new SetupPlanDto(A, "BeamNG.drive", "hash",
+        [
+            new SetupStepDto(SetupStepKind.Redist, "Nainstalovat DirectX 9.0c (June 2010)", true) { AlreadyDone = true, Details = ["Na tomto PC už je."] },
+            new SetupStepDto(SetupStepKind.Redist, "Nainstalovat Visual C++ 2005 (x86)", true) { Details = ["vcredist_x86.exe /q"] },
+            new SetupStepDto(SetupStepKind.RegistryDelete, @"Smazat klíč registru HKLM\SOFTWARE\WOW6432Node\EA Games\Battlefield 2", true),
+            new SetupStepDto(SetupStepKind.RegistryImport, "Zapsat registry-import.reg do registru počítače (4 hodnoty)", true)
+            {
+                Details = [@"Cesty C:\Games\Battlefield 2 se přepíšou na D:\Games\Battlefield 2.", @"HKLM\SOFTWARE\WOW6432Node\EA Games\Battlefield 2", "    InstallDir = \"D:\\\\Games\\\\Battlefield 2\""],
+            },
+            new SetupStepDto(SetupStepKind.Compatibility, "Režim kompatibility WINXPSP3 pro BF2.exe", false),
+            new SetupStepDto(SetupStepKind.Profile, @"Zkopírovat profil do {Documents}\Battlefield 2", false),
+        ], DefinitionVerdict.NotSigned, Warning: "Správce definici této hry nepodepsal. Kroky níže přišly z PC, od kterého je hra.");
+
+        var main = await BuildAsync(agent);
+        var card = main.Library.MyGames.Single(g => g.ContentHash == A);
+        await card.PlayCommand.ExecuteAsync(null);
+        card.SetupSteps[3].ShowDetails = true; // what the registry import writes, opened
+        var frame = await ShowAsync(main, "Knihovna", "library-setup.png");
+
+        Assert.True(card.IsShowingSetup);
+        Assert.Equal(6, card.SetupSteps.Count);
+        Assert.True(DistinctColours(frame) > 200);
+    }
+
+    [AvaloniaFact]
     public async Task Downloads_page_shows_progress_and_sources()
     {
         var main = await BuildAsync(Populated());

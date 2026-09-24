@@ -155,7 +155,35 @@ public sealed partial class MainViewModel : ObservableObject
 
     [ObservableProperty] public partial string? ScannedVersion { get; set; }
     [ObservableProperty] public partial string? ScannedHash { get; set; }
+
+    /// <summary>Whether the scanned folder has a gameshare.json, which is then signed together with the files.</summary>
+    [ObservableProperty] public partial string? ScannedDefinition { get; set; }
     public bool HasScanned => _scanned is not null;
+
+    // ---- editing a game's definition ----
+
+    /// <summary>The gameshare.json of <see cref="GameFolder"/> being edited, null when the editor is closed.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsEditing))]
+    public partial DefinitionEditorViewModel? Editor { get; set; }
+
+    public bool IsEditing => Editor is not null;
+
+    [RelayCommand]
+    private async Task EditDefinitionAsync()
+    {
+        if (string.IsNullOrWhiteSpace(GameFolder)) { Message = "Vyber složku hry."; return; }
+        await RunAsync(async () =>
+        {
+            Editor = await DefinitionEditorViewModel.OpenAsync(GameFolder).ConfigureAwait(true);
+            Message = File.Exists(Path.Combine(GameFolder, ContentScanner.DefinitionFileName))
+                ? "Definice načtena z gameshare.json."
+                : "Hra zatím gameshare.json nemá, začínáš s prázdnou definicí.";
+        }).ConfigureAwait(true);
+    }
+
+    [RelayCommand]
+    private void CloseEditor() => Editor = null;
 
     [RelayCommand]
     private async Task BrowseGameFolderAsync()
@@ -170,13 +198,16 @@ public sealed partial class MainViewModel : ObservableObject
         if (string.IsNullOrWhiteSpace(GameFolder)) { Message = "Vyber složku hry."; return; }
 
         _scanned = null;
-        ScannedName = ScannedVersion = ScannedHash = null;
+        ScannedName = ScannedVersion = ScannedHash = ScannedDefinition = null;
         await RunAsync(async () =>
         {
             _scanned = await TrustWorkflow.ScanAsync(GameFolder).ConfigureAwait(true);
             ScannedName = _scanned.Name;
             ScannedVersion = _scanned.Version;
             ScannedHash = _scanned.ContentHash;
+            ScannedDefinition = _scanned.DefinitionHash is { } d
+                ? $"S definicí z gameshare.json ({d[..12]}), podepíše se spolu se soubory."
+                : "Bez gameshare.json: hra půjde spustit, ale příprava a spouštění jako správce se na PC s povinným ověřením nepovolí.";
             Message = "Naskenováno. Zkontroluj název a verzi, pak přidej do seznamu.";
         }).ConfigureAwait(true);
     }
@@ -196,7 +227,8 @@ public sealed partial class MainViewModel : ObservableObject
             Message = $"{game.Name} {game.Version} přidáno a seznam podepsán.";
             _scanned = null;
             GameFolder = "";
-            ScannedName = ScannedVersion = ScannedHash = null;
+            Editor = null;
+            ScannedName = ScannedVersion = ScannedHash = ScannedDefinition = null;
         }).ConfigureAwait(true);
     }
 

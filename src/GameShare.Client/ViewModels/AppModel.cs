@@ -16,12 +16,13 @@ public sealed partial class AppModel : ViewModelBase, IAsyncDisposable
 
     public AppModel(
         IAgentClient client, IEventStream events, IUiDispatcher ui,
-        IGameStarter? starter = null, IFolderPicker? folderPicker = null, IClipboard? clipboard = null)
+        IGameStarter? starter = null, IFolderPicker? folderPicker = null, IClipboard? clipboard = null, ISetupRunner? setupRunner = null)
     {
         Client = client;
         _events = events;
         _ui = ui;
         Starter = starter ?? new ProcessGameStarter();
+        SetupRunner = setupRunner ?? new Setup.ProcessSetupRunner();
         FolderPicker = folderPicker ?? new NoFolderPicker();
         Clipboard = clipboard ?? new NoClipboard();
     }
@@ -30,6 +31,9 @@ public sealed partial class AppModel : ViewModelBase, IAsyncDisposable
 
     /// <summary>What starts a game once the agent has said it may be started.</summary>
     public IGameStarter Starter { get; }
+
+    /// <summary>Runs the preparation of a game the player confirmed, before it is first played.</summary>
+    public ISetupRunner SetupRunner { get; }
 
     /// <summary>Lets the settings page offer a real folder dialog instead of a path typed by hand.</summary>
     public IFolderPicker FolderPicker { get; }

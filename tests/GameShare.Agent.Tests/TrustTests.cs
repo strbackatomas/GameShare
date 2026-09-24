@@ -80,6 +80,62 @@ public class TrustTests : IDisposable
     }
 
     [Fact]
+    public async Task A_definition_is_verified_only_when_it_is_the_one_the_administrator_signed()
+    {
+        const string definition = """{ "gameId": "testgame", "name": "TestGame", "launch": [ { "executable": "Game.exe", "runAsAdmin": true } ] }""";
+        WriteList(1, [Fake('a')]);
+        await using var pc = await TestAgent.StartAsync("PC-01", TestAgent.DiscoveryPort(), preloadGame: true, bigFileBytes: SmallGame,
+            tweak: Trust(TrustMode.Warn), customiseGame: dir => File.WriteAllText(Path.Combine(dir, "gameshare.json"), definition));
+        var game = await pc.WaitForGameAsync(g => g.State == GameState.Installed, "the game to be scanned");
+        Assert.Equal(DefinitionVerdict.NotSigned, game.DefinitionTrust); // not in the list at all
+
+        void Sign(long sequence, string? definitionHash) =>
+            File.WriteAllBytes(ListPath, TrustSigning.Serialize(TrustSigning.Sign(new TrustPayload(sequence, Now, null,
+                [new TrustedGame(game.ContentHash, "testgame", "TestGame", null) { DefinitionHash = definitionHash }], []), _keys.PrivateKey)));
+
+        Sign(2, null); // listed the old way, files only
+        await RefreshAsync(pc);
+        await pc.WaitForGameAsync(g => g.Trust == TrustVerdict.Verified && g.DefinitionTrust == DefinitionVerdict.NotSigned, "files verified, definition not signed");
+
+        Sign(3, DefinitionHasher.Compute(game.Definition!));
+        await RefreshAsync(pc);
+        await pc.WaitForGameAsync(g => g.DefinitionTrust == DefinitionVerdict.Verified, "the definition to be verified");
+
+        Sign(4, DefinitionHasher.Compute(game.Definition! with { Launch = [new LaunchEntry { Executable = "Game.exe" }] }));
+        await RefreshAsync(pc);
+        await pc.WaitForGameAsync(g => g.Trust == TrustVerdict.Verified && g.DefinitionTrust == DefinitionVerdict.Different,
+            "a definition other than the signed one to be marked, while the files stay verified");
+    }
+
+    [Fact]
+    public async Task Require_prepares_a_game_only_with_the_definition_the_administrator_signed()
+    {
+        const string definition = """
+            { "gameId": "testgame", "name": "TestGame", "launch": [ { "executable": "Game.exe" } ],
+              "setup": { "compatibility": [ { "executable": "Game.exe", "layers": "WINXPSP3" } ] } }
+            """;
+        WriteList(1, [Fake('a')]);
+        await using var pc = await TestAgent.StartAsync("PC-01", TestAgent.DiscoveryPort(), preloadGame: true, bigFileBytes: SmallGame,
+            tweak: Trust(TrustMode.Require), customiseGame: dir => File.WriteAllText(Path.Combine(dir, "gameshare.json"), definition));
+        var game = await pc.WaitForGameAsync(g => g.State == GameState.Installed, "the game to be scanned");
+
+        void Sign(long sequence, string? definitionHash) =>
+            File.WriteAllBytes(ListPath, TrustSigning.Serialize(TrustSigning.Sign(new TrustPayload(sequence, Now, null,
+                [new TrustedGame(game.ContentHash, "testgame", "TestGame", null) { DefinitionHash = definitionHash }], []), _keys.PrivateKey)));
+
+        Sign(2, null); // the files are vouched for, the definition is not
+        await RefreshAsync(pc);
+        var unsigned = await pc.GetAsync<SetupPlanDto>($"/api/games/{game.ContentHash}/setup");
+        Assert.Contains("nepodepsal", unsigned.Blocked);
+
+        Sign(3, DefinitionHasher.Compute(game.Definition!));
+        await RefreshAsync(pc);
+        var signed = await pc.GetAsync<SetupPlanDto>($"/api/games/{game.ContentHash}/setup");
+        Assert.Null(signed.Blocked);
+        Assert.Equal(DefinitionVerdict.Verified, signed.DefinitionTrust);
+    }
+
+    [Fact]
     public async Task A_list_that_is_tampered_with_signed_by_someone_else_or_older_is_ignored_and_the_good_one_stays()
     {
         WriteList(1, [Fake('a')]);

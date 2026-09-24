@@ -50,6 +50,18 @@ public sealed class TrustService
     }
 
     /// <summary>
+    /// Whether a definition is the one the administrator signed for this version. A definition travels outside the content hash,
+    /// so this is what stands between another PC's gameshare.json and the steps that run with administrator rights.
+    /// </summary>
+    public DefinitionVerdict CheckDefinition(string contentHash, GameDefinition? definition)
+    {
+        var list = Usable();
+        if (Mode == TrustMode.Off || list is null) return DefinitionVerdict.NotChecked;
+        if (!list.Games.TryGetValue(contentHash, out var game) || game.DefinitionHash is null) return DefinitionVerdict.NotSigned;
+        return definition is not null && DefinitionHasher.Compute(definition) == game.DefinitionHash ? DefinitionVerdict.Verified : DefinitionVerdict.Different;
+    }
+
+    /// <summary>
     /// Refuses to install a version the settings do not allow: a revoked one always, an unlisted one when verification is required,
     /// and every one when it is required and there is no usable list, because "cannot check" must not mean "allowed".
     /// </summary>

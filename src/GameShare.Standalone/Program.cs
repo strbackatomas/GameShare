@@ -17,6 +17,13 @@ internal static class Program
     [STAThread]
     public static void Main(string[] args)
     {
+        // Started again with administrator rights to run a game's preparation (GameShare.Client\Setup): only that, no agent, no window.
+        if (GameShare.Client.Setup.SetupHost.TryRun(args) is { } exitCode)
+        {
+            Environment.ExitCode = exitCode;
+            return;
+        }
+
         WebApplication? hosted = null;
 
         try

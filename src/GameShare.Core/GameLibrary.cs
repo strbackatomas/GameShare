@@ -1,4 +1,5 @@
 using GameShare.Core.Data;
+using GameShare.Protocol;
 using GameShare.Storage;
 using GameShare.Torrent;
 using Microsoft.Extensions.Logging;
@@ -52,6 +53,9 @@ public sealed class GameLibrary
 
     /// <summary>Raised when an installation becomes Installed or Invalid, or is registered again with new content.</summary>
     public event EventHandler<InstallationChange>? InstallationChanged;
+
+    /// <summary>The gameshare.json of an installed game was edited: how it starts or is prepared changed, its files did not.</summary>
+    public event EventHandler<Installation>? DefinitionChanged;
 
     public async Task<ScanSummary> ScanAsync(IEnumerable<string> roots, CancellationToken cancellationToken = default)
     {
@@ -135,6 +139,7 @@ public sealed class GameLibrary
             await RebuildAsync(path, known, stored.Manifest.VolatilePatterns, null, ct).ConfigureAwait(false);
             return FolderOutcome.Registered;
         }
+        if (intact) await SyncDefinitionAsync(path, known, stored!, definition, ct).ConfigureAwait(false);
         if (intact)
         {
             if (known.State == InstallationState.Installed) return FolderOutcome.Unchanged;
@@ -152,6 +157,54 @@ public sealed class GameLibrary
             _log.LogWarning("Game files changed or missing, marked as damaged: {Path}. Repair it, or register the current files as a new version.", path);
         }
         return FolderOutcome.Damaged;
+    }
+
+    /// <summary>
+    /// Brings the stored definition in line with the folder's gameshare.json. The file is outside the content hash, so editing it
+    /// keeps the game what it is and only changes how it is started and prepared. A folder without the file, installed before
+    /// installs wrote it, gets the stored one written back.
+    /// </summary>
+    private async Task SyncDefinitionAsync(string path, Installation known, StoredManifest stored, GameDefinition? onDisk, CancellationToken ct)
+    {
+        if (onDisk is null)
+        {
+            if (stored.Manifest.Definition is not { } kept) return;
+            try { await GameDefinitionFile.WriteAsync(path, kept, ct).ConfigureAwait(false); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { _log.LogDebug(ex, "Could not write the definition into {Path}", path); }
+            return;
+        }
+        if (DefinitionHasher.Same(stored.Manifest.Definition, onDisk)) return;
+        await SaveDefinitionAsync(known, stored.Manifest, onDisk, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Replaces the definition of an installed game, for example with the one the administrator signed, found on another PC.
+    /// The files stay what they are. The new definition is written into the game folder too, so the next scan keeps it.
+    /// </summary>
+    /// <returns>The manifest with the new definition.</returns>
+    public async Task<GameManifest> ReplaceDefinitionAsync(string contentHash, GameDefinition definition, CancellationToken ct = default)
+    {
+        var known = (await _db.ListInstallationsAsync(ct).ConfigureAwait(false)).FirstOrDefault(i => i.ContentHash == contentHash)
+            ?? throw new KeyNotFoundException($"Game {contentHash} is not installed on this PC.");
+        var stored = await _db.GetManifestAsync(contentHash, ct).ConfigureAwait(false)
+            ?? throw new InvalidOperationException($"No manifest is stored for {contentHash}.");
+        await GameDefinitionFile.WriteAsync(known.InstallPath, definition, ct).ConfigureAwait(false);
+        return await SaveDefinitionAsync(known, stored.Manifest, definition, ct).ConfigureAwait(false);
+    }
+
+    private async Task<GameManifest> SaveDefinitionAsync(Installation known, GameManifest stored, GameDefinition definition, CancellationToken ct)
+    {
+        var manifest = stored with
+        {
+            Definition = definition,
+            GameId = definition.GameId,
+            Name = definition.DisplayName ?? definition.Name,
+            Version = definition.Version,
+        };
+        await _db.SaveManifestAsync(manifest, null, ct).ConfigureAwait(false);
+        _log.LogInformation("Game definition changed: {Name} at {Path}", manifest.Name, known.InstallPath);
+        DefinitionChanged?.Invoke(this, known);
+        return manifest;
     }
 
     /// <summary>

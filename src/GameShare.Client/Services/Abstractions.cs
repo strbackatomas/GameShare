@@ -60,8 +60,17 @@ public interface IAgentClient
     Task UninstallAsync(string contentHash, CancellationToken ct = default);
 
     /// <summary>The agent checks the game and says what to start. It refuses, with the reason, when the game must not be started.</summary>
-    Task<LaunchInfoDto> LaunchAsync(string contentHash, CancellationToken ct = default);
+    /// <param name="entry">Which of the game's programs, see <see cref="GameDto.LaunchOptions"/>. 0 is the game itself.</param>
+    Task<LaunchInfoDto> LaunchAsync(string contentHash, int entry = 0, CancellationToken ct = default);
     Task<IReadOnlyList<string>> GetExecutablesAsync(string contentHash, CancellationToken ct = default);
+
+    /// <summary>The picture of a game installed here (.ico or .png bytes), or null when it has none.</summary>
+    Task<byte[]?> GetIconAsync(string contentHash, CancellationToken ct = default);
+
+    /// <summary>What preparing this PC for the game does, checked by the agent, for the player to confirm.</summary>
+    Task<SetupPlanDto> GetSetupPlanAsync(string contentHash, CancellationToken ct = default);
+    Task<GameDto?> SetupDoneAsync(string contentHash, string setupHash, CancellationToken ct = default);
+    Task<GameDto?> ResetSetupAsync(string contentHash, CancellationToken ct = default);
     Task<GameDto?> ChooseExecutableAsync(string contentHash, string executable, string? arguments, CancellationToken ct = default);
 
     Task<DownloadDto> PauseAsync(long downloadId, CancellationToken ct = default);
@@ -91,6 +100,15 @@ public interface IGameStarter
 {
     /// <exception cref="AgentException">The game could not be started. The message says why.</exception>
     void Start(LaunchInfoDto info);
+}
+
+/// <summary>
+/// Runs a preparation the player confirmed: the machine's steps in one elevated process (one UAC prompt), the player's own
+/// steps in the client. The agent cannot do either, it is a service without the player's profile and without their consent.
+/// </summary>
+public interface ISetupRunner
+{
+    Task<IReadOnlyList<SetupStepResultDto>> RunAsync(SetupPlanDto plan, CancellationToken ct = default);
 }
 
 /// <summary>One event pushed by the agent. <see cref="Payload"/> is the DTO documented for that event name in <see cref="GameShareEvents"/>.</summary>

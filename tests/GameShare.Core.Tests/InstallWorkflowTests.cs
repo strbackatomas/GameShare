@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using GameShare.Core.Data;
 using GameShare.Protocol;
+using GameShare.Storage;
 using GameShare.Torrent;
 using Microsoft.Data.Sqlite;
 
@@ -197,6 +198,41 @@ public class InstallWorkflowTests
             $"after the restart {fetchedAfterRestart} of {offer.Manifest.TotalSize} bytes were fetched again, progress was lost");
         Assert.NotNull(await restarted.Db.FindInstalledAsync(offer.Manifest.ContentHash));
         await pc.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task The_definition_travels_with_the_game_into_its_folder_and_an_edited_one_is_picked_up_by_a_scan()
+    {
+        await using var source = await Pc.StartAsync();
+        source.AddGame(customise: dir => File.WriteAllText(Path.Combine(dir, "gameshare.json"),
+            """{ "gameId": "testgame", "name": "Test Game", "launch": [ { "executable": "Game.exe" } ] }"""));
+        await source.Library.ScanAsync([source.GamesRoot]);
+        await source.Seeds.StartAllAsync();
+        var offer = await source.OnlyKnownGameAsync();
+
+        await using var pc = await Pc.StartAsync();
+        var d = await pc.Downloads.StartInstallAsync(offer.Manifest, offer.TorrentBytes!, pc.GamesRoot);
+        await Poll.DownloadStateAsync(pc, d.Id, DownloadState.Completed);
+
+        // The installed folder carries the definition, so a scan here, or a third PC installing from here, sees the same.
+        var written = await GameDefinitionFile.TryLoadAsync(pc.GameDir);
+        Assert.Equal("Game.exe", Assert.Single(written!.Launch).Executable);
+
+        // Editing how the game starts keeps it the same game, and the next scan uses the new definition.
+        var changed = new List<Installation>();
+        pc.Library.DefinitionChanged += (_, i) => changed.Add(i);
+        await File.WriteAllTextAsync(Path.Combine(pc.GameDir, "gameshare.json"),
+            """{ "gameId": "testgame", "name": "Test Game", "launch": [ { "executable": "Game.exe", "runAsAdmin": true } ] }""");
+        var scan = await pc.Library.ScanAsync([pc.GamesRoot]);
+
+        Assert.Equal(0, scan.Added);
+        var stored = await pc.OnlyKnownGameAsync();
+        Assert.Equal(offer.Manifest.ContentHash, stored.Manifest.ContentHash);
+        Assert.True(Assert.Single(stored.Manifest.Definition!.Launch).RunAsAdmin);
+        Assert.Single(changed);
+
+        await pc.Library.ScanAsync([pc.GamesRoot]);
+        Assert.Single(changed); // unchanged the second time
     }
 
     [Fact]

@@ -36,9 +36,24 @@ public sealed class LaunchService
         return LaunchRules.Candidates(manifest).Count > 0 ? LaunchState.NeedsExecutable : LaunchState.None;
     }
 
+    /// <summary>The program the play button starts, relative to the game folder, or null when there is none yet.</summary>
+    public async Task<string?> MainExecutableAsync(GameManifest manifest, CancellationToken ct = default) =>
+        LaunchRules.Plan(manifest, await ChoiceAsync(manifest.GameId, ct).ConfigureAwait(false), 0, out _)?.Executable;
+
+    /// <summary>The programs of the game that pass the checks, the game itself first. Empty unless the game can be started.</summary>
+    public async Task<IReadOnlyList<LaunchOptionDto>> OptionsAsync(GameManifest manifest, Installation? installation, CancellationToken ct = default)
+    {
+        if (installation is null) return [];
+        var choice = await ChoiceAsync(manifest.GameId, ct).ConfigureAwait(false);
+        return LaunchRules.Entries(manifest, choice)
+            .Select(e => new LaunchOptionDto(e.Index, e.Plan.Name, e.Plan.Executable, e.Plan.RunAsAdmin))
+            .ToList();
+    }
+
     /// <summary>Checks everything and says what to start.</summary>
+    /// <param name="entry">Which of the programs the definition lists, 0 being the game itself.</param>
     /// <exception cref="InvalidOperationException">The game must not be started now. The message says why and what to do.</exception>
-    public async Task<LaunchInfoDto> PrepareAsync(string contentHash, CancellationToken ct = default)
+    public async Task<LaunchInfoDto> PrepareAsync(string contentHash, int entry = 0, CancellationToken ct = default)
     {
         var (installation, manifest) = await InstalledAsync(contentHash, ct).ConfigureAwait(false);
 
@@ -48,9 +63,9 @@ public sealed class LaunchService
         if (await _running.IsRunningNowAsync(installation, ct).ConfigureAwait(false))
             throw new InvalidOperationException($"{manifest.Name} is already running.");
 
-        var plan = LaunchRules.Plan(manifest, await ChoiceAsync(manifest.GameId, ct).ConfigureAwait(false), out var problem)
+        var plan = LaunchRules.Plan(manifest, await ChoiceAsync(manifest.GameId, ct).ConfigureAwait(false), entry, out var problem)
             ?? throw new InvalidOperationException(problem is null
-                ? $"{manifest.Name} does not say which program starts it. Choose one first."
+                ? entry == 0 ? $"{manifest.Name} does not say which program starts it. Choose one first." : $"{manifest.Name} has no program number {entry}."
                 : $"{manifest.Name} cannot be started: {problem} Choose the program to start.");
 
         var root = Path.GetFullPath(installation.InstallPath);
@@ -65,7 +80,7 @@ public sealed class LaunchService
 
         var workingDirectory = Inside(root, plan.WorkingDirectory == "." ? "" : plan.WorkingDirectory);
         if (!Directory.Exists(workingDirectory)) workingDirectory = root;
-        return new LaunchInfoDto(executable, plan.Arguments, workingDirectory);
+        return new LaunchInfoDto(executable, plan.Arguments, workingDirectory, plan.RunAsAdmin);
     }
 
     public async Task<IReadOnlyList<string>> CandidatesAsync(string contentHash, CancellationToken ct = default) =>

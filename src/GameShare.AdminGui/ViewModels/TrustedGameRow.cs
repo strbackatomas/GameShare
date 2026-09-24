@@ -23,6 +23,11 @@ public sealed partial class TrustedGameRow : ObservableObject
     public string ContentHash => _game.ContentHash;
     public string ShortHash => _game.ContentHash[..12];
 
+    /// <summary>Whether the list also vouches for the game's gameshare.json, which says how it starts and what preparing a PC runs.</summary>
+    public string DefinitionText => _game.DefinitionHash is { } hash
+        ? $"Definice podepsána ({hash[..12]})"
+        : "Bez podepsané definice: příprava hry a spuštění jako správce se na PC s povinným ověřením nepovolí";
+
     /// <summary>The reason field for this row is open.</summary>
     [ObservableProperty] public partial bool IsRevoking { get; set; }
 

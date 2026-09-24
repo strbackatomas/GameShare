@@ -208,14 +208,19 @@ public sealed partial class PeerCatalog
     }
 
     /// <summary>Downloads a manifest and its torrent from any peer that offers the version. Both are validated.</summary>
+    /// <param name="preferred">
+    /// Says whether a copy is the one to want. Peers can hand out the same files with different definitions, so the other peers are
+    /// asked on, and a copy that is not preferred is used only when no peer has a preferred one.
+    /// </param>
     /// <exception cref="KeyNotFoundException">Nobody offers it.</exception>
     /// <exception cref="HttpRequestException">Peers offer it but none could deliver a valid copy.</exception>
-    public async Task<(GameManifest Manifest, byte[] Torrent)> FetchAsync(string contentHash, CancellationToken ct)
+    public async Task<(GameManifest Manifest, byte[] Torrent)> FetchAsync(string contentHash, CancellationToken ct, Func<GameManifest, bool>? preferred = null)
     {
         var sources = Offers.Where(o => o.Game.ContentHash == contentHash).Select(o => o.Peer).OrderBy(_ => Random.Shared.Next()).ToList();
         if (sources.Count == 0)
             throw new KeyNotFoundException("No PC on the LAN offers this game right now.");
 
+        (GameManifest Manifest, byte[] Torrent)? fallback = null;
         var failures = new List<string>();
         foreach (var peer in sources)
         {
@@ -233,6 +238,12 @@ public sealed partial class PeerCatalog
                 if (manifest.ContentHash != contentHash) throw new InvalidDataException("the manifest is for a different game version than requested");
 
                 var torrent = await GetBytesAsync(client, Url(peer, $"/peer/games/{contentHash}/torrent"), MaxTorrentBytes, cts.Token).ConfigureAwait(false);
+                if (preferred is not null && !preferred(manifest))
+                {
+                    _log.LogInformation("{Peer} has {Name} with a definition other than the signed one, asking the other PCs", peer.MachineName, manifest.Name);
+                    fallback ??= (manifest, torrent);
+                    continue;
+                }
                 _log.LogInformation("Fetched manifest and torrent of {Name} from {Peer}", manifest.Name, peer.MachineName);
                 return (manifest, torrent);
             }
@@ -242,6 +253,7 @@ public sealed partial class PeerCatalog
                 failures.Add($"{peer.MachineName}: {ex.Message}");
             }
         }
+        if (fallback is { } other) return other;
         throw new HttpRequestException($"None of the {sources.Count} PCs offering this game could deliver it. {string.Join("; ", failures)}");
     }
 

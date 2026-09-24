@@ -61,6 +61,7 @@ public sealed class EventBridge : IHostedService
         _catalog.Changed += OnCatalogChanged;
         _library.GameDiscovered += OnLocalGameDiscovered;
         _library.InstallationChanged += OnInstallationChanged;
+        _library.DefinitionChanged += OnDefinitionChanged;
         _downloads.DownloadEventRaised += OnDownload;
         _seeds.SeedEventRaised += OnSeed;
         _changes.Changed += OnTrackedChange;
@@ -75,6 +76,7 @@ public sealed class EventBridge : IHostedService
         _catalog.Changed -= OnCatalogChanged;
         _library.GameDiscovered -= OnLocalGameDiscovered;
         _library.InstallationChanged -= OnInstallationChanged;
+        _library.DefinitionChanged -= OnDefinitionChanged;
         _downloads.DownloadEventRaised -= OnDownload;
         _seeds.SeedEventRaised -= OnSeed;
         _changes.Changed -= OnTrackedChange;
@@ -134,6 +136,10 @@ public sealed class EventBridge : IHostedService
     /// <summary>The card of a game that started or stopped running changes its buttons.</summary>
     private void OnRunningChanged(object? sender, RunningChange change) =>
         Enqueue(() => GameChangedAsync(change.Installation.ContentHash));
+
+    /// <summary>An edited gameshare.json changes the card: its name, its programs, whether it needs preparing.</summary>
+    private void OnDefinitionChanged(object? sender, Installation installation) =>
+        Enqueue(() => GameChangedAsync(installation.ContentHash));
 
     /// <summary>A new list can change the badge of every game.</summary>
     private void OnTrustChanged(object? sender, EventArgs e) =>

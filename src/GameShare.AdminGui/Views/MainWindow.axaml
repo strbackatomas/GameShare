@@ -53,17 +53,137 @@
             <TextBlock Classes="section" Text="PŘIDAT HRU" />
             <Border Classes="card">
                 <StackPanel Spacing="8">
-                    <Grid ColumnDefinitions="*,Auto,Auto">
+                    <Grid ColumnDefinitions="*,Auto,Auto,Auto">
                         <TextBox Grid.Column="0" Text="{Binding GameFolder}" PlaceholderText="Složka hry, čistá instalace bez uložených pozic" Margin="0,0,8,0" />
                         <Button Grid.Column="1" Content="Procházet…" Command="{Binding BrowseGameFolderCommand}" Margin="0,0,8,0" />
-                        <Button Grid.Column="2" Content="Skenovat" Command="{Binding ScanCommand}" />
+                        <Button Grid.Column="2" Content="Upravit definici…" Command="{Binding EditDefinitionCommand}" Margin="0,0,8,0" />
+                        <Button Grid.Column="3" Content="Skenovat" Command="{Binding ScanCommand}" />
                     </Grid>
+
+                    <Border IsVisible="{Binding IsEditing}" Padding="12" CornerRadius="6" BorderBrush="{StaticResource LineBrush}" BorderThickness="1">
+                        <StackPanel DataContext="{Binding Editor}" x:DataType="vm:DefinitionEditorViewModel" Spacing="8">
+                            <TextBlock Text="Definice hry (gameshare.json)" FontWeight="SemiBold" />
+                            <TextBlock Classes="muted" FontSize="12" Text="{Binding Folder}" />
+                            <Grid ColumnDefinitions="*,*,120" ColumnSpacing="8">
+                                <TextBox Grid.Column="0" Text="{Binding Name}" PlaceholderText="Název hry" />
+                                <TextBox Grid.Column="1" Text="{Binding GameId}" PlaceholderText="Id (malá písmena, např. battlefield-2)" />
+                                <TextBox Grid.Column="2" Text="{Binding GameVersion}" PlaceholderText="Verze" />
+                            </Grid>
+
+                            <TextBlock Classes="muted" Text="Spouštěče: název · program · argumenty · pracovní složka. První je tlačítko Hrát, ostatní jsou v nabídce vedle něj." Margin="0,6,0,0" TextWrapping="Wrap" />
+                            <ItemsControl ItemsSource="{Binding Launch}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:LaunchRow">
+                                        <Grid ColumnDefinitions="110,*,*,90,Auto,Auto,Auto" ColumnSpacing="6" Margin="0,2">
+                                            <TextBox Grid.Column="0" Text="{Binding Name}" PlaceholderText="Hrát" />
+                                            <ComboBox Grid.Column="1" ItemsSource="{Binding Editor.Programs}" SelectedItem="{Binding Executable}" HorizontalAlignment="Stretch" />
+                                            <TextBox Grid.Column="2" Text="{Binding Arguments}" PlaceholderText="Argumenty" />
+                                            <TextBox Grid.Column="3" Text="{Binding WorkingDirectory}" PlaceholderText="." ToolTip.Tip="Pracovní složka, relativně ke složce hry" />
+                                            <CheckBox Grid.Column="4" Content="Správce" IsChecked="{Binding RunAsAdmin}" ToolTip.Tip="Spouštět s oprávněním správce (dotaz UAC při každém spuštění)" />
+                                            <Button Grid.Column="5" Content="↑" Command="{Binding MoveUpCommand}" ToolTip.Tip="Posunout výš, první je Hrát" />
+                                            <Button Grid.Column="6" Content="✕" Command="{Binding RemoveCommand}" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <Button Content="+ Spouštěč" Command="{Binding AddLaunchCommand}" />
+
+                            <TextBlock Classes="muted" Text="Příprava PC před prvním spuštěním" Margin="0,6,0,0" />
+                            <ItemsControl ItemsSource="{Binding Requires}" IsVisible="{Binding HasRequires}">
+                                <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:RequireRow">
+                                        <CheckBox Content="{Binding Text}" IsChecked="{Binding IsChecked}" Margin="0,0,16,0" />
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+
+                            <ItemsControl ItemsSource="{Binding Registry}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:RegistryRow">
+                                        <StackPanel Margin="0,2">
+                                        <TextBlock Classes="muted" FontSize="11" Text="Import registru: soubor · cesta, kterou soubor obsahuje (přepíše se na skutečnou) · klíč smazaný před importem" />
+                                        <Grid ColumnDefinitions="160,*,*,Auto" ColumnSpacing="6">
+                                            <ComboBox Grid.Column="0" ItemsSource="{Binding Editor.RegFiles}" SelectedItem="{Binding File}" HorizontalAlignment="Stretch" />
+                                            <TextBox Grid.Column="1" Text="{Binding OriginalPath}" PlaceholderText="Původní cesta v souboru, např. C:\Games\Hra" />
+                                            <TextBox Grid.Column="2" Text="{Binding Cleanup}" PlaceholderText="Před importem smazat klíč (nepovinné)" />
+                                            <Button Grid.Column="3" Content="✕" Command="{Binding RemoveCommand}" />
+                                        </Grid>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <ItemsControl ItemsSource="{Binding Compatibility}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:CompatibilityRow">
+                                        <StackPanel Margin="0,2">
+                                        <TextBlock Classes="muted" FontSize="11" Text="Režim kompatibility: program · režim Windows" />
+                                        <Grid ColumnDefinitions="*,200,Auto" ColumnSpacing="6">
+                                            <ComboBox Grid.Column="0" ItemsSource="{Binding Editor.Programs}" SelectedItem="{Binding Executable}" HorizontalAlignment="Stretch" />
+                                            <TextBox Grid.Column="1" Text="{Binding Layers}" PlaceholderText="WINXPSP3" ToolTip.Tip="Režim kompatibility Windows, např. WINXPSP3, WIN98, 256COLOR" />
+                                            <Button Grid.Column="2" Content="✕" Command="{Binding RemoveCommand}" />
+                                        </Grid>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <ItemsControl ItemsSource="{Binding Profile}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:ProfileRow">
+                                        <StackPanel Margin="0,2">
+                                        <TextBlock Classes="muted" FontSize="11" Text="Profil: složka ve hře · kam ji zkopírovat hráči (jen když tam ještě není)" />
+                                        <Grid ColumnDefinitions="*,*,Auto" ColumnSpacing="6">
+                                            <ComboBox Grid.Column="0" ItemsSource="{Binding Editor.Folders}" SelectedItem="{Binding From}" HorizontalAlignment="Stretch" />
+                                            <TextBox Grid.Column="1" Text="{Binding To}" PlaceholderText="{}{Documents}\Hra" />
+                                            <Button Grid.Column="2" Content="✕" Command="{Binding RemoveCommand}" />
+                                        </Grid>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <ItemsControl ItemsSource="{Binding GameRedists}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:RedistRow">
+                                        <StackPanel Margin="0,2">
+                                        <TextBlock Classes="muted" FontSize="11" Text="Instalátor přibalený ke hře: soubor · tiché parametry" />
+                                        <Grid ColumnDefinitions="*,200,Auto" ColumnSpacing="6">
+                                            <ComboBox Grid.Column="0" ItemsSource="{Binding Editor.Installers}" SelectedItem="{Binding File}" HorizontalAlignment="Stretch" />
+                                            <TextBox Grid.Column="1" Text="{Binding Args}" PlaceholderText="Tiché parametry, např. /S" />
+                                            <Button Grid.Column="2" Content="✕" Command="{Binding RemoveCommand}" />
+                                        </Grid>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <WrapPanel>
+                                <Button Content="+ Registry (.reg)" Command="{Binding AddRegistryCommand}" IsVisible="{Binding HasRegFiles}" Margin="0,0,8,4" />
+                                <Button Content="+ Kompatibilita" Command="{Binding AddCompatibilityCommand}" Margin="0,0,8,4" />
+                                <Button Content="+ Profil do Dokumentů" Command="{Binding AddProfileCommand}" Margin="0,0,8,4" />
+                                <Button Content="+ Instalátor ze _redist" Command="{Binding AddRedistCommand}" IsVisible="{Binding HasInstallers}" Margin="0,0,8,4" />
+                            </WrapPanel>
+
+                            <TextBlock Text="{Binding Status}" TextWrapping="Wrap" />
+                            <ItemsControl ItemsSource="{Binding Problems}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="x:String">
+                                        <TextBlock Text="{Binding}" Foreground="{StaticResource DangerBrush}" TextWrapping="Wrap" FontSize="12" />
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Button Classes="primary" Content="Uložit gameshare.json" Command="{Binding SaveCommand}" />
+                                <Button Content="Zavřít" Command="{Binding $parent[Window].((vm:MainViewModel)DataContext).CloseEditorCommand}" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
                     <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding HasScanned}">
                         <StackPanel Grid.Column="0" Spacing="2">
                             <TextBlock FontWeight="SemiBold">
                                 <Run Text="{Binding ScannedName}" /><Run Text=" " /><Run Text="{Binding ScannedVersion}" />
                             </TextBlock>
                             <TextBlock Classes="muted" FontSize="12" Text="{Binding ScannedHash}" />
+                            <TextBlock Classes="muted" FontSize="12" Text="{Binding ScannedDefinition}" TextWrapping="Wrap" />
                         </StackPanel>
                         <Button Grid.Column="1" Classes="primary" Content="Přidat do seznamu" Command="{Binding AddScannedGameCommand}" VerticalAlignment="Center" />
                     </Grid>
@@ -82,6 +202,7 @@
                                             <Run Text="{Binding Name}" /><Run Text=" " /><Run Text="{Binding Version}" />
                                         </TextBlock>
                                         <TextBlock Classes="muted" FontSize="12" Text="{Binding ShortHash}" />
+                                        <TextBlock Classes="muted" FontSize="12" Text="{Binding DefinitionText}" TextWrapping="Wrap" />
                                     </StackPanel>
                                     <Button Grid.Column="1" Content="Zrušit…" Command="{Binding StartRevokeCommand}" IsVisible="{Binding !IsRevoking}" Margin="0,0,8,0" />
                                     <Button Grid.Column="2" Classes="danger" Content="Odebrat" Command="{Binding RemoveCommand}" />

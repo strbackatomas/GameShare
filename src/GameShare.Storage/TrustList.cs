@@ -5,7 +5,14 @@ using GameShare.Protocol;
 namespace GameShare.Storage;
 
 /// <summary>A version of a game the administrator vouches for. Identity is the content hash, which covers every file.</summary>
-public sealed record TrustedGame(string ContentHash, string GameId, string Name, string? Version);
+public sealed record TrustedGame(string ContentHash, string GameId, string Name, string? Version)
+{
+    /// <summary>
+    /// <see cref="DefinitionHasher"/> of the gameshare.json the administrator vouches for with these files: how the game starts
+    /// and what preparing a PC for it does. Null in lists made before definitions were signed, and for a game without a definition.
+    /// </summary>
+    public string? DefinitionHash { get; init; }
+}
 
 /// <summary>A version the administrator withdrew, for example because it was found to be modified.</summary>
 public sealed record RevokedGame(string ContentHash, string Reason);

@@ -96,6 +96,16 @@
         <Style Selector="Button.row:pointerover /template/ ContentPresenter">
             <Setter Property="Background" Value="Transparent" />
         </Style>
+        <!-- A text link that shows or hides something, like "podrobnosti". No chrome in any state. -->
+        <Style Selector="ToggleButton.link">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Cursor" Value="Hand" />
+        </Style>
+        <Style Selector="ToggleButton.link:checked /template/ ContentPresenter, ToggleButton.link:pointerover /template/ ContentPresenter, ToggleButton.link:pressed /template/ ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+        </Style>
 
         <Style Selector="ProgressBar">
             <Setter Property="Height" Value="8" />

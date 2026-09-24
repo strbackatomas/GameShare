@@ -19,6 +19,25 @@ public static partial class GameDefinitionFile
         return slug.Length == 0 ? "game" : slug.Length > 64 ? slug[..64] : slug;
     }
 
+    private static readonly JsonSerializerOptions WriteOptions = new(GameShareJson.Options)
+    {
+        WriteIndented = true,
+        DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
+        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping, // keeps Czech letters readable instead of \u escapes, the file is edited by hand
+    };
+
+    /// <summary>
+    /// Writes the definition into a game folder, so the folder carries it: a later scan, or another PC that installs from this one, reads it back.
+    /// The file is not part of the game's content, so this never changes the game's identity.
+    /// </summary>
+    public static async Task WriteAsync(string gameDirectory, GameDefinition definition, CancellationToken cancellationToken = default)
+    {
+        var path = Path.Combine(gameDirectory, ContentScanner.DefinitionFileName);
+        var temp = path + ".tmp";
+        await File.WriteAllTextAsync(temp, JsonSerializer.Serialize(definition, WriteOptions), cancellationToken).ConfigureAwait(false);
+        File.Move(temp, path, overwrite: true);
+    }
+
     /// <returns>The definition, or null when the directory has no definition file.</returns>
     /// <exception cref="InvalidDataException">The file exists but is malformed. The message names the file.</exception>
     public static async Task<GameDefinition?> TryLoadAsync(string gameDirectory, CancellationToken cancellationToken = default)

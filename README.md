@@ -108,7 +108,8 @@ The one request that may leave the LAN is the optional download of the administr
 ## Local API
 
 `GET /api/status`, `GET|PUT /api/settings`, `GET /api/peers`, `GET /api/games`, `GET /api/games/{contentHash}`,
-`GET /api/trust`, `POST /api/trust/refresh`, `POST /api/games/{contentHash}/launch`, `GET .../executables`, `PUT .../launcher`, `POST /api/games/scan`, `POST /api/games/{contentHash}/install`, `.../update`, `.../repair`, `.../check`, `.../register`, `.../volatile`,
+`GET /api/trust`, `POST /api/trust/refresh`, `POST /api/games/{contentHash}/launch?entry=N`, `GET .../executables`, `PUT .../launcher`, `GET .../icon`,
+`GET|DELETE .../setup`, `POST .../setup/done`, `POST /api/games/scan`, `POST /api/games/{contentHash}/install`, `.../update`, `.../repair`, `.../check`, `.../register`, `.../volatile`,
 `GET /api/downloads`, `GET /api/downloads/{id}`, `POST /api/downloads/{id}/pause`, `.../resume`, `DELETE /api/downloads/{id}?deleteFiles=false`.
 
 Live events arrive on the SignalR hub at `/hub/events`: `PeerConnected`, `PeerDisconnected`, `GameDiscovered`, `GameUpdated`,
@@ -132,8 +133,21 @@ so other PCs can use it as a source, and PCs that were played on differently can
 
 ## Playing
 
-A game that says which program starts it (`executable` in `gameshare.json`, a `.exe` that is one of the game's own files) has a **Hrát** button.
+A game that says which program starts it (`launch` in `gameshare.json`, or the older single `executable`) has a **Hrát** button.
 For a game that does not say, the client lists the programs of the game and the player picks one, which is remembered on that PC.
+
+```json
+"launch": [
+  { "executable": "System/UT2004.exe" },
+  { "name": "UnrealEd", "executable": "System/UnrealEd.exe", "workingDirectory": "System" },
+  { "name": "Server", "executable": "Server.exe", "arguments": "-lan", "runAsAdmin": true }
+]
+```
+
+The first entry is the play button, the others are in the **▾** menu next to it. `runAsAdmin` starts that program through the UAC prompt,
+for old games that write to `HKEY_LOCAL_MACHINE` while they run (a shield on the button says so). Most do not need it: Windows quietly
+redirects such writes of an old 32-bit program into the player's own VirtualStore. Every entry is checked like `executable`.
+The card shows the icon of the first program, read from this PC's copy of it (or `icon`, a `.ico`, `.png` or `.exe` of the game).
 
 - The agent is a Windows service without a desktop, so it cannot start a game the player can see. It checks, and the client starts.
   The agent refuses when the program is not one of the game's files, when it is not the file that was verified (a game changing its settings is
@@ -143,11 +157,55 @@ For a game that does not say, the client lists the programs of the game and the 
 - While a game runs, a repair, an update and registering wait, and its seed stops sending. Files the seed holds open would keep the game from saving,
   and the disk and network are the game's. Other PCs cannot install that game from this PC until it is closed (`Agent:PauseSeedWhilePlaying`).
 
+## Preparing a PC for a game ("Příprava hry")
+
+Older games need more than their files: DirectX or Visual C++ runtimes, registry keys pointing at their folder, a compatibility mode,
+settings in Documents. `setup` in `gameshare.json` says what, and **Hrát** does it once before the game is first played on a PC:
+
+```json
+"setup": {
+  "requires": [ "directx9", "vcredist2005_x86" ],
+  "redist": [ { "file": "_redist/oalinst.exe", "args": "/s" } ],
+  "registry": [ { "file": "registry-import.reg", "originalPath": "C:\\Games\\Battlefield 2",
+                  "cleanup": "HKLM\\SOFTWARE\\WOW6432Node\\Electronic Arts\\EA Games\\Battlefield 2" } ],
+  "compatibility": [ { "executable": "BF2.exe", "layers": "WINXPSP3" } ],
+  "profile": [ { "from": "Battlefield 2-profile", "to": "{Documents}\\Battlefield 2" } ]
+}
+```
+
+- `requires` names redistributables from a **package** that is shared like any game: a folder in a game root whose `gameshare.json`
+  has `"gameId": "redist"`, `"kind": "redist"` and `provides`, each with its installer, silent arguments and `installedIf` (a file,
+  a registry value, or a name in Apps and Features). One already on the PC is skipped. A PC without the package offers to install it.
+- `registry` imports a `.reg` file of the game with every `originalPath` (any case) changed to where the game is on this PC. The part
+  for `HKEY_CURRENT_USER` is imported as the player, the rest with administrator rights. Only a game's own keys below `SOFTWARE` are
+  accepted, anything of Microsoft's (autostart, file associations, policies) makes the whole file refused. `cleanup` deletes a game's
+  key first.
+- `compatibility` sets a Windows compatibility mode for the player, `profile` copies a folder of the game into the player's profile
+  unless it is there already (it may hold saves).
+
+The agent plans and checks, and runs nothing: every file must be a file of the game with the hash the manifest says. The client shows
+each step, with the keys and values a `.reg` writes, and the player confirms. The machine's steps run in one elevated copy of the
+client after one UAC prompt, and it checks each installer's hash again right before starting it. The player's own steps run in the
+client. The PC remembers the preparation for that setup in that folder; the ▾ menu has **Znovu připravit hru** for another player.
+
+## Moving from the old LAN party installer
+
+`scripts\import-lan-installer.ps1 -Source 'D:\Instalace V2\hry_install_v2' -Target C:\Hry` turns the old `LAN_PARTY_INSTALACE_V2.bat`
+set into a game root, reading the source and never changing it: every `*-install.7z` is extracted into its own folder, the desktop
+shortcuts and `-meta.json` become `launch` and `setup` in a `gameshare.json`, and the shared `_redist` folder becomes the `_Redist`
+package. It is meant for the move, not for later: new games are set up in the admin GUI (**Upravit definici…** next to the game
+folder), which offers what is in the folder and checks the result the way agents will before writing `gameshare.json`.
+
 ## Verified games (optional)
 
 Content is identified by a hash of every file, so a PC that hands out a modified game hands out a game with a different hash.
 What the hash cannot say is which version is the one you meant. The administrator can publish a **signed list** of the content hashes
 they vouch for, and every PC checks games against it. Nobody has to trust the PC a game came from.
+
+`gameshare.json` is outside the content hash (editing how a game starts must not make it another game), so adding a game also signs a
+hash of its definition when the folder has one. That is what makes the preparation and `runAsAdmin` trustworthy: with `Require` they run
+only with the signed definition, with `Warn` the player is told when a definition is unsigned or not the signed one. A PC that has another
+definition asks the other PCs for the signed one. Lists made before this (no `definitionHash`) still work, they just vouch for files only.
 
 On the administrator's PC, either the command line or the graphical tool, whichever is easier. Both call the same code
 (`GameShare.Storage/TrustWorkflow.cs`), so they behave the same and either can carry on where the other left off on the

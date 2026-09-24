@@ -99,9 +99,30 @@ internal sealed class FakeAgent : IAgentClient
     public LaunchInfoDto LaunchInfo { get; set; } = new(@"D:\Games\BeamNG\Game.exe", "-windowed", @"D:\Games\BeamNG");
     public List<string> Executables { get; set; } = [];
 
-    public Task<LaunchInfoDto> LaunchAsync(string contentHash, CancellationToken ct = default) => Do($"Launch({contentHash})", () => LaunchInfo);
+    public Task<LaunchInfoDto> LaunchAsync(string contentHash, int entry = 0, CancellationToken ct = default) =>
+        Do(entry == 0 ? $"Launch({contentHash})" : $"Launch({contentHash}#{entry})", () => LaunchInfo);
     public Task<IReadOnlyList<string>> GetExecutablesAsync(string contentHash, CancellationToken ct = default) =>
         Do<IReadOnlyList<string>>($"GetExecutables({contentHash})", () => [.. Executables]);
+    public Dictionary<string, byte[]> Icons { get; } = [];
+    public SetupPlanDto? SetupPlan { get; set; }
+    public Task<SetupPlanDto> GetSetupPlanAsync(string contentHash, CancellationToken ct = default) =>
+        Do($"GetSetupPlan({contentHash})", () => SetupPlan ?? new SetupPlanDto(contentHash, "", "", [], DefinitionVerdict.NotChecked));
+    public Task<GameDto?> SetupDoneAsync(string contentHash, string setupHash, CancellationToken ct = default) =>
+        Do<GameDto?>($"SetupDone({contentHash}|{setupHash})", () =>
+        {
+            var i = Games.FindIndex(g => g.ContentHash == contentHash);
+            if (i >= 0) Games[i] = Games[i] with { NeedsSetup = false };
+            return i >= 0 ? Games[i] : null;
+        });
+    public Task<GameDto?> ResetSetupAsync(string contentHash, CancellationToken ct = default) =>
+        Do<GameDto?>($"ResetSetup({contentHash})", () =>
+        {
+            var i = Games.FindIndex(g => g.ContentHash == contentHash);
+            if (i >= 0) Games[i] = Games[i] with { NeedsSetup = true };
+            return i >= 0 ? Games[i] : null;
+        });
+    public Task<byte[]?> GetIconAsync(string contentHash, CancellationToken ct = default) =>
+        Task.FromResult(Icons.TryGetValue(contentHash, out var icon) ? icon : null);
     public Task<GameDto?> ChooseExecutableAsync(string contentHash, string executable, string? arguments, CancellationToken ct = default) =>
         Do<GameDto?>($"ChooseExecutable({contentHash}|{executable}|{arguments})", () => null);
 
@@ -126,6 +147,19 @@ internal sealed class FakeStarter : IGameStarter
     {
         if (Failure is not null) throw Failure;
         Started.Add(info);
+    }
+}
+
+public sealed class FakeSetupRunner : ISetupRunner
+{
+    public List<SetupPlanDto> Ran { get; } = [];
+    public List<SetupStepResultDto>? Results { get; set; }
+
+    public Task<IReadOnlyList<SetupStepResultDto>> RunAsync(SetupPlanDto plan, CancellationToken ct = default)
+    {
+        Ran.Add(plan);
+        return Task.FromResult<IReadOnlyList<SetupStepResultDto>>(
+            Results ?? plan.Steps.Where(s => !s.AlreadyDone).Select(s => new SetupStepResultDto(s.Title, true, null)).ToList());
     }
 }
 

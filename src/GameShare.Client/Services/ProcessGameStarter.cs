@@ -14,6 +14,7 @@ public sealed class ProcessGameStarter : IGameStarter
     {
         var start = new ProcessStartInfo(info.ExecutablePath) { WorkingDirectory = info.WorkingDirectory, UseShellExecute = true };
         if (!string.IsNullOrEmpty(info.Arguments)) start.Arguments = info.Arguments;
+        if (info.RunAsAdmin) start.Verb = "runas";
 
         try { Process.Start(start)?.Dispose(); }
         catch (Exception ex) when (ex is Win32Exception or InvalidOperationException or FileNotFoundException)

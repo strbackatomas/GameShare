@@ -118,7 +118,7 @@ public static partial class LocalApi
                 throw new ArgumentException($"'{root}' is not one of the configured game folders: {string.Join(", ", settings.Current.GameRoots)}.");
 
             RequireFullyAvailable(catalog, contentHash);
-            var (manifest, torrent) = await ResolveAsync(contentHash, db, catalog, ct);
+            var (manifest, torrent) = await ResolveAsync(contentHash, db, catalog, trust, ct);
             trust.RequireAllowed(contentHash, manifest.Name);
 
             var status = await downloads.StartInstallAsync(manifest, torrent, root, ct);
@@ -136,10 +136,44 @@ public static partial class LocalApi
         });
 
         // What the client starts, after the agent has checked it: a program of the game, still as verified, and not a withdrawn version.
-        api.MapPost("/games/{contentHash}/launch", async (string contentHash, LaunchService launch, CancellationToken ct) =>
+        // ?entry=N picks one of the programs the definition lists (an editor, a server), 0 or none is the game itself.
+        api.MapPost("/games/{contentHash}/launch", async (string contentHash, int? entry, LaunchService launch, CancellationToken ct) =>
         {
             RequireHash(contentHash);
-            return await launch.PrepareAsync(contentHash, ct);
+            return await launch.PrepareAsync(contentHash, entry ?? 0, ct);
+        });
+
+        // Preparing this PC for the game: the checked steps for the player to confirm, and the note that they ran.
+        api.MapGet("/games/{contentHash}/setup", async (string contentHash, SetupService setup, CancellationToken ct) =>
+        {
+            RequireHash(contentHash);
+            return await setup.PlanAsync(contentHash, ct);
+        });
+
+        api.MapPost("/games/{contentHash}/setup/done", async (string contentHash, SetupDoneRequest request, SetupService setup, GameView view, CancellationToken ct) =>
+        {
+            RequireHash(contentHash);
+            await setup.MarkDoneAsync(contentHash, request?.SetupHash ?? "", ct);
+            return await view.GetGameAsync(contentHash, ct);
+        });
+
+        // Play asks for the preparation again, for another player on this PC or after a step failed.
+        api.MapDelete("/games/{contentHash}/setup", async (string contentHash, SetupService setup, GameView view, CancellationToken ct) =>
+        {
+            RequireHash(contentHash);
+            await setup.ResetAsync(contentHash, ct);
+            return await view.GetGameAsync(contentHash, ct);
+        });
+
+        // The picture shown next to the game's name, read from this PC's copy of the game.
+        api.MapGet("/games/{contentHash}/icon", async (string contentHash, GameShareDb db, IconService icons, CancellationToken ct) =>
+        {
+            RequireHash(contentHash);
+            var stored = await db.GetManifestAsync(contentHash, ct);
+            var installation = (await db.ListInstallationsAsync(ct)).FirstOrDefault(i => i.ContentHash == contentHash);
+            return stored is not null && await icons.GetAsync(stored.Manifest, installation, ct) is { } icon
+                ? Results.Bytes(icon.Bytes, icon.ContentType)
+                : Results.NotFound();
         });
 
         // The programs of the game the player can choose from, for a game that does not say which one starts it.
@@ -149,10 +183,11 @@ public static partial class LocalApi
             return await launch.CandidatesAsync(contentHash, ct);
         });
 
-        api.MapPut("/games/{contentHash}/launcher", async (string contentHash, LauncherChoiceRequest request, LaunchService launch, GameView view, CancellationToken ct) =>
+        api.MapPut("/games/{contentHash}/launcher", async (string contentHash, LauncherChoiceRequest request, LaunchService launch, IconService icons, GameView view, CancellationToken ct) =>
         {
             RequireHash(contentHash);
             await launch.ChooseAsync(contentHash, request?.Executable ?? "", request?.Arguments, ct);
+            icons.Forget(contentHash); // the picture follows the program the play button starts
             return await view.GetGameAsync(contentHash, ct);
         });
 
@@ -197,7 +232,7 @@ public static partial class LocalApi
         {
             RequireHash(contentHash);
             RequireFullyAvailable(catalog, contentHash);
-            var (manifest, torrent) = await ResolveAsync(contentHash, db, catalog, ct);
+            var (manifest, torrent) = await ResolveAsync(contentHash, db, catalog, trust, ct);
             trust.RequireAllowed(contentHash, manifest.Name);
 
             var installs = new List<Installation>();
@@ -247,10 +282,13 @@ public static partial class LocalApi
     }
 
     /// <summary>The manifest and torrent of a version: from this PC if it has them, otherwise from a PC that offers it.</summary>
-    private static async Task<(GameManifest Manifest, byte[] Torrent)> ResolveAsync(string contentHash, GameShareDb db, PeerCatalog catalog, CancellationToken ct)
+    /// <summary>The manifest and torrent of a version, from this PC or else from a peer, preferring a peer whose definition is the signed one.</summary>
+    private static async Task<(GameManifest Manifest, byte[] Torrent)> ResolveAsync(
+        string contentHash, GameShareDb db, PeerCatalog catalog, TrustService trust, CancellationToken ct)
     {
         var stored = await db.GetManifestAsync(contentHash, ct);
-        return stored?.TorrentBytes is not null ? (stored.Manifest, stored.TorrentBytes) : await catalog.FetchAsync(contentHash, ct);
+        return stored?.TorrentBytes is not null ? (stored.Manifest, stored.TorrentBytes)
+            : await catalog.FetchAsync(contentHash, ct, m => trust.CheckDefinition(contentHash, m.Definition) != DefinitionVerdict.Different);
     }
 
     private static async Task<Installation> RequireInstallationAsync(string contentHash, GameShareDb db, CancellationToken ct) =>
