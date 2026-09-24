@@ -20,11 +20,14 @@ public sealed class LaunchService
     private readonly RunningGames _running;
     private readonly ConcurrentDictionary<string, LauncherChoice?> _choices = new(StringComparer.Ordinal);
 
-    public LaunchService(GameShareDb db, TrustService trust, RunningGames running)
+    private readonly SeedManager _seeds;
+
+    public LaunchService(GameShareDb db, TrustService trust, RunningGames running, SeedManager seeds)
     {
         _db = db;
         _trust = trust;
         _running = running;
+        _seeds = seeds;
     }
 
     /// <summary>Whether a game can be started, needs the player to pick a program first, or has nothing to start.</summary>
@@ -80,6 +83,11 @@ public sealed class LaunchService
 
         var workingDirectory = Inside(root, plan.WorkingDirectory == "." ? "" : plan.WorkingDirectory);
         if (!Directory.Exists(workingDirectory)) workingDirectory = root;
+
+        // The client starts the game as soon as this answers. The seed has to let go of the files before that, not when the next look
+        // notices the game a few seconds later: a game that writes its settings on start (UT2004.ini) fails and quits when it cannot.
+        await _running.ExpectLaunchAsync(installation, ct).ConfigureAwait(false);
+        await _seeds.SuspendAsync(installation, ct).ConfigureAwait(false);
         return new LaunchInfoDto(executable, plan.Arguments, workingDirectory, plan.RunAsAdmin);
     }
 

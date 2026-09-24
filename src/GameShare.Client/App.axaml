@@ -96,6 +96,20 @@
         <Style Selector="Button.row:pointerover /template/ ContentPresenter">
             <Setter Property="Background" Value="Transparent" />
         </Style>
+        <!-- A state as a small round symbol instead of a word chip. The word is in its tooltip. -->
+        <Style Selector="Border.sym">
+            <Setter Property="Width" Value="22" />
+            <Setter Property="Height" Value="22" />
+            <Setter Property="CornerRadius" Value="11" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Border.sym > TextBlock">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="HorizontalAlignment" Value="Center" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
         <!-- A text link that shows or hides something, like "podrobnosti". No chrome in any state. -->
         <Style Selector="ToggleButton.link">
             <Setter Property="Background" Value="Transparent" />

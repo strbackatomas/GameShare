@@ -21,6 +21,13 @@ public sealed class RunningGames
     private readonly Func<IReadOnlyList<string>> _programs;
     private readonly SemaphoreSlim _looking = new(1, 1);
     private HashSet<long> _running = [];
+    private HashSet<long> _seen = [];
+
+    /// <summary>
+    /// Games the client is starting right now, until their program shows up or <see cref="AgentOptions.LaunchGrace"/> passes. They count as running
+    /// from the click on, so the seed lets go of the files before the game opens them, not seconds later when the next look sees it.
+    /// </summary>
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<long, DateTime> _starting = new();
 
     /// <param name="programs">Full paths of the programs that run now. Defaults to the processes of this PC. Tests give their own.</param>
     public RunningGames(GameShareDb db, AgentOptions options, ILogger<RunningGames> log, Func<IReadOnlyList<string>>? programs = null)
@@ -36,11 +43,21 @@ public sealed class RunningGames
     /// <summary>As of the last look, at most one interval old.</summary>
     public bool IsRunning(Installation installation) => Volatile.Read(ref _running).Contains(installation.Id);
 
-    /// <summary>Looks now, for a decision that must not go by a picture that is a few seconds old.</summary>
+    /// <summary>Looks now, for a decision that must not go by a picture that is a few seconds old. Only a program actually seen counts.</summary>
     public async Task<bool> IsRunningNowAsync(Installation installation, CancellationToken ct = default)
     {
         await LookAsync(ct).ConfigureAwait(false);
-        return IsRunning(installation);
+        return Volatile.Read(ref _seen).Contains(installation.Id);
+    }
+
+    /// <summary>
+    /// The client is about to start the game: it counts as running from now, and <see cref="Changed"/> says so at once. If its program
+    /// never shows up, it stops counting after <see cref="AgentOptions.LaunchGrace"/>.
+    /// </summary>
+    public async Task ExpectLaunchAsync(Installation installation, CancellationToken ct = default)
+    {
+        _starting[installation.Id] = DateTime.UtcNow + _options.LaunchGrace;
+        await LookAsync(ct).ConfigureAwait(false);
     }
 
     public async Task RunAsync(CancellationToken ct)
@@ -70,6 +87,13 @@ public sealed class RunningGames
                     var folder = Path.GetFullPath(inst.InstallPath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
                     if (programs.Any(p => p.StartsWith(folder, StringComparison.OrdinalIgnoreCase))) now.Add(inst.Id);
                 }
+            }
+
+            Volatile.Write(ref _seen, [.. now]);
+            foreach (var (id, until) in _starting)
+            {
+                if (now.Contains(id) || until < DateTime.UtcNow) _starting.TryRemove(id, out _); // seen, or it never came
+                else now.Add(id);
             }
 
             var before = Interlocked.Exchange(ref _running, now);

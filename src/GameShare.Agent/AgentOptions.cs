@@ -98,6 +98,9 @@ public sealed class AgentOptions
     /// <summary>How often the PC is looked at for games that are running.</summary>
     public TimeSpan RunningCheckInterval { get; set; } = TimeSpan.FromSeconds(5);
 
+    /// <summary>How long a game the client is starting counts as running before its program is seen. A launcher that hands over slowly needs more.</summary>
+    public TimeSpan LaunchGrace { get; set; } = TimeSpan.FromSeconds(15);
+
     /// <summary>
     /// While a game is running its seed stops sending. The disk and the network are the game's, and a game can save into files that
     /// are not held open. Other PCs cannot install that game from this one until it is closed.

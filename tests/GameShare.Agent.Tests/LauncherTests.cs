@@ -95,6 +95,28 @@ public class LauncherTests
     }
 
     [Fact]
+    public async Task The_seed_lets_go_of_the_files_before_the_game_starts_and_takes_them_back_if_it_never_does()
+    {
+        // A game that writes its settings the moment it starts (UT2004.ini) quit when the seed still held the file:
+        // stepping aside only after the next look for running games was a few seconds too late.
+        await using var pc = await StartAsync(Game(), o => { o.RunningCheckInterval = TimeSpan.FromMinutes(5); o.LaunchGrace = TimeSpan.FromSeconds(1); });
+        var game = await pc.WaitForGameAsync(g => g.State == GameState.Installed && g.Launch == LaunchState.Ready, "the game to be ready to start");
+        var engine = pc.Services.GetRequiredService<TorrentEngine>();
+        await Poll.UntilAsync(() => engine.Transfers.Count == 1 && !engine.Transfers.Single().IsStopped, "the game to be seeded");
+
+        await LaunchAsync(pc, game.ContentHash); // the client asked, and then does not start anything
+
+        Assert.True(engine.Transfers.Single().Suspended); // already, with no look for running games in between
+        Assert.True((await pc.GamesAsync()).Single().IsRunning);
+        await LaunchAsync(pc, game.ContentHash); // a second click while it is starting is not refused as "already running"
+
+        await Task.Delay(TimeSpan.FromSeconds(1.5));
+        await pc.Services.GetRequiredService<RunningGames>().IsRunningNowAsync((await pc.Services.GetRequiredService<GameShareDb>().ListInstallationsAsync()).Single());
+        await Poll.UntilAsync(() => !engine.Transfers.Single().Suspended && !engine.Transfers.Single().IsStopped, "the seed to send again after the grace");
+        Assert.False((await pc.GamesAsync()).Single().IsRunning);
+    }
+
+    [Fact]
     public async Task While_a_game_runs_its_seed_steps_aside_and_it_sends_again_when_the_game_is_closed()
     {
         await using var pc = await StartAsync(Game());

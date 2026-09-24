@@ -42,7 +42,7 @@ public sealed partial class GameCardViewModel : ViewModelBase
     private bool _iconRequested;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsInstalled), nameof(IsDamaged), nameof(IsDownloading), nameof(IsAvailable), nameof(CanInstall), nameof(CanUpdate), nameof(ShowInstallButton), nameof(StateText), nameof(CanPlay), nameof(NeedsExecutable), nameof(ShowUninstallButton), nameof(HasOtherLaunchOptions), nameof(HasPlayMenu))]
+    [NotifyPropertyChangedFor(nameof(IsInstalled), nameof(IsDamaged), nameof(IsDownloading), nameof(IsAvailable), nameof(CanInstall), nameof(CanUpdate), nameof(ShowInstallButton), nameof(StateText), nameof(CanPlay), nameof(NeedsExecutable), nameof(ShowUninstallButton), nameof(HasOtherLaunchOptions))]
     public partial GameState State { get; set; }
 
     [ObservableProperty]
@@ -58,12 +58,12 @@ public sealed partial class GameCardViewModel : ViewModelBase
 
     /// <summary>Ready: it can be started. NeedsExecutable: the player picks which program starts it. Only for a game installed here.</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(CanPlay), nameof(NeedsExecutable), nameof(HasOtherLaunchOptions), nameof(HasPlayMenu))]
+    [NotifyPropertyChangedFor(nameof(CanPlay), nameof(NeedsExecutable), nameof(HasOtherLaunchOptions))]
     public partial LaunchState Launch { get; set; }
 
     /// <summary>A program of the game is running on this PC. Its files are then not rewritten, so repairing and updating wait.</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(CanPlay), nameof(CanModify), nameof(HasOtherLaunchOptions), nameof(HasPlayMenu))]
+    [NotifyPropertyChangedFor(nameof(CanPlay), nameof(CanModify), nameof(HasOtherLaunchOptions))]
     [NotifyCanExecuteChangedFor(nameof(UpdateCommand), nameof(RepairCommand), nameof(RegisterCommand), nameof(UninstallPromptCommand), nameof(ConfirmUninstallCommand))]
     public partial bool IsRunning { get; set; }
 
@@ -71,20 +71,47 @@ public sealed partial class GameCardViewModel : ViewModelBase
     public ObservableCollection<LaunchOptionViewModel> OtherLaunchOptions { get; } = [];
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasOtherLaunchOptions), nameof(HasPlayMenu))]
+    [NotifyPropertyChangedFor(nameof(HasOtherLaunchOptions))]
     public partial int OtherLaunchOptionCount { get; set; }
 
     public bool HasOtherLaunchOptions => CanPlay && OtherLaunchOptionCount > 0;
 
-    /// <summary>The menu next to the play button: the game's other programs, and preparing the game again.</summary>
-    public bool HasPlayMenu => CanPlay && (OtherLaunchOptionCount > 0 || HasSetup);
+    /// <summary>
+    /// Everything but the main action, in the menu next to it, grouped: the game's other programs, preparing it again, looking after
+    /// its files, removing it. A null <see cref="CardMenuEntry.Command"/> is a separator line.
+    /// </summary>
+    public ObservableCollection<CardMenuEntry> MenuEntries { get; } = [];
+
+    [ObservableProperty] public partial bool HasMenu { get; set; }
+
+    private void RebuildMenu()
+    {
+        var entries = new List<CardMenuEntry>();
+        void Group(IEnumerable<CardMenuEntry> items)
+        {
+            var list = items.ToList();
+            if (list.Count == 0) return;
+            if (entries.Count > 0) entries.Add(CardMenuEntry.Separator);
+            entries.AddRange(list);
+        }
+        var here = IsInstalled || IsDamaged;
+        Group(CanPlay ? OtherLaunchOptions.Select(o => new CardMenuEntry(o.Text, o.PlayCommand)) : []);
+        Group(here && HasSetup ? [new CardMenuEntry("Znovu připravit hru…", PrepareAgainCommand)] : []);
+        Group(here ? [new CardMenuEntry("Zkontrolovat soubory", CheckCommand),
+                      .. IsDamaged ? new[] { new CardMenuEntry("Opravit ze sítě", RepairCommand), new CardMenuEntry("Registrovat jako novou verzi", RegisterCommand) } : []]
+                   : []);
+        Group(ShowUninstallButton ? [new CardMenuEntry("Odinstalovat…", UninstallPromptCommand)] : []);
+
+        if (entries.Select(e => (e.Header, e.Command)).SequenceEqual(MenuEntries.Select(e => (e.Header, e.Command)))) return;
+        MenuEntries.Clear();
+        foreach (var e in entries) MenuEntries.Add(e);
+        HasMenu = MenuEntries.Count > 0;
+    }
 
     // ---- preparing the PC before the game is first played ----
 
     /// <summary>The game's definition has setup steps (redistributables, registry, compatibility, profile).</summary>
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasPlayMenu))]
-    public partial bool HasSetup { get; set; }
+    [ObservableProperty] public partial bool HasSetup { get; set; }
 
     /// <summary>The setup did not run on this PC for this version and folder yet. Play shows the preparation first.</summary>
     [ObservableProperty] public partial bool NeedsSetup { get; set; }
@@ -134,7 +161,7 @@ public sealed partial class GameCardViewModel : ViewModelBase
     [ObservableProperty] public partial string? SelectedExecutable { get; set; }
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(CanPlay), nameof(HasOtherLaunchOptions), nameof(HasPlayMenu))]
+    [NotifyPropertyChangedFor(nameof(CanPlay), nameof(HasOtherLaunchOptions))]
     public partial bool IsChoosingExecutable { get; set; }
 
     /// <summary>The configured game folders to install into, once there is more than one and the player is asked to pick.</summary>
@@ -258,6 +285,28 @@ public sealed partial class GameCardViewModel : ViewModelBase
         if (_lastCheck is null)
             Suggestion = _noticedPatterns.Count == 0 ? null
                 : $"Hra při hraní změnila {Format.FileCount(g.ChangedFileCount)}. Pokud jsou to nastavení nebo savy, označ je jako proměnné: {string.Join(", ", _noticedPatterns)}";
+        RebuildMenu();
+    }
+
+    /// <summary>When the player last started one of the game's programs, to tell a game that quit right away from one that was played.</summary>
+    private DateTime? _launchedAt;
+
+    /// <summary>A game that stops within this long after it was started most likely did not start properly.</summary>
+    internal static readonly TimeSpan QuickExit = TimeSpan.FromSeconds(20);
+
+    /// <summary>"Hra se spouští…" is done with once the game runs. A game that stops right after it was started is worth saying.</summary>
+    partial void OnIsRunningChanged(bool value)
+    {
+        if (Message is { } m && m.StartsWith("Hra se spouští", StringComparison.Ordinal)) Message = null;
+        if (!value && _launchedAt is { } at && DateTime.UtcNow - at < QuickExit)
+            Message = "Hra se ukončila hned po spuštění. Zkus ji spustit znovu. Když to nepomůže, podívej se do jejího logu ve složce hry.";
+        if (!value) _launchedAt = null;
+    }
+
+    private async Task ForgetLaunchMessageAsync(string message)
+    {
+        await Task.Delay(TimeSpan.FromSeconds(8)).ConfigureAwait(true);
+        if (Message == message) Message = null;
     }
 
     /// <summary>"Nabízí 3 PC: PC-01, PC-04, PC-08 (jen část: PC-04)". A PC that was used to play the game has only part of it.</summary>
@@ -284,6 +333,7 @@ public sealed partial class GameCardViewModel : ViewModelBase
         OtherLaunchOptions.Clear();
         foreach (var o in others) OtherLaunchOptions.Add(new LaunchOptionViewModel(o, StartAsync));
         OtherLaunchOptionCount = OtherLaunchOptions.Count;
+        RebuildMenu();
     }
 
     public void ApplyProgress(DownloadDto d)
@@ -416,6 +466,8 @@ public sealed partial class GameCardViewModel : ViewModelBase
                 var info = await _app.Client.LaunchAsync(ContentHash, entry);
                 _app.Starter.Start(info);
                 Message = info.RunAsAdmin ? "Hra se spouští jako správce, potvrď dotaz Windows…" : "Hra se spouští…";
+                _launchedAt = DateTime.UtcNow;
+                _ = ForgetLaunchMessageAsync(Message);
             }, m => Message = m).ConfigureAwait(true);
         }
         finally { IsBusy = false; }
@@ -632,6 +684,13 @@ public sealed partial class GameCardViewModel : ViewModelBase
         UninstallPromptCommand.NotifyCanExecuteChanged();
         ConfirmUninstallCommand.NotifyCanExecuteChanged();
     }
+}
+
+/// <summary>One line of the menu next to a game's main button, or a separator when there is no command.</summary>
+public sealed record CardMenuEntry(string Header, System.Windows.Input.ICommand? Command)
+{
+    public static readonly CardMenuEntry Separator = new("-", null); // "-" is what Avalonia draws as a separator line
+    public bool IsSeparator => Command is null;
 }
 
 /// <summary>One step of a game's preparation as the player sees it before agreeing, and how it went afterwards.</summary>

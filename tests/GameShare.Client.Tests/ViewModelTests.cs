@@ -482,6 +482,47 @@ public class LibraryTests
     }
 
     [Fact]
+    public async Task Everything_but_play_is_in_the_menu_grouped_with_separators()
+    {
+        var (main, _, _, _) = await StartAsync(Installed(GameState.Damaged) with
+        {
+            LaunchOptions = [new LaunchOptionDto(0, null, "Game.exe", false), new LaunchOptionDto(1, "Editor", "Editor.exe", false)],
+            Definition = new GameDefinition { GameId = "g", Name = "G", Setup = new GameSetup { Requires = ["directx9"] } },
+        });
+        var card = main.Library.MyGames.Single();
+
+        Assert.Equal(
+            ["Editor", "-", "Znovu připravit hru…", "-", "Zkontrolovat soubory", "Opravit ze sítě", "Registrovat jako novou verzi", "-", "Odinstalovat…"],
+            card.MenuEntries.Select(e => e.Header));
+        Assert.Same(card.RepairCommand, card.MenuEntries.Single(e => e.Header == "Opravit ze sítě").Command);
+        Assert.True(card.HasMenu);
+    }
+
+    [Fact]
+    public async Task An_intact_game_without_extras_has_only_check_and_uninstall_in_its_menu()
+    {
+        var (main, _, _, _) = await StartAsync(Installed());
+
+        Assert.Equal(["Zkontrolovat soubory", "-", "Odinstalovat…"], main.Library.MyGames.Single().MenuEntries.Select(e => e.Header));
+    }
+
+    [Fact]
+    public async Task A_game_that_stops_right_after_it_was_started_is_reported_and_one_that_runs_clears_the_message()
+    {
+        var (main, _, agent, _) = await StartAsync(Installed());
+        var card = main.Library.MyGames.Single();
+        agent.LaunchInfo = new LaunchInfoDto(@"D:\Games\BeamNG\Game.exe", null, @"D:\Games\BeamNG");
+
+        await card.PlayCommand.ExecuteAsync(null);
+        Assert.Contains("spouští", card.Message);
+        card.Apply(Installed(running: true));
+        Assert.Null(card.Message); // it runs, nothing more to say
+        card.Apply(Installed(running: false));
+
+        Assert.Contains("ukončila hned po spuštění", card.Message);
+    }
+
+    [Fact]
     public async Task A_game_with_one_program_offers_no_menu_and_one_that_runs_as_admin_says_so()
     {
         var (main, _, _, _) = await StartAsync(Installed() with { LaunchOptions = [new LaunchOptionDto(0, null, "Game.exe", true)] });
