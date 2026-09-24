@@ -37,12 +37,10 @@
                                         <Image Source="{Binding IconData, Converter={x:Static views:IconConverter.Instance}}" IsVisible="{Binding HasIconImage}"
                                                Width="32" Height="32" VerticalAlignment="Center" RenderOptions.BitmapInterpolationMode="HighQuality" />
                                         <TextBlock Text="{Binding Name}" Classes="title" VerticalAlignment="Center" />
-                                        <Border Classes="sym" Background="{StaticResource WarnBrush}" IsVisible="{Binding IsDamaged}" ToolTip.Tip="{Binding StateText}"><TextBlock Text="!" /></Border>
+                                        <Border Classes="sym" Background="{StaticResource WarnBrush}" IsVisible="{Binding IsDamaged}" ToolTip.Tip="Hra změnila své soubory. Opravit ji jde v nabídce ▾."><TextBlock Text="✎" /></Border>
                                         <Border Classes="sym" Background="{StaticResource BadgeBrush}" IsVisible="{Binding IsDownloading}" ToolTip.Tip="{Binding StateText}"><TextBlock Text="↓" /></Border>
                                         <Border Classes="sym" Background="{StaticResource BadgeBrush}" IsVisible="{Binding IsRunning}" ToolTip.Tip="Hra běží"><TextBlock Text="▶" FontSize="10" /></Border>
-                                        <Border Classes="sym" Background="{StaticResource SuccessBrush}" IsVisible="{Binding IsTrustVerified}" ToolTip.Tip="{Binding TrustText}"><TextBlock Text="✓" /></Border>
-                                        <Border Classes="sym" Background="{StaticResource WarnBrush}" IsVisible="{Binding IsTrustUnknown}" ToolTip.Tip="{Binding TrustText}"><TextBlock Text="?" /></Border>
-                                        <Border Classes="sym" Background="{StaticResource DangerBrush}" IsVisible="{Binding IsTrustRevoked}" ToolTip.Tip="{Binding TrustText}"><TextBlock Text="✕" /></Border>
+                                        <views:TrustShield Verdict="{Binding Trust}" ToolTip.Tip="{Binding TrustTip}" />
                                     </StackPanel>
                                     <TextBlock Text="{Binding Details}" Classes="muted" />
                                     <TextBlock Text="{Binding InstallPath}" Classes="muted" FontSize="11" TextTrimming="CharacterEllipsis" />
@@ -157,9 +155,7 @@
                                         <TextBlock Text="{Binding Name}" Classes="title" />
                                         <Border Classes="sym" Background="{StaticResource BadgeBrush}" IsVisible="{Binding CanUpdate}" ToolTip.Tip="{Binding StateText}"><TextBlock Text="↑" /></Border>
                                         <Border Classes="sym" Background="{StaticResource WarnBrush}" IsVisible="{Binding IsWaitingForParts}" ToolTip.Tip="{Binding StateText}"><TextBlock Text="…" /></Border>
-                                        <Border Classes="sym" Background="{StaticResource SuccessBrush}" IsVisible="{Binding IsTrustVerified}" ToolTip.Tip="{Binding TrustText}"><TextBlock Text="✓" /></Border>
-                                        <Border Classes="sym" Background="{StaticResource WarnBrush}" IsVisible="{Binding IsTrustUnknown}" ToolTip.Tip="{Binding TrustText}"><TextBlock Text="?" /></Border>
-                                        <Border Classes="sym" Background="{StaticResource DangerBrush}" IsVisible="{Binding IsTrustRevoked}" ToolTip.Tip="{Binding TrustText}"><TextBlock Text="✕" /></Border>
+                                        <views:TrustShield Verdict="{Binding Trust}" ToolTip.Tip="{Binding TrustTip}" />
                                     </StackPanel>
                                     <TextBlock Text="{Binding Details}" Classes="muted" />
                                     <TextBlock Text="{Binding PeersText}" Classes="muted" FontSize="12" TextWrapping="Wrap" />

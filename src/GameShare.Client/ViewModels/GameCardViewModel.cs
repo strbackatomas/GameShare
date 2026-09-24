@@ -180,11 +180,13 @@ public sealed partial class GameCardViewModel : ViewModelBase
 
     /// <summary>What the administrator's signed list says about this version. Nothing is shown when checking is off.</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasTrust), nameof(TrustText), nameof(IsTrustVerified), nameof(IsTrustUnknown), nameof(IsTrustRevoked))]
+    [NotifyPropertyChangedFor(nameof(HasTrust), nameof(TrustText), nameof(TrustTip), nameof(IsTrustVerified), nameof(IsTrustUnknown), nameof(IsTrustRevoked))]
     public partial TrustVerdict Trust { get; set; }
 
     /// <summary>For a revoked version, the administrator's reason.</summary>
-    [ObservableProperty] public partial string? TrustNote { get; set; }
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(TrustTip))]
+    public partial string? TrustNote { get; set; }
 
     /// <summary>0 to 100, only meaningful while the game is being downloaded.</summary>
     [ObservableProperty] public partial double Percent { get; set; }
@@ -224,6 +226,15 @@ public sealed partial class GameCardViewModel : ViewModelBase
     public bool IsTrustVerified => Trust == TrustVerdict.Verified;
     public bool IsTrustUnknown => Trust == TrustVerdict.Unknown;
     public bool IsTrustRevoked => Trust == TrustVerdict.Revoked;
+
+    /// <summary>What the shield means, in a sentence, for its tooltip.</summary>
+    public string TrustTip => Trust switch
+    {
+        TrustVerdict.Verified => "Ověřeno správcem: přesně tahle verze je na jeho podepsaném seznamu. Soubory jsou takové, jaké schválil.",
+        TrustVerdict.Unknown => "Neověřeno: tahle verze není na seznamu správce. Může být v pořádku, ale nikdo za ni neručí.",
+        TrustVerdict.Revoked => "Zrušeno správcem: tuhle verzi stáhl" + (string.IsNullOrEmpty(TrustNote) ? "." : $" ({TrustNote}).") + " Neinstaluj ji.",
+        _ => "",
+    };
 
     public string TrustText => Trust switch
     {
