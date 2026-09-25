@@ -11,6 +11,15 @@
     <PackageReference Include="TorrentSharp.Wrap" Version="[1.0.1]" />
   </ItemGroup>
 
+  <!-- tsw.dll, the native half of TorrentSharp.Wrap, needs the Visual C++ runtime, which a clean Windows does not have
+       ("Unable to load DLL 'tsw'"). Its three DLLs go next to tsw.dll, where Windows looks first, so nothing has to be
+       installed. Microsoft allows shipping them with an app like this. They come from the build PC's System32, which the
+       dotnet CLI (64-bit) sees as the x64 folder; GitHub's windows runners keep a current copy there. -->
+  <ItemGroup Condition="'$(OS)' == 'Windows_NT'">
+    <None Include="$(SystemRoot)\System32\msvcp140.dll;$(SystemRoot)\System32\vcruntime140.dll;$(SystemRoot)\System32\vcruntime140_1.dll"
+          Link="%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Visible="false" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\GameShare.Storage\GameShare.Storage.csproj" />
   </ItemGroup>

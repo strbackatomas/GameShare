@@ -8,6 +8,12 @@ this is wired into the build and where a peer's version shows up.
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-09-25
+
+### Fixed
+- The agent and `GameShare-LanParty.exe` failed to start on a PC without the Visual C++ runtime ("Unable to load DLL 'tsw'").
+  Its three DLLs now ship next to the torrent library, so nothing has to be installed.
+
 ## [0.4.2] - 2026-09-25
 
 ### Added
