@@ -14,7 +14,8 @@
   points at the newest release, so the links on the web page never need changing. The version is in the tag.
 
   The agent zips keep the repository's layout (scripts\ next to artifacts\agent and artifacts\client), so
-  install-agent.ps1 finds everything by its defaults: unzip, then run scripts\install-agent.ps1 from an elevated PowerShell.
+  install-agent.ps1 finds everything by its defaults: unzip, then double-click install-agent.bat, which asks for
+  administrator rights itself, or run scripts\install-agent.ps1 from an elevated PowerShell.
   The net10 zip puts its smaller builds under the same folder names for the same reason.
 #>
 [CmdletBinding()]
@@ -82,11 +83,14 @@ foreach ($form in @(@{ Name = 'GameShare-Agent'; Suffix = '' }, @{ Name = 'GameS
     Add-Folder "client$($form.Suffix)" (Join-Path $dir 'artifacts\client')
     foreach ($script in 'install-agent.ps1', 'uninstall-agent.ps1') { Add-File (Join-Path $PSScriptRoot $script) (Join-Path $dir 'scripts') }
     if (Test-Path $key) { Add-File $key (Join-Path $dir 'scripts') }
+    Add-File (Join-Path $PSScriptRoot 'install-agent.bat') $dir
     $runtime = if ($form.Suffix) { "`r`nThis build needs the ASP.NET Core Runtime 10.0 (x64): https://dotnet.microsoft.com/download/dotnet/10.0`r`n" } else { '' }
     Set-Content -Path (Join-Path $dir 'README.txt') -Encoding UTF8 -Value @"
 GameShare v$version - the service for the organiser's PCs
 $runtime
-From an elevated PowerShell in this folder:
+Double-click install-agent.bat. It asks for administrator rights and then for the folders with the games.
+
+Or from an elevated PowerShell in this folder, with all the options of the script:
 
   powershell -ExecutionPolicy Bypass -File scripts\install-agent.ps1 -GameRoots D:\Games
 

@@ -55,6 +55,9 @@ scripts\publish.ps1                                # builds artifacts\agent and 
 scripts\install-agent.ps1 -GameRoots D:\Games      # elevated PowerShell, run on each PC
 ```
 
+Or double-click `scripts\install-agent.bat` (in the release zip it sits at the top): it asks for administrator rights itself,
+then for the game folders, and passes any arguments on to `install-agent.ps1` unchanged.
+
 `publish.ps1` builds each app twice: `artifacts\agent` and `artifacts\client` are self-contained (about 120 MB and 110 MB),
 nothing has to be installed on the PC first, just copy the folder. `artifacts\agent-net10` and `artifacts\client-net10` are the
 same apps without the runtime bundled in (about 13 MB and 31 MB), for a PC that already has the ASP.NET Core Runtime 10.0 (x64)
