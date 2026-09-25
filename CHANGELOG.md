@@ -8,6 +8,8 @@ this is wired into the build and where a peer's version shows up.
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-09-25
+
 ### Added
 - `install-agent.bat` at the top of `GameShare-Agent.zip`: double-click it, it asks for administrator rights (UAC) itself, then
   for the game folders. Any arguments go on to `install-agent.ps1` unchanged.
