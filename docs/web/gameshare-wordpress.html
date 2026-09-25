@@ -55,6 +55,8 @@
 .gs .gs-dl-main p{color:var(--gs-text)}
 .gs .gs-dl .gs-btn{text-align:center}
 .gs-note{color:var(--gs-muted);font-size:14px;margin-top:18px}
+.gs .gs-legal{border-left:6px solid var(--gs-warn)}
+.gs .gs-legal p+p{margin-top:10px}
 .gs-foot{padding:32px 40px;text-align:center;color:var(--gs-muted);font-size:14px;border-top:1px solid var(--gs-line)}
 @media (max-width:640px){.gs{border-radius:0;font-size:16px}.gs-sec,.gs-hero,.gs-foot,.gs-shot{padding-left:16px;padding-right:16px}.gs-sec{padding-top:40px;padding-bottom:40px}.gs-hero{padding-top:48px;padding-bottom:44px}}
 </style>
@@ -144,7 +146,7 @@
 <!-- KE STAŽENÍ: odkazy vedou vždy na nejnovější vydání na GitHubu (releases/latest/download/…). -->
 <section class="gs-sec gs-dl" id="gs-stazeni">
 <h2>Ke stažení</h2>
-<p class="gs-sub">Vždycky nejnovější verze. Pro Windows 10 a 11 (64bit). První verze se tu objeví před lankou – do té doby tlačítka nikam nevedou.</p>
+<p class="gs-sub">Vždycky nejnovější verze. Pro Windows 10 a 11 (64bit).</p>
 <div class="gs-grid">
 <div class="gs-card gs-dl-main"><span class="gs-ico">🎮</span><h3>Pro hráče</h3><p>Tohle chceš ty. Rozbal, spusť <strong>GameShare-LanParty.exe</strong> a hraj. Nic se neinstaluje.</p><a class="gs-btn gs-btn-main" href="https://github.com/strbackatomas/GameShare/releases/latest/download/GameShare-LanParty.zip">Stáhnout GameShare</a></div>
 <div class="gs-card"><span class="gs-ico">🖥️</span><h3>Pro erární PC</h3><p>Služba, která běží na pozadí a nabízí hry celé lance, plus aplikace a instalační skript. Instaluje pořadatel. Menší verze pro PC s .NET 10: <a href="https://github.com/strbackatomas/GameShare/releases/latest/download/GameShare-Agent-net10.zip">GameShare-Agent-net10.zip</a>.</p><a class="gs-btn gs-btn-ghost" href="https://github.com/strbackatomas/GameShare/releases/latest/download/GameShare-Agent.zip">GameShare-Agent.zip</a></div>
@@ -160,7 +162,11 @@
 <div class="gs-card"><h3>Není to jen torrent?</h3><p>Uvnitř ano, stahování opravdu běží přes BitTorrent. Jenže jen v rámci naší sítě, bez trackeru, bez internetu a s tlačítkem Hrát na konci.</p></div>
 <div class="gs-card"><h3>Musím něco instalovat?</h3><p>Ne. Stačí jeden soubor <strong>GameShare-LanParty.exe</strong>, který jen spustíš. Služba se instaluje jen na erární PC, o ty se postará pořadatel. Jen když hra potřebuje třeba DirectX, Windows se jednou zeptá na povolení.</p></div>
 <div class="gs-card"><h3>Zpomalí mi to hraní?</h3><p>Ne. Když spustíš hru, GameShare jí uhne z cesty a nabízení ostatním přibrzdí.</p></div>
-<div class="gs-card"><h3>Kde si to stáhnu?</h3><p>Nahoře v sekci <a href="#gs-stazeni">Ke stažení</a>, jakmile bude hotová první verze – a na lance ho dostaneš i přímo od pořadatele.</p></div>
+<div class="gs-card"><h3>Kde si to stáhnu?</h3><p>Nahoře v sekci <a href="#gs-stazeni">Ke stažení</a> – a na lance ho dostaneš i přímo od pořadatele.</p></div>
+</section>
+<!-- LEGÁLNĚ -->
+<section class="gs-sec" id="gs-legalne">
+<div class="gs-card gs-legal"><h3>⚖️ Legálně, prosím</h3><p>GameShare je nástroj na přenos souborů po místní síti – stejně jako sdílená složka nebo flashka. Sám žádné hry neobsahuje a na tomhle webu ani na GitHubu žádné hry ke stažení nejsou, jen samotná aplikace.</p><p>Sdílet se smí jen to, k čemu jsou práva: freeware, open-source hry (třeba OpenArena, Xonotic, 0 A.D. nebo OpenTTD) a hry, jejichž licence to dovoluje. U placených her musí mít každý hráč vlastní licenci – koupenou na Steamu, GOG nebo krabicovou.</p><p>Za to, co kdo sdílí a instaluje, odpovídá ten, kdo to dělá. Nelegální kopie her tu nechceme a nepodporujeme je. Pokud tu narazíš na něco, co by tu být nemělo, dej nám vědět a odstraníme to.</p></div>
 </section>
 <section class="gs-foot">GameShare · vyvíjeno pro <a href="https://lanka.seru.cz/">LANka.seru.cz</a> · méně instalování, víc hraní 🎮</section>
 </div>
