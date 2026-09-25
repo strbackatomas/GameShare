@@ -13,8 +13,9 @@
 #Requires -RunAsAdministrator
 [CmdletBinding()]
 param(
-    [string]$SourceDir = (Join-Path $PSScriptRoot '..\artifacts\agent'),
-    [string]$ClientSourceDir = (Join-Path $PSScriptRoot '..\artifacts\client'),
+    # Left out, artifacts\agent and artifacts\client next to this script's folder.
+    [string]$SourceDir = '',
+    [string]$ClientSourceDir = '',
     [string]$InstallDir = (Join-Path $env:ProgramFiles 'GameShare'),
     [string[]]$GameRoots = @(),
     [int]$PeerApiPort = 47702,
@@ -32,6 +33,9 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+# Windows PowerShell 5.1 run with -File leaves $PSScriptRoot empty inside param(), so the defaults are filled in here.
+if (-not $SourceDir) { $SourceDir = Join-Path $PSScriptRoot '..\artifacts\agent' }
+if (-not $ClientSourceDir) { $ClientSourceDir = Join-Path $PSScriptRoot '..\artifacts\client' }
 $serviceName = 'GameShare Agent'
 $exe = Join-Path $InstallDir 'GameShare.Agent.exe'
 

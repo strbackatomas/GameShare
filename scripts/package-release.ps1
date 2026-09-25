@@ -19,11 +19,15 @@
 #>
 [CmdletBinding()]
 param(
-    [string]$Artifacts = (Join-Path $PSScriptRoot '..\artifacts'),
-    [string]$Output = (Join-Path $PSScriptRoot '..\artifacts\release')
+    # Left out, artifacts\ and artifacts\release in the repository.
+    [string]$Artifacts = '',
+    [string]$Output = ''
 )
 
 $ErrorActionPreference = 'Stop'
+# Windows PowerShell 5.1 run with -File leaves $PSScriptRoot empty inside param(), so the defaults are filled in here.
+if (-not $Artifacts) { $Artifacts = Join-Path $PSScriptRoot '..\artifacts' }
+if (-not $Output) { $Output = Join-Path $PSScriptRoot '..\artifacts\release' }
 Add-Type -AssemblyName System.IO.Compression, System.IO.Compression.FileSystem  # Windows PowerShell 5.1 does not load them by itself
 
 $Artifacts = (Resolve-Path $Artifacts).Path

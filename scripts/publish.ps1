@@ -16,11 +16,14 @@
 #>
 [CmdletBinding()]
 param(
-    [string]$Output = (Join-Path $PSScriptRoot '..\artifacts'),
+    # Left out, artifacts\ in the repository.
+    [string]$Output = '',
     [string]$Runtime = 'win-x64'
 )
 
 $ErrorActionPreference = 'Stop'
+# Windows PowerShell 5.1 run with -File leaves $PSScriptRoot empty inside param(), so the default is filled in here.
+if (-not $Output) { $Output = Join-Path $PSScriptRoot '..\artifacts' }
 
 # The one source of truth for the version is src\Directory.Build.props (see "Verzování" in README.md), read here just to show it.
 $version = ([xml](Get-Content (Join-Path $PSScriptRoot '..\src\Directory.Build.props'))).Project.PropertyGroup.Version
