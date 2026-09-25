@@ -8,6 +8,12 @@ this is wired into the build and where a peer's version shows up.
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-09-25
+
+### Fixed
+- `scripts\install-agent.ps1` from `GameShare-Agent.zip` failed with a `Join-Path` error when run with Windows PowerShell 5.1
+  (`powershell -File`), which leaves `$PSScriptRoot` empty in parameter defaults. `publish.ps1` and `package-release.ps1` had the same flaw.
+
 ## [0.4.0] - 2026-09-24
 
 ### Added
