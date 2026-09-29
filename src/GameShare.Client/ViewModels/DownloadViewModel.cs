@@ -38,8 +38,13 @@ public sealed partial class DownloadViewModel : ViewModelBase
     [ObservableProperty] public partial string? Error { get; set; }
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(StateText), nameof(IsRunning), nameof(IsPaused), nameof(IsFinished), nameof(IsFailed), nameof(HasProgress))]
+    [NotifyPropertyChangedFor(nameof(StateText), nameof(IsRunning), nameof(IsPaused), nameof(IsFinished), nameof(IsFailed), nameof(HasProgress), nameof(IsWaitingForSource), nameof(IsRunningWithSource))]
     public partial string State { get; set; } = "";
+
+    /// <summary>How many PCs this download is connected to right now.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(StateText), nameof(IsWaitingForSource), nameof(IsRunningWithSource))]
+    public partial int PeerCount { get; set; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanAct))]
@@ -65,13 +70,17 @@ public sealed partial class DownloadViewModel : ViewModelBase
     public bool IsPaused => State == "Paused";
     public bool IsFinished => State == "Completed";
     public bool IsFailed => State == "Failed";
+
+    /// <summary>Running, but connected to no PC, so nothing is coming in. Saying "downloading" then would be a lie.</summary>
+    public bool IsWaitingForSource => State == "Downloading" && PeerCount == 0;
+    public bool IsRunningWithSource => IsRunning && !IsWaitingForSource;
     public bool HasProgress => IsRunning || IsPaused;
     public bool CanAct => !IsBusy;
     public bool HasMessage => !string.IsNullOrEmpty(Message);
 
     public string StateText => State switch
     {
-        "Downloading" => "Stahuje se",
+        "Downloading" => IsWaitingForSource ? "Čeká na zdroj" : "Stahuje se",
         "Queued" => "Ve frontě",
         "Verifying" => "Ověřuji soubory",
         "Paused" => "Pozastaveno",
@@ -85,11 +94,13 @@ public sealed partial class DownloadViewModel : ViewModelBase
         Name = d.GameName;
         KindText = d.Kind switch { "Update" => "Aktualizace", "Repair" => "Oprava", _ => "Instalace" };
         State = d.State;
+        PeerCount = d.Peers;
         Percent = d.Percent;
         PercentText = Format.Percent(d.Percent);
         SizeText = $"{Format.Size(d.BytesDone)} z {Format.Size(d.BytesTotal)}";
-        SpeedText = IsRunning ? Format.Speed(d.SpeedBytesPerSecond) : "";
-        EtaText = IsRunning ? Format.Eta(d.EtaSeconds) : "";
+        SpeedText = IsRunning && !IsWaitingForSource ? Format.Speed(d.SpeedBytesPerSecond) : "";
+        EtaText = IsWaitingForSource ? "žádné PC se hrou není připojené"
+            : IsRunning ? Format.Eta(d.EtaSeconds) : "";
         StatsText = IsFinished && d.DurationSeconds is not null
             ? string.Join(" · ", new[] { $"Staženo za {Format.Duration(d.DurationSeconds)}", Format.Speed(d.PeakSpeedBytesPerSecond ?? 0) is { Length: > 0 } peak ? $"špička {peak}" : "" }.Where(s => s.Length > 0))
             : "";

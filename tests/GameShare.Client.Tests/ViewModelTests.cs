@@ -955,8 +955,25 @@ public class DownloadsTests
     [InlineData("Failed", "Selhalo")]
     public async Task States_are_shown_in_czech(string state, string expected)
     {
-        var (main, _, _, _) = await StartAsync(Download(1, A, "BeamNG.drive", state, 10));
+        var (main, _, _, _) = await StartAsync(Download(1, A, "BeamNG.drive", state, 10, sources: [("PC01", 0)]));
         Assert.Equal(expected, main.Downloads.Downloads.Single().StateText);
+    }
+
+    [Fact]
+    public async Task A_download_connected_to_no_pc_says_it_waits_for_a_source_instead_of_downloading()
+    {
+        var agent = new FakeAgent { Games = [Game(A, "BeamNG.drive", GameState.Downloading)], Downloads = [Download(1, A, "BeamNG.drive", "Downloading", 40)] };
+        var app = new AppModel(agent, new FakeEvents(), new ImmediateDispatcher());
+        var main = new MainViewModel(app);
+        await app.StartAsync();
+
+        var d = main.Downloads.Downloads.Single();
+        Assert.Equal("Čeká na zdroj", d.StateText);
+        Assert.True(d.IsWaitingForSource);
+        Assert.False(d.IsRunningWithSource);
+        Assert.True(d.IsRunning); // still running: it goes on by itself once a PC with the game shows up
+        Assert.Equal("", d.SpeedText);
+        Assert.Equal("40 % · čeká na zdroj", app.Games.Single().ProgressText);
     }
 
     [Theory]

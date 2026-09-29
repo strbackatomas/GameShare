@@ -350,8 +350,10 @@ public sealed partial class GameCardViewModel : ViewModelBase
     public void ApplyProgress(DownloadDto d)
     {
         Percent = d.Percent;
-        var speed = Format.Speed(d.SpeedBytesPerSecond);
-        var eta = Format.Eta(d.EtaSeconds);
+        // Connected to no PC, nothing comes in: say so instead of a speed.
+        bool waiting = d.State == "Downloading" && d.Peers == 0;
+        var speed = waiting ? "čeká na zdroj" : Format.Speed(d.SpeedBytesPerSecond);
+        var eta = waiting ? "" : Format.Eta(d.EtaSeconds);
         ProgressText = string.Join(" · ", new[] { Format.Percent(d.Percent), speed, eta }.Where(s => s.Length > 0));
     }
 

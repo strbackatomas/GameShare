@@ -58,7 +58,8 @@
                                 <StackPanel Grid.Row="0" Grid.Column="0" Orientation="Horizontal" Spacing="10">
                                     <TextBlock Text="{Binding Name}" Classes="title" />
                                     <TextBlock Text="{Binding KindText}" Classes="muted" VerticalAlignment="Center" />
-                                    <Border Classes="chip" Background="{StaticResource BadgeBrush}" IsVisible="{Binding IsRunning}"><TextBlock Text="{Binding StateText}" /></Border>
+                                    <Border Classes="chip" Background="{StaticResource BadgeBrush}" IsVisible="{Binding IsRunningWithSource}"><TextBlock Text="{Binding StateText}" /></Border>
+                                    <Border Classes="chip" Background="{StaticResource WarnBrush}" IsVisible="{Binding IsWaitingForSource}"><TextBlock Text="{Binding StateText}" /></Border>
                                     <Border Classes="chip" Background="{StaticResource WarnBrush}" IsVisible="{Binding IsPaused}"><TextBlock Text="{Binding StateText}" /></Border>
                                     <Border Classes="chip" Background="{StaticResource SuccessBrush}" IsVisible="{Binding IsFinished}"><TextBlock Text="{Binding StateText}" /></Border>
                                     <Border Classes="chip" Background="{StaticResource DangerBrush}" IsVisible="{Binding IsFailed}"><TextBlock Text="{Binding StateText}" /></Border>
