@@ -90,8 +90,9 @@ internal sealed class StandaloneUpdateApplier : IAppUpdateApplier
         {
             try
             {
+                // Long enough for the old one to stop its agent: this one must not start before, or it would attach to that agent.
                 using var old = Process.GetProcessById(pid);
-                old.WaitForExit(TimeSpan.FromSeconds(30));
+                old.WaitForExit(TimeSpan.FromMinutes(2));
             }
             catch (ArgumentException) { /* gone already */ }
         }

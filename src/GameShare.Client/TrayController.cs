@@ -15,10 +15,12 @@ namespace GameShare.Client;
 internal static class TrayController
 {
     private static bool _exiting;
+    private static AppModel? _app;
     private static CancellationTokenSource? _flashCts;
 
     public static void Attach(IClassicDesktopStyleApplicationLifetime desktop, Views.MainWindow window, AppModel app)
     {
+        _app = app;
         var icon = new WindowIcon(AssetLoader.Open(new Uri("avares://GameShare/Assets/icon.ico")));
 
         var playMenu = new NativeMenu();
@@ -123,6 +125,9 @@ internal static class TrayController
     internal static async Task ShutdownAsync(IClassicDesktopStyleApplicationLifetime desktop)
     {
         _exiting = true;
+        // The window's live connection first: an agent hosted in this process waits for open connections when it stops,
+        // and this one would only close when the process ends, so stopping took the host's whole 30 s timeout.
+        if (_app is not null) await _app.DisposeAsync().ConfigureAwait(true);
         if (App.BeforeShutdownAsync is { } beforeShutdown) await beforeShutdown().ConfigureAwait(true);
         desktop.Shutdown();
     }

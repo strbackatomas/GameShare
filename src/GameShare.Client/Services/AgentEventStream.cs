@@ -79,8 +79,13 @@ public sealed class AgentEventStream : IEventStream
         return Task.CompletedTask;
     }
 
+    private bool _disposed;
+
+    /// <summary>Safe to call twice: the tray's "Ukončit" closes the connection before the window's own exit does.</summary>
     public async ValueTask DisposeAsync()
     {
+        if (_disposed) return;
+        _disposed = true;
         await _stop.CancelAsync().ConfigureAwait(false);
         if (_connecting is not null) await _connecting.ConfigureAwait(false);
         await _connection.DisposeAsync().ConfigureAwait(false);
