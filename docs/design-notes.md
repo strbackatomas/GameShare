@@ -289,9 +289,14 @@ GameShare 0.5.0 – Aktualizovat". Nothing is installed without that click. `App
   to show, the steps to `logs\update-<version>.log`.
 - **The client restarts itself.** It keeps running from its renamed files, and when the agent comes back as the new version and the
   program file on disk is that version too, it starts that file and quits. The old files it held are deleted once it has.
+- **Tested for real.** Besides the unit and agent tests, 0.5.0 and 0.5.1 were built and signed with a test key and run on Windows 11:
+  the portable exe updated itself, and the installed service updated itself and its client (which restarted), kept `appsettings.json`,
+  and left no `.gsold` files. A 0.5.2 whose agent answers "0.5.1" was put back after 90 seconds, with the reason shown. That run found
+  three faults the tests had not: the portable exe took the host's whole shutdown timeout to quit (the window's live connection kept
+  Kestrel waiting), the client read its own version from the image in memory instead of the file and never restarted, and the helper
+  wrote the outcome of a rollback after the agent had already read it.
 - **Not covered.** The first version with the updater has to be installed by hand. A PC whose release key changed takes nothing signed
-  with the new one; that version is installed by hand as well. The service's helper is tested with a fake service; the real service
-  control and the portable exe replacing itself are left to a manual test on a clean Windows.
+  with the new one; that version is installed by hand as well.
 - **Mixed versions.** During a rollout old and new agents coexist, so the discovery protocol version is checked
   and unknown versions are ignored rather than crashing.
 
