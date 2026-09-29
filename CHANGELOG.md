@@ -8,6 +8,32 @@ this is wired into the build and where a peer's version shows up.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-09-29
+
+### Added
+- **GameShare updates itself.** The agent looks for a newer release on GitHub every 6 hours (or at `Agent:UpdateSource`, for example
+  a share) and asks the other PCs on the LAN which versions they hold. It downloads the new version in the background, from the other
+  PCs when they have it, otherwise from the internet after a random wait so the LAN party's connection carries it once, and copies
+  the files that did not change. The client shows a strip "Je připravená nová verze" with its notes and an **Aktualizovat** button,
+  also in Settings and in the tray menu. Nothing is installed without the click.
+- The installed service puts the new version in place through a helper: stop, swap the files, start, and back to the previous
+  version when the new one does not answer within 90 seconds. `appsettings.json` is kept. The client restarts into the new version.
+  `GameShare-LanParty.exe` replaces itself and starts again.
+- Only packages signed with the release key built into the programs are taken, only for the same build and only newer. Every file
+  is checked against its SHA-256 after the download and again right before it is put in place.
+- `gameshare-admin release-keygen`, `release-sign` and `release-show`. Releases carry `update-<build>.json` and
+  `GameShare-Update-<build>.zip` for each build.
+
+### Changed
+- The release workflow needs `scripts/release-public.key` and the secret `GAMESHARE_RELEASE_KEY`.
+
+### Fixed
+- Adding a game folder and pressing Uložit right after could save the older settings last and undo what Uložit changed.
+  Settings are now saved one after the other.
+
+### Upgrading
+- 0.5.0 is the first version with the updater, so it has to be installed by hand once. Later versions arrive by themselves.
+
 ## [0.4.3] - 2026-09-25
 
 ### Fixed

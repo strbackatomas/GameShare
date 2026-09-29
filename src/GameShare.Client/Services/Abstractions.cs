@@ -48,6 +48,15 @@ public interface IAgentClient
     /// <summary>Asks the source of the list again now.</summary>
     Task<TrustStatusDto> RefreshTrustAsync(CancellationToken ct = default);
 
+    /// <summary>Whether a newer GameShare is known, downloading or ready. Null from an agent too old to know about updates.</summary>
+    Task<AppUpdateStatusDto?> GetAppUpdateAsync(CancellationToken ct = default);
+
+    /// <summary>Asks the places newer versions are published at again now.</summary>
+    Task<AppUpdateStatusDto> CheckAppUpdateAsync(CancellationToken ct = default);
+
+    /// <summary>Puts the version that is ready in place. The agent stops and comes back as the new version.</summary>
+    Task<AppUpdateStatusDto> ApplyAppUpdateAsync(CancellationToken ct = default);
+
     Task<ScanResultDto> ScanAsync(CancellationToken ct = default);
 
     /// <summary>How far the running scan got, or null when none runs.</summary>
@@ -112,6 +121,18 @@ public interface IGameStarter
 public interface ISetupRunner
 {
     Task<IReadOnlyList<SetupStepResultDto>> RunAsync(SetupPlanDto plan, CancellationToken ct = default);
+}
+
+/// <summary>
+/// Starts this client again once an update has replaced its files. The running client keeps its old files open under another
+/// name, so starting the program's own path starts the new version.
+/// </summary>
+public interface IClientRestarter
+{
+    /// <summary>The version of the program file this client was started from, as it is on disk now. Null when it cannot be read.</summary>
+    string? VersionOnDisk();
+
+    void Restart();
 }
 
 /// <summary>One event pushed by the agent. <see cref="Payload"/> is the DTO documented for that event name in <see cref="GameShareEvents"/>.</summary>

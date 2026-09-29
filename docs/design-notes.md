@@ -193,8 +193,9 @@ duplicating either.
   binds the peer/discovery/torrent ports — clickable without admin on a Private/Domain network, but silently blocked
   with no prompt at all on a "Public" profile, which is the Windows default for unrecognised LAN-party Wi-Fi. The
   single most likely real-world failure mode for this build; worth a first-run hint eventually, not built yet.
-- **Does not cover self-update.** The "Planned: self-update" section below assumes a Windows Service that a separate
-  updater stops, swaps and restarts. This build isn't a service; updating it means handing the guest a new exe.
+- **Updates itself by replacing its own file.** See "Self-update of GameShare itself" below: the running exe is renamed
+  aside, the checked new one is copied to its name and started, and it waits for the old process to quit before it hosts
+  the agent. Only a self-hosted instance does this; one attached to an installed agent leaves updating to the service.
 - **Logs are one tab away.** A guest has no easy path to `%LocalAppData%\GameShare\logs` the way an administrator has
   to `%ProgramData%\GameShare\logs`. `GET /api/logs` (LocalApi.cs) tails the newest `agent-*.log` file, and the
   client's own "Protokol" tab (`LogView`/`LogViewModel`) shows it — again the client's own feature, not specific to
@@ -249,16 +250,48 @@ Found by tests that failed or by measuring, kept here so nobody rediscovers them
 - **State names in change notifications are wrong.** The binding puts libtorrent's numbers into its own enum in another order, so checking resume data shows up as "Errored". Notifications are named from the numbers. Polling the status is correct.
 - **Several sessions in one process disturb each other.** Tests that share game content find each other's peers through local multicast and add load, which made timing based tests fail. Integration tests run one at a time. A real install has one session per PC.
 
-## Planned: self-update of GameShare itself
+## Self-update of GameShare itself
 
-The agent and client can be distributed as one more package with its own manifest and torrent, so they spread
-over the LAN swarm and update by fetching only changed pieces. Not built yet. Two things differ from games:
+The agent finds a newer GameShare, downloads and checks it in the background, and the client shows "Je připravená nová verze
+GameShare 0.5.0 – Aktualizovat". Nothing is installed without that click. `AppUpdateService` (agent), `AppUpdateFiles` and
+`ReleaseSigning` (Storage), `AppUpdateApply.cs` (agent), `StandaloneUpdateApplier` (portable build).
 
-- **Files in use.** The package is downloaded to a staging folder and verified with the manifest. A small separate
-  updater then stops the service, swaps the files and starts it again. The running agent never overwrites itself.
-- **Signature required.** The agent runs as a service with high privileges. An unsigned update channel on the LAN
-  would let any machine on it run code everywhere. The manifest of an update is signed with an admin key and the
-  agent accepts only packages that verify against a public key built into it.
+- **One package per build.** `publish.ps1` marks each build (`agent`, `agent-net10`, `lanparty`, `AppVersion.Flavor`), and a program
+  takes only its own. A package is the files in the layout of an installation: the agent at the top and the client in `Client\` for
+  the service, the exe and its key for the portable build. `package-release.ps1` zips it (`GameShare-Update-<build>.zip`) and
+  `gameshare-admin release-sign` describes it in `update-<build>.json`: version, notes, the manifest with every file's SHA-256, the
+  torrent, and the zip's SHA-256. A build without a flavor (`dotnet run`) never updates itself.
+- **Signed with a key of its own.** Not the trust list's key: what it signs runs as SYSTEM. The public half is
+  `scripts\release-public.key`, built into `GameShare.Protocol` as a resource (`ReleaseKey`), deliberately not a setting, so whoever can
+  edit `appsettings.json` cannot choose whose updates a PC takes. The private half is the GitHub secret `GAMESHARE_RELEASE_KEY`;
+  `package-release.ps1` checks what it signed against the public key, so a mismatch fails the release, not every PC. A release is taken
+  only for this build, newer than what runs (semver) and not older than one already downloaded.
+- **Where from.** The description is looked for every 6 hours at `Agent:UpdateSource` (GitHub's `releases/latest/download/` by
+  default, or a share for a LAN party without internet, several separated by `;`) and on the LAN: every PC lists the packages it holds
+  at `GET /peer/app-update`, with each description at `/peer/app-update/{flavor}/{version}`, and is asked when it joins and every two
+  minutes. A PC that downloaded but has not applied still announces its old version in discovery, so the version in the hello alone
+  would miss it.
+- **How the files come.** Files the running program already has are copied first (the runtime and most libraries rarely change).
+  The rest comes over the transfer port from PCs that hold the package, seeded from the updates folder, never from the installation
+  (served files are memory-mapped, see below, and would block the next swap). The zip is the fallback, and a PC that found the release
+  on the internet waits a random while (`Agent:UpdateInternetDelay`, 10 minutes) first: the LAN party's connection carries it once.
+  The zip's hash is checked before it is opened, only entries the manifest lists are unpacked, anything else fails the package, and
+  every file is checked again at the end whichever way it came. It lies in `updates\<version>\` in the data folder, which under the
+  service is closed to everyone but SYSTEM and the administrators (ProgramData lets every user create files, and this is later run as SYSTEM).
+  The package of the version that runs is kept and offered too, for the PCs that still need it.
+- **Putting it in place.** `POST /api/app-update/apply` checks every file once more and hands it to the build's `IAppUpdateApplier`.
+  The service starts the new version's own agent from the checked package with `--gameshare-apply-update`; the running agent never
+  replaces its own files. The helper stops the service, swaps the files and starts it again. Swapping renames each installed file to
+  `*.gsold` first (Windows allows that for a running program) and copies the new one to its name, with a journal written before the
+  first move, so the old installation can be restored exactly, even after a crash halfway. `appsettings.json` and `trust-public.key`
+  are never replaced, the installer set them up for this PC. The new files are kept only when the agent answers as the new version
+  within 90 seconds; otherwise the old ones are put back and started. The outcome goes to `updates\last-result.json` for the next agent
+  to show, the steps to `logs\update-<version>.log`.
+- **The client restarts itself.** It keeps running from its renamed files, and when the agent comes back as the new version and the
+  program file on disk is that version too, it starts that file and quits. The old files it held are deleted once it has.
+- **Not covered.** The first version with the updater has to be installed by hand. A PC whose release key changed takes nothing signed
+  with the new one; that version is installed by hand as well. The service's helper is tested with a fake service; the real service
+  control and the portable exe replacing itself are left to a manual test on a clean Windows.
 - **Mixed versions.** During a rollout old and new agents coexist, so the discovery protocol version is checked
   and unknown versions are ignored rather than crashing.
 

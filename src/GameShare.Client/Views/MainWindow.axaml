@@ -17,7 +17,7 @@
         <DataTemplate DataType="vm:LogViewModel"><views:LogView /></DataTemplate>
     </Window.DataTemplates>
 
-    <Grid RowDefinitions="Auto,Auto,*">
+    <Grid RowDefinitions="Auto,Auto,Auto,*">
 
         <!-- Shown only while the agent cannot be reached. Everything below keeps its last state. -->
         <Border Grid.Row="0" IsVisible="{Binding !App.IsConnected}" Background="{StaticResource WarnBrush}" Padding="20,8">
@@ -63,6 +63,30 @@
             </Grid>
         </Border>
 
-        <ContentControl Grid.Row="2" Content="{Binding SelectedItem.Page}" />
+        <!-- A new GameShare is downloaded and checked, or is being put in place. Nothing happens without the click. -->
+        <Border Grid.Row="2" IsVisible="{Binding App.HasUpdateBanner}" Background="{StaticResource CardBrush}"
+                BorderBrush="{StaticResource AccentBrush}" BorderThickness="0,0,0,2" Padding="24,10">
+            <Grid ColumnDefinitions="*,Auto">
+                <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2">
+                    <TextBlock Text="{Binding App.UpdateBannerText}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                    <TextBlock Text="{Binding App.UpdateMessage}" Classes="muted" FontSize="12" TextWrapping="Wrap"
+                               Foreground="{StaticResource DangerBrush}" IsVisible="{Binding App.UpdateMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                </StackPanel>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center" Margin="16,0,0,0">
+                    <Button Content="Co je nového" IsVisible="{Binding App.HasUpdateNotes}">
+                        <Button.Flyout>
+                            <Flyout Placement="BottomEdgeAlignedRight">
+                                <ScrollViewer MaxWidth="560" MaxHeight="420">
+                                    <SelectableTextBlock Text="{Binding App.UpdateNotes}" TextWrapping="Wrap" FontSize="13" Margin="4" />
+                                </ScrollViewer>
+                            </Flyout>
+                        </Button.Flyout>
+                    </Button>
+                    <Button Classes="primary" Content="Aktualizovat" Command="{Binding App.ApplyUpdateCommand}" IsVisible="{Binding App.CanApplyUpdate}" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <ContentControl Grid.Row="3" Content="{Binding SelectedItem.Page}" />
     </Grid>
 </Window>

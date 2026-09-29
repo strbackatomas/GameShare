@@ -200,6 +200,23 @@ public class RenderTests
     }
 
     [AvaloniaFact]
+    public async Task A_new_version_that_is_ready_shows_a_strip_with_its_button_and_its_notes_in_the_settings()
+    {
+        var agent = Populated();
+        agent.AppUpdate = new AppUpdateStatusDto("0.4.3", "agent", AppUpdateState.Ready, "0.5.0",
+            "### Added\n- GameShare updates itself: from the internet, or from the other PCs on the LAN.", DateTimeOffset.UtcNow,
+            226_000_000, 226_000_000, "LAN", null, DateTimeOffset.UtcNow, true, null, null);
+        var main = await BuildAsync(agent);
+        await main.Settings.LoadAsync();
+
+        var library = await ShowAsync(main, "Knihovna", "update-ready-library.png");
+        var settings = await ShowAsync(main, "Nastavení", "update-ready-settings.png");
+
+        Assert.True(main.App.HasUpdateBanner);
+        Assert.All(new[] { library, settings }, f => Assert.True(DistinctColours(f) > 100));
+    }
+
+    [AvaloniaFact]
     public async Task A_missing_agent_shows_a_banner_and_empty_pages_still_render()
     {
         var agent = new FakeAgent { Failure = new GameShare.Client.Services.AgentException("Agent GameShare neodpovídá. Zkontroluj, že služba běží.") };

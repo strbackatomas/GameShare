@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using GameShare.Client.Services;
 using GameShare.Protocol;
 
@@ -16,8 +17,10 @@ public sealed partial class AppModel : ViewModelBase, IAsyncDisposable
 
     public AppModel(
         IAgentClient client, IEventStream events, IUiDispatcher ui,
-        IGameStarter? starter = null, IFolderPicker? folderPicker = null, IClipboard? clipboard = null, ISetupRunner? setupRunner = null)
+        IGameStarter? starter = null, IFolderPicker? folderPicker = null, IClipboard? clipboard = null, ISetupRunner? setupRunner = null,
+        IClientRestarter? restarter = null)
     {
+        Restarter = restarter ?? new ProcessClientRestarter();
         Client = client;
         _events = events;
         _ui = ui;
@@ -28,6 +31,9 @@ public sealed partial class AppModel : ViewModelBase, IAsyncDisposable
     }
 
     public IAgentClient Client { get; }
+
+    /// <summary>Starts the client again once an update replaced its files.</summary>
+    public IClientRestarter Restarter { get; }
 
     /// <summary>What starts a game once the agent has said it may be started.</summary>
     public IGameStarter Starter { get; }
@@ -64,6 +70,98 @@ public sealed partial class AppModel : ViewModelBase, IAsyncDisposable
 
     /// <summary>True once the agent has answered and its version differs from this client's own build.</summary>
     public bool HasVersionMismatch => AgentVersion.Length > 0 && AgentVersion != ClientVersion;
+
+    // ---- GameShare's own updates ----
+
+    /// <summary>Where the update of GameShare itself stands, as the agent says. Null until it answered, or from an agent too old to know.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasUpdateBanner), nameof(UpdateBannerText), nameof(CanApplyUpdate), nameof(UpdateText), nameof(UpdateNotes), nameof(HasUpdateNotes))]
+    [NotifyCanExecuteChangedFor(nameof(ApplyUpdateCommand))]
+    public partial AppUpdateStatusDto? AppUpdate { get; set; }
+
+    /// <summary>Why asking for the update failed, when it did. Cleared by the next attempt.</summary>
+    [ObservableProperty] public partial string UpdateMessage { get; set; } = "";
+
+    /// <summary>The strip under the header: a new version is ready, or is being put in place.</summary>
+    public bool HasUpdateBanner => AppUpdate?.State is AppUpdateState.Ready or AppUpdateState.Applying;
+
+    public bool CanApplyUpdate => AppUpdate is { State: AppUpdateState.Ready, CanApply: true };
+
+    public string UpdateBannerText => AppUpdate switch
+    {
+        { State: AppUpdateState.Applying } u => $"Instaluji GameShare {u.Version}. Za chvíli se sám restartuje.",
+        { State: AppUpdateState.Ready, CanApply: true } u => $"Je připravená nová verze GameShare {u.Version}.",
+        { State: AppUpdateState.Ready } u => $"Je stažená nová verze GameShare {u.Version}, ale tady se sama nainstalovat nedá. {u.CannotApplyReason}",
+        _ => "",
+    };
+
+    /// <summary>For the settings page: the whole state in one sentence, with the last error.</summary>
+    public string UpdateText => DescribeUpdate(AppUpdate);
+
+    /// <summary>What changed in the version that is known, from CHANGELOG.md.</summary>
+    public string UpdateNotes => AppUpdate?.State is AppUpdateState.Downloading or AppUpdateState.Ready or AppUpdateState.Applying or AppUpdateState.Available
+        ? AppUpdate.Notes ?? "" : "";
+
+    public bool HasUpdateNotes => UpdateNotes.Length > 0;
+
+    internal static string DescribeUpdate(AppUpdateStatusDto? u)
+    {
+        if (u is null) return "Agent o aktualizacích neví, je ze starší verze.";
+        var text = u.State switch
+        {
+            AppUpdateState.Disabled => u.DisabledReason ?? "Toto sestavení se samo neaktualizuje.",
+            AppUpdateState.UpToDate => "Máš nejnovější verzi." + (u.LastChecked is { } at ? $" Naposledy ověřeno {Format.Date(at)}." : ""),
+            AppUpdateState.Available => $"Je k dispozici verze {u.Version}, stažení se zkusí znovu.",
+            AppUpdateState.Downloading => $"Stahuji verzi {u.Version}{FromWhere(u.Source)}: {Format.Percent(u.BytesTotal > 0 ? 100.0 * u.BytesDone / u.BytesTotal : 0)}.",
+            AppUpdateState.Ready => $"Verze {u.Version} je stažená a ověřená." + (u.CannotApplyReason is { } why ? $" {why}" : " Nainstaluje se, až klikneš na Aktualizovat."),
+            AppUpdateState.Applying => $"Instaluji verzi {u.Version}. GameShare se za chvíli restartuje.",
+            _ => "",
+        };
+        return u.Error is { } error ? $"{text} {error}" : text;
+    }
+
+    private static string FromWhere(string? source) => source switch
+    {
+        null => "",
+        "LAN" => " od ostatních PC v síti",
+        _ when source.StartsWith("http", StringComparison.OrdinalIgnoreCase) => " z internetu",
+        _ => " ze sdílené složky",
+    };
+
+    [RelayCommand(CanExecute = nameof(CanApplyUpdate))]
+    private async Task ApplyUpdateAsync()
+    {
+        UpdateMessage = "";
+        try { AppUpdate = await Client.ApplyAppUpdateAsync().ConfigureAwait(true); }
+        catch (AgentException ex)
+        {
+            UpdateMessage = ex.Message;
+            try { AppUpdate = await Client.GetAppUpdateAsync().ConfigureAwait(true); }
+            catch (AgentException) { /* the banner keeps what it had */ }
+        }
+    }
+
+    [RelayCommand]
+    private async Task CheckUpdateAsync()
+    {
+        UpdateMessage = "";
+        try { AppUpdate = await Client.CheckAppUpdateAsync().ConfigureAwait(true); }
+        catch (AgentException ex) { UpdateMessage = ex.Message; }
+    }
+
+    private bool _restarting;
+
+    /// <summary>
+    /// After the service updated itself and this client's files with it, the agent answers with the new version and the program file
+    /// on disk is the new one too, while this process still runs the old one. Then it starts again, once.
+    /// </summary>
+    private void RestartIfUpdated()
+    {
+        if (_restarting || AgentVersion.Length == 0 || AgentVersion == ClientVersion) return;
+        if (Restarter.VersionOnDisk() != AgentVersion) return; // a thin client of another build, or a mismatch no restart would fix
+        _restarting = true;
+        Restarter.Restart();
+    }
 
     /// <summary>Downloads that are running or paused. Drives the badge on the navigation bar.</summary>
     public int ActiveDownloadCount => Downloads.Count(d => d.HasProgress);
@@ -102,6 +200,8 @@ public sealed partial class AppModel : ViewModelBase, IAsyncDisposable
             var status = await Client.GetStatusAsync(ct).ConfigureAwait(true);
             MachineName = status.MachineName;
             AgentVersion = status.Version;
+            RestartIfUpdated();
+            AppUpdate = await Client.GetAppUpdateAsync(ct).ConfigureAwait(true);
             SyncGames(await Client.GetGamesAsync(ct).ConfigureAwait(true));
             SyncDownloads(await Client.GetDownloadsAsync(ct).ConfigureAwait(true));
             SyncPeers(await Client.GetPeersAsync(ct).ConfigureAwait(true));
@@ -144,6 +244,8 @@ public sealed partial class AppModel : ViewModelBase, IAsyncDisposable
             case DownloadDto d:
                 UpsertDownload(d);
                 break;
+
+            case AppUpdateStatusDto u: AppUpdate = u; break;
         }
 
         EventReceived?.Invoke(this, e);

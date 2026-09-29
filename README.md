@@ -81,6 +81,17 @@ build picks it up automatically (assembly version, file version, the `.exe` prop
 - `gameshare-admin --version` prints the CLI's build; `gameshare-admin-gui` shows it next to its title.
 - `scripts\publish.ps1` prints the version it is building at the start of the run.
 
+### Aktualizace z aplikace
+
+The programs update themselves: the agent finds a newer release on GitHub (or at `Agent:UpdateSource`, for example a share) or at
+another PC on the LAN that has it, downloads and checks it in the background, and the client shows a strip with an **Aktualizovat**
+button. The service swaps its files through a helper and puts the old ones back when the new version does not start; the portable
+exe replaces itself. Only packages signed with the release key are taken. See "Self-update of GameShare itself" in `docs/design-notes.md`.
+
+The release key: `gameshare-admin release-keygen --out <a folder outside the repository>` makes it once. `release-public.key` goes into
+`scripts\` (the build puts it into the programs), the content of `release-private.key` becomes the repository secret
+`GAMESHARE_RELEASE_KEY`. The release workflow refuses to run without either.
+
 Bump the version and add an entry to `CHANGELOG.md` in the same change, then tag the commit to release it:
 
 ```
@@ -89,8 +100,9 @@ git push origin v0.4.0
 ```
 
 Pushing the tag is the whole release. `.github/workflows/release.yml` checks that the tag matches `<Version>` and that
-`scripts\trust-public.key` is committed, runs `publish.ps1` and `scripts\package-release.ps1`, and publishes a GitHub release
-with that version's section of `CHANGELOG.md` as its notes. The zips keep the same names in every release
+`scripts\trust-public.key` and `scripts\release-public.key` are committed and the release key secret is set, runs `publish.ps1` and
+`scripts\package-release.ps1`, and publishes a GitHub release with that version's section of `CHANGELOG.md` as its notes, and the
+signed update packages (`update-<build>.json`, `GameShare-Update-<build>.zip`) the programs look for. The zips keep the same names in every release
 (`GameShare-LanParty.zip`, `GameShare-Agent.zip`, `GameShare-Agent-net10.zip`, `GameShare-Admin.zip`), so
 `https://github.com/strbackatomas/GameShare/releases/latest/download/<name>` always gets the newest one. The release is never
 marked as a pre-release, because `latest` skips those. `package-release.ps1` also runs locally, into `artifacts\release`.
@@ -123,7 +135,7 @@ The one request that may leave the LAN is the optional download of the administr
 ## Local API
 
 `GET /api/status`, `GET|PUT /api/settings`, `GET /api/peers`, `GET /api/games`, `GET /api/games/{contentHash}`,
-`GET /api/trust`, `POST /api/trust/refresh`, `GET /api/app-update`, `POST /api/app-update/check`, `POST /api/games/{contentHash}/launch?entry=N`, `GET .../executables`, `PUT .../launcher`, `GET .../icon`,
+`GET /api/trust`, `POST /api/trust/refresh`, `GET /api/app-update`, `POST /api/app-update/check`, `POST /api/app-update/apply`, `POST /api/games/{contentHash}/launch?entry=N`, `GET .../executables`, `PUT .../launcher`, `GET .../icon`,
 `GET|DELETE .../setup`, `POST .../setup/done`, `POST /api/games/scan`, `POST /api/games/{contentHash}/install`, `.../update`, `.../repair`, `.../check`, `.../register`, `.../volatile`,
 `GET /api/downloads`, `GET /api/downloads/{id}`, `POST /api/downloads/{id}/pause`, `.../resume`, `DELETE /api/downloads/{id}?deleteFiles=false`.
 

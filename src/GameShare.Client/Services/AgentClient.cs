@@ -38,6 +38,15 @@ public sealed class AgentClient : IAgentClient
     public Task<TrustStatusDto> GetTrustAsync(CancellationToken ct = default) => SendAsync<TrustStatusDto>(HttpMethod.Get, "/api/trust", null, Quick, ct);
     public Task<TrustStatusDto> RefreshTrustAsync(CancellationToken ct = default) => SendAsync<TrustStatusDto>(HttpMethod.Post, "/api/trust/refresh", null, Slow, ct);
 
+    public async Task<AppUpdateStatusDto?> GetAppUpdateAsync(CancellationToken ct = default)
+    {
+        try { return await SendAsync<AppUpdateStatusDto>(HttpMethod.Get, "/api/app-update", null, Quick, ct).ConfigureAwait(false); }
+        catch (AgentException ex) when (ex.StatusCode == 404) { return null; } // an agent from before updates existed
+    }
+
+    public Task<AppUpdateStatusDto> CheckAppUpdateAsync(CancellationToken ct = default) => SendAsync<AppUpdateStatusDto>(HttpMethod.Post, "/api/app-update/check", null, Slow, ct);
+    public Task<AppUpdateStatusDto> ApplyAppUpdateAsync(CancellationToken ct = default) => SendAsync<AppUpdateStatusDto>(HttpMethod.Post, "/api/app-update/apply", null, Slow, ct);
+
     public Task<ScanResultDto> ScanAsync(CancellationToken ct = default) => SendAsync<ScanResultDto>(HttpMethod.Post, "/api/games/scan", null, Slow, ct);
     public Task<ScanProgressDto?> GetScanProgressAsync(CancellationToken ct = default) => SendAsync<ScanProgressDto?>(HttpMethod.Get, "/api/games/scan", null, Quick, ct);
 

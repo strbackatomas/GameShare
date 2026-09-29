@@ -39,6 +39,7 @@ public sealed class AgentEventStream : IEventStream
         Listen<DownloadDto>(GameShareEvents.DownloadCancelled);
         Listen<SeedDto>(GameShareEvents.SeedStarted);
         Listen<SeedDto>(GameShareEvents.SeedStopped);
+        Listen<AppUpdateStatusDto>(GameShareEvents.AppUpdateChanged);
 
         _connection.Reconnecting += _ => { ConnectionChanged?.Invoke(this, false); return Task.CompletedTask; };
         _connection.Reconnected += _ => { ConnectionChanged?.Invoke(this, true); return Task.CompletedTask; };

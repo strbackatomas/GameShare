@@ -84,6 +84,14 @@ internal sealed class FakeAgent : IAgentClient
     public Task<TrustStatusDto> GetTrustAsync(CancellationToken ct = default) => Do("GetTrust", () => Trust);
     public Task<TrustStatusDto> RefreshTrustAsync(CancellationToken ct = default) => Do("RefreshTrust", () => Trust);
 
+    /// <summary>What the agent says about updates. Null plays an agent from before updates existed.</summary>
+    public AppUpdateStatusDto? AppUpdate { get; set; }
+
+    public Task<AppUpdateStatusDto?> GetAppUpdateAsync(CancellationToken ct = default) => Do("GetAppUpdate", () => AppUpdate);
+    public Task<AppUpdateStatusDto> CheckAppUpdateAsync(CancellationToken ct = default) => Do("CheckAppUpdate", () => AppUpdate!);
+    public Task<AppUpdateStatusDto> ApplyAppUpdateAsync(CancellationToken ct = default) =>
+        Do("ApplyAppUpdate", () => AppUpdate = AppUpdate! with { State = AppUpdateState.Applying, CanApply = false });
+
     public Task<ScanResultDto> ScanAsync(CancellationToken ct = default) => Do("Scan", () => new ScanResultDto(2, 5, 0, [], [], []));
 
     /// <summary>What the agent says while a scan runs. Each call takes the next one, then null (no scan).</summary>

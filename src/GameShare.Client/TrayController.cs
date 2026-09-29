@@ -26,6 +26,17 @@ internal static class TrayController
         RebuildPlayMenu(playMenu, app);
         app.GamesChanged += (_, _) => RebuildPlayMenu(playMenu, app);
 
+        // Shown only while a new version is ready and can be applied here, the same as the button in the window.
+        var update = new NativeMenuItem("Aktualizovat") { IsVisible = false };
+        update.Click += (_, _) => app.ApplyUpdateCommand.Execute(null);
+        void RefreshUpdateItem()
+        {
+            update.IsVisible = app.CanApplyUpdate;
+            update.Header = $"Aktualizovat na {app.AppUpdate?.Version}";
+        }
+        RefreshUpdateItem();
+        app.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(AppModel.AppUpdate)) RefreshUpdateItem(); };
+
         var open = new NativeMenuItem("Otevřít");
         open.Click += (_, _) => Restore(window);
         var exit = new NativeMenuItem("Ukončit");
@@ -34,7 +45,7 @@ internal static class TrayController
         var tray = new TrayIcon
         {
             Icon = icon,
-            Menu = new NativeMenu { Items = { play, new NativeMenuItemSeparator(), open, exit } },
+            Menu = new NativeMenu { Items = { play, update, new NativeMenuItemSeparator(), open, exit } },
         };
         tray.Clicked += (_, _) => Restore(window);
 
@@ -88,6 +99,7 @@ internal static class TrayController
         {
             { Name: GameShareEvents.DownloadCompleted, Payload: DownloadDto d } => $"Staženo: {d.GameName}",
             { Name: GameShareEvents.GameDiscovered, Payload: GameDto { State: GameState.AvailableOnLan } g } => $"Nová hra na síti: {g.Name}",
+            { Name: GameShareEvents.AppUpdateChanged, Payload: AppUpdateStatusDto { State: AppUpdateState.Ready } u } => $"Připravená nová verze {u.Version}",
             _ => null,
         };
         if (message is null) return;

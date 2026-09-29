@@ -500,6 +500,12 @@ public sealed partial class SettingsViewModel : ViewModelBase
         foreach (var p in paths) Roots.Add(new RootItem(p, RemoveRoot));
     }
 
+    /// <summary>
+    /// One save at a time, in the order they were asked for. A folder added and the Save button pressed right after would otherwise
+    /// race, and the folder's save, made from the settings as they were before, could land last and undo what Save changed.
+    /// </summary>
+    private readonly SemaphoreSlim _saving = new(1, 1);
+
     /// <summary>What the agent has, as last loaded or saved. Saving the folders keeps the rest as it is there, not as half-typed here.</summary>
     private SettingsDto? _saved;
 
@@ -510,11 +516,17 @@ public sealed partial class SettingsViewModel : ViewModelBase
     private async Task SaveRootsAsync(bool added)
     {
         if (_saved is null) return; // not loaded yet, the Save button still covers it
-        var ok = await TryAsync(async () =>
+        bool ok;
+        await _saving.WaitAsync().ConfigureAwait(true);
+        try
         {
-            _saved = await _app.Client.SaveSettingsAsync(_saved with { GameRoots = [.. Roots.Select(r => r.Path)] });
-            SetRoots(_saved.GameRoots);
-        }, m => Message = m).ConfigureAwait(true);
+            ok = await TryAsync(async () =>
+            {
+                _saved = await _app.Client.SaveSettingsAsync(_saved with { GameRoots = [.. Roots.Select(r => r.Path)] });
+                SetRoots(_saved.GameRoots);
+            }, m => Message = m).ConfigureAwait(true);
+        }
+        finally { _saving.Release(); }
         if (!ok) return;
         Message = added ? "Složka uložena. Hry v ní se teď hledají, průběh je vidět v Knihovně." : "Složka odebrána.";
         if (added) _app.RequestScan();
@@ -544,14 +556,19 @@ public sealed partial class SettingsViewModel : ViewModelBase
             return;
         }
 
-        await TryAsync(async () =>
+        await _saving.WaitAsync().ConfigureAwait(true);
+        try
         {
-            var saved = await _app.Client.SaveSettingsAsync(new SettingsDto([.. Roots.Select(r => r.Path)], SeedingEnabled, up, down, _unignoredAdapterIds));
-            _saved = saved;
-            SetRoots(saved.GameRoots); // the agent normalises paths, show what it kept
-            _unignoredAdapterIds = [.. saved.AllowedVirtualAdapterIds ?? []];
-            Message = "Uloženo.";
-        }, m => Message = m).ConfigureAwait(true);
+            await TryAsync(async () =>
+            {
+                var saved = await _app.Client.SaveSettingsAsync(new SettingsDto([.. Roots.Select(r => r.Path)], SeedingEnabled, up, down, _unignoredAdapterIds));
+                _saved = saved;
+                SetRoots(saved.GameRoots); // the agent normalises paths, show what it kept
+                _unignoredAdapterIds = [.. saved.AllowedVirtualAdapterIds ?? []];
+                Message = "Uloženo.";
+            }, m => Message = m).ConfigureAwait(true);
+        }
+        finally { _saving.Release(); }
         await _app.RefreshGamesAsync().ConfigureAwait(true);
     }
 
