@@ -95,6 +95,20 @@ public class FileReleaseTests
         finally { TestGame.DeleteQuietly(target); }
     }
 
+    /// <summary>
+    /// With several games going out at once a PC can wait its turn for longer than the idle time. Letting go of the files then
+    /// disconnected it: the download stalled and the PC dropped out of the list of where the game goes.
+    /// </summary>
+    [Fact]
+    public void A_seed_is_awaited_while_a_connected_pc_lacks_the_game()
+    {
+        Assert.False(TorrentEngine.IsAwaited([]));
+        Assert.False(TorrentEngine.IsAwaited([new PeerSnapshot("192.168.1.5:6881", 0, 0, IsSeed: true)]));
+        Assert.True(TorrentEngine.IsAwaited([new PeerSnapshot("192.168.1.6:6881", 0, 0, IsSeed: false)]));
+        Assert.True(TorrentEngine.IsAwaited(
+            [new PeerSnapshot("192.168.1.5:6881", 0, 0, IsSeed: true), new PeerSnapshot("192.168.1.6:6881", 0, 0, IsSeed: false)]));
+    }
+
     [Fact]
     public async Task Only_a_handful_of_files_stay_open_however_many_a_game_has()
     {

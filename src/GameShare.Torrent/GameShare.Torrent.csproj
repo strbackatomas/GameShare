@@ -24,4 +24,8 @@
     <ProjectReference Include="..\GameShare.Storage\GameShare.Storage.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="GameShare.Torrent.Tests" />
+  </ItemGroup>
+
 </Project>

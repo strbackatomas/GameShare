@@ -298,6 +298,16 @@ public sealed class TorrentEngine : IDisposable
             t.FilesReleased = false;
             return;
         }
+        // A PC still connected and without the whole game is not done with this seed, it may just be waiting its turn: with several
+        // games going out at once the library takes turns sending, and one of them can easily get nothing for longer than idleAfter.
+        // Releasing then disconnects that PC, it drops out of the list of where the game goes, and the download stalls until it finds
+        // the seed again. A game that is played is not helped by this anyway, its seed is suspended for as long as it runs.
+        if (status.PeerCount > 0 && IsAwaited(t.GetPeers()))
+        {
+            t.LastActivity = now;
+            t.FilesReleased = false;
+            return;
+        }
         if (t.FilesReleased || now - t.LastActivity < idleAfter) return;
 
         t.FilesReleased = true;
@@ -305,6 +315,12 @@ public sealed class TorrentEngine : IDisposable
         t.Stop(); // resumed on the next tick
         _log.LogDebug("Seed {Name} was idle, its files are being released", t.Name);
     }
+
+    /// <summary>
+    /// Whether a connected PC may still want data from this seed: any peer that does not have the whole game. Internal for its
+    /// own test: a PC that waits its turn cannot be staged between two engines, the library drops a connection with nothing to send.
+    /// </summary>
+    internal static bool IsAwaited(IReadOnlyList<PeerSnapshot> peers) => peers.Any(p => !p.IsSeed);
 
     private TorrentManager GetManagerFor(TorrentTransfer transfer) =>
         _client.ActiveTorrents.First(m => string.Equals(m.InfoHash, transfer.InfoHash, StringComparison.OrdinalIgnoreCase));

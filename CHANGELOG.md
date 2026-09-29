@@ -8,6 +8,11 @@ this is wired into the build and where a peer's version shows up.
 
 ## [Unreleased]
 
+### Fixed
+- Sending several games at once to the same PC kept breaking off. A game that waited its turn for 20 seconds counted as idle, its
+  seed let go of its files and so disconnected that PC, which dropped out of the list of where the game goes and stalled until it
+  found the seed again. A seed now keeps its files while a PC that lacks the game is connected to it.
+
 ## [0.5.0] - 2026-09-29
 
 ### Added
