@@ -17,6 +17,20 @@
   install-agent.ps1 finds everything by its defaults: unzip, then double-click install-agent.bat, which asks for
   administrator rights itself, or run scripts\install-agent.ps1 from an elevated PowerShell.
   The net10 zip puts its smaller builds under the same folder names for the same reason.
+
+  For the updater built into the programs, per build (agent, agent-net10, lanparty):
+
+  GameShare-Update-<build>.zip   The files in the layout of an installation: for the service the agent at the top and the
+                                 client in Client\, for the portable build the exe and its key. A PC unpacks it as it is.
+  update-<build>.json            What the package holds (every file with its SHA-256, and its torrent), signed with the release
+                                 key. Every PC checks it against the key built into it before it takes the update, and the PCs
+                                 on a LAN send the package to each other with that torrent.
+
+  The release key is taken from the environment variable GAMESHARE_RELEASE_KEY. Without it the update files are left out,
+  with a warning. The signature is checked against scripts\release-public.key, the key the programs are built with, so a
+  secret that does not match is found here rather than by every PC refusing the update.
+
+  release-notes.md is this version's section of CHANGELOG.md, for the release and for the update description.
 #>
 [CmdletBinding()]
 param(
@@ -106,5 +120,42 @@ Add-Folder 'admin' (Join-Path $dir 'admin')
 Add-Folder 'admin-gui' (Join-Path $dir 'admin-gui')
 Add-File (Join-Path $PSScriptRoot 'import-lan-installer.ps1') $dir
 Save-Zip 'GameShare-Admin'
+
+# This version's section of CHANGELOG.md, from its heading to the next one: the notes of the release and of the update.
+$changelog = Get-Content (Join-Path $PSScriptRoot '..\CHANGELOG.md') -Raw -Encoding utf8
+$match = [regex]::Match($changelog, "(?ms)^## \[$([regex]::Escape($version))\][^\n]*\n(.*?)(?=^## \[|\z)")
+$notes = Join-Path $Output 'release-notes.md'
+Set-Content $notes $(if ($match.Success) { $match.Groups[1].Value.Trim() } else { "GameShare $version" }) -Encoding utf8
+
+# The update packages, one per build, each signed. The admin tool that signs them was built by publish.ps1 with the rest.
+$admin = Join-Path $Artifacts 'admin\gameshare-admin.exe'
+$releasePublicKey = Join-Path $PSScriptRoot 'release-public.key'
+if (-not $env:GAMESHARE_RELEASE_KEY) {
+    Write-Warning "No GAMESHARE_RELEASE_KEY: no update packages, the programs will not find v$version by themselves."
+}
+elseif (-not (Test-Path $releasePublicKey -PathType Leaf)) {
+    throw "GAMESHARE_RELEASE_KEY is set but scripts\release-public.key is missing: the programs could not check what it signs."
+}
+else {
+    foreach ($update in @(
+        @{ Flavor = 'agent'; Parts = @(@{ From = 'agent'; To = '' }, @{ From = 'client'; To = 'Client' }) },
+        @{ Flavor = 'agent-net10'; Parts = @(@{ From = 'agent-net10'; To = '' }, @{ From = 'client-net10'; To = 'Client' }) },
+        @{ Flavor = 'lanparty'; Parts = @(@{ From = 'standalone'; To = '' }) }
+    )) {
+        # The folder name is also the name of the package's torrent on every PC.
+        $name = "GameShare-Update-$($update.Flavor)"
+        $dir = Join-Path $stage $name
+        foreach ($part in $update.Parts) { Add-Folder $part.From $(if ($part.To) { Join-Path $dir $part.To } else { $dir }) }
+        Save-Zip $name
+
+        $json = Join-Path $Output "update-$($update.Flavor).json"
+        # The key stays in the environment, it is never on a command line where a log could show it.
+        & $admin release-sign --folder $dir --version $version --flavor $update.Flavor --zip (Join-Path $Output "$name.zip") --notes-file $notes --out $json | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw "Signing the $($update.Flavor) update failed with exit code $LASTEXITCODE." }
+        & $admin release-show --file $json --pub $releasePublicKey | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw "update-$($update.Flavor).json does not verify against scripts\release-public.key. GAMESHARE_RELEASE_KEY is not the key the programs are built with." }
+        Write-Host ("{0,-28} signed" -f "update-$($update.Flavor).json")
+    }
+}
 
 Remove-Item -Recurse -Force $stage

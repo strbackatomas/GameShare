@@ -9,6 +9,14 @@ public static class AppVersion
 {
     public static readonly string Current = Format(typeof(AppVersion).Assembly.GetName().Version);
 
+    /// <summary>
+    /// Which published build is running (<see cref="AppFlavors"/>), from the program that was started: the service, the client or
+    /// the portable exe. Null for a build that was not made by scripts\publish.ps1, which never updates itself.
+    /// </summary>
+    public static readonly string? Flavor = System.Reflection.Assembly.GetEntryAssembly()?
+        .GetCustomAttributes(typeof(System.Reflection.AssemblyMetadataAttribute), false).OfType<System.Reflection.AssemblyMetadataAttribute>()
+        .FirstOrDefault(a => a.Key == "GameShareFlavor")?.Value is { } f && AppFlavors.IsKnown(f) ? f : null;
+
     // MSBuild turns "0.1.0" into AssemblyVersion "0.1.0.0"; the trailing revision is always 0 and not part of the version we chose.
     private static string Format(Version? v) => v is null ? "0.0.0" : $"{v.Major}.{v.Minor}.{v.Build}";
 }

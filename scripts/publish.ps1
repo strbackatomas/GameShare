@@ -29,10 +29,15 @@ if (-not $Output) { $Output = Join-Path $PSScriptRoot '..\artifacts' }
 $version = ([xml](Get-Content (Join-Path $PSScriptRoot '..\src\Directory.Build.props'))).Project.PropertyGroup.Version
 Write-Host "Building GameShare v$version`n"
 
-function Publish-App($project, $target, [bool]$selfContained, [bool]$singleFile = $false) {
+# $flavor names the build for the updater (agent, agent-net10, lanparty): a program takes only the update package of its own build.
+# The administrator's tools have none, they are not updated from the app.
+function Publish-App($project, $target, [bool]$selfContained, [bool]$singleFile = $false, [string]$flavor = '') {
     if (Test-Path $target) { Remove-Item -Recurse -Force $target }
     $flag = if ($selfContained) { 'true' } else { 'false' }  # PowerShell would otherwise pass "True"/"False", dotnet wants lowercase
-    $extra = if ($singleFile) { @('-p:PublishSingleFile=true', '-p:IncludeNativeLibrariesForSelfExtract=true') } else { @() }
+    # Built up from an empty array: "if (...) { @() }" yields $null, and adding a string to that makes one string, not a list.
+    $extra = @()
+    if ($singleFile) { $extra += '-p:PublishSingleFile=true', '-p:IncludeNativeLibrariesForSelfExtract=true' }
+    if ($flavor) { $extra += "-p:GameShareFlavor=$flavor" }
     # dotnet's own console output must not leak into the function's return value, or the caller gets an object array instead of a number.
     dotnet publish (Join-Path $PSScriptRoot "..\src\$project") -c Release -r $Runtime --self-contained $flag @extra -o $target | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "dotnet publish of $project failed with exit code $LASTEXITCODE" }
@@ -43,22 +48,22 @@ function Publish-App($project, $target, [bool]$selfContained, [bool]$singleFile 
 function Format-Size([double]$mb) { if ($mb -lt 1) { "{0:N0} KB" -f ($mb * 1024) } else { "{0:N0} MB" -f $mb } }
 
 foreach ($app in @(
-    @{ Name = 'agent'; Project = 'GameShare.Agent' },
-    @{ Name = 'client'; Project = 'GameShare.Client' },
-    @{ Name = 'admin'; Project = 'GameShare.Admin' },
-    @{ Name = 'admin-gui'; Project = 'GameShare.AdminGui' }
+    @{ Name = 'agent'; Project = 'GameShare.Agent'; Updates = $true },
+    @{ Name = 'client'; Project = 'GameShare.Client'; Updates = $true },
+    @{ Name = 'admin'; Project = 'GameShare.Admin'; Updates = $false },
+    @{ Name = 'admin-gui'; Project = 'GameShare.AdminGui'; Updates = $false }
 )) {
-    $full = Publish-App $app.Project (Join-Path $Output $app.Name) $true
+    $full = Publish-App $app.Project (Join-Path $Output $app.Name) $true -flavor $(if ($app.Updates) { 'agent' } else { '' })
     Write-Host ("Published {0} to artifacts\{0} ({1}, self-contained, nothing to install)" -f $app.Name, (Format-Size $full))
 
-    $slim = Publish-App $app.Project (Join-Path $Output "$($app.Name)-net10") $false
+    $slim = Publish-App $app.Project (Join-Path $Output "$($app.Name)-net10") $false -flavor $(if ($app.Updates) { 'agent-net10' } else { '' })
     Write-Host ("Published {0} to artifacts\{0}-net10 ({1}, needs the .NET 10 runtime installed)" -f $app.Name, (Format-Size $slim))
 }
 
 Write-Host "`nThe -net10 builds need the ASP.NET Core Runtime 10.0 (x64) on the target PC: https://dotnet.microsoft.com/download/dotnet/10.0"
 
 # One portable file: agent and client bundled together, no install, no admin rights. For a LAN-party guest.
-$standalone = Publish-App 'GameShare.Standalone' (Join-Path $Output 'standalone') $true $true
+$standalone = Publish-App 'GameShare.Standalone' (Join-Path $Output 'standalone') $true $true -flavor 'lanparty'
 Write-Host ("`nPublished standalone to artifacts\standalone\GameShare-LanParty.exe ({0}, one file, nothing to install)" -f (Format-Size $standalone))
 
 # The administrator's public key, if it was put next to this script: handed out with the builds, so the portable exe checks games

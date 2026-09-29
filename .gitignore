@@ -490,3 +490,5 @@ artifacts/
 
 # The administrator's signing key never goes into the repository. trust-public.key may.
 trust-private.key
+# Nor the key GameShare releases are signed with. release-public.key is built into the program and belongs in scripts\.
+release-private.key

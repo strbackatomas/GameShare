@@ -10,7 +10,7 @@ namespace GameShare.Admin;
 /// </summary>
 public static class AdminCli
 {
-    public const string Usage = """
+    public static readonly string Usage = $$"""
         gameshare-admin keygen --out <folder> [--password <text>]
             Makes trust-private.key and trust-public.key. Keep the private key safe and off the players' PCs.
             The public key goes into Agent:TrustPublicKey on every PC.
@@ -26,6 +26,8 @@ public static class AdminCli
 
         gameshare-admin show --list <list file> --pub <public key file or the key itself>
             Checks the signature and prints what the list says.
+
+        {{ReleaseCommands.Usage}}
 
         gameshare-admin gui
             Opens the graphical version of this tool, if it was published alongside this one.
@@ -53,6 +55,9 @@ public static class AdminCli
                 case "revoke": return Revoke(positional, options, output, clock());
                 case "remove": return Remove(positional, options, output, clock());
                 case "show": return Show(options, output, clock());
+                case "release-keygen": return ReleaseCommands.KeyGen(options, Password(options), output);
+                case "release-sign": return await ReleaseCommands.SignAsync(options, Password(options), output, clock()).ConfigureAwait(false);
+                case "release-show": return ReleaseCommands.Show(options, output);
                 case "gui":
                     error.WriteLine("This build has no graphical tool. Publish GameShare.AdminGui alongside it, or run gameshare-admin-gui.exe directly.");
                     return 2;

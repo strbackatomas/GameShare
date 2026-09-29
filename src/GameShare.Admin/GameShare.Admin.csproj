@@ -13,6 +13,8 @@
   <ItemGroup>
     <ProjectReference Include="..\GameShare.Protocol\GameShare.Protocol.csproj" />
     <ProjectReference Include="..\GameShare.Storage\GameShare.Storage.csproj" />
+    <!-- Only its torrent builder, for release-sign: the package's torrent must be built exactly as the agents build it. -->
+    <ProjectReference Include="..\GameShare.Torrent\GameShare.Torrent.csproj" />
   </ItemGroup>
 
 </Project>

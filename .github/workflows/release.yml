@@ -31,7 +31,13 @@ jobs:
           if ("v$version" -ne '${{ github.ref_name }}') { throw "Tag ${{ github.ref_name }} does not match <Version>$version</Version> in src/Directory.Build.props." }
           # Without the key the builds would go out with verified games off, better to stop here than to find out at the LAN party.
           if (-not (Test-Path scripts/trust-public.key)) { throw "scripts/trust-public.key is not in the repository." }
+          # Without these no PC would ever update itself to this version. The public key is built into the programs,
+          # the private one signs the update packages; package-release.ps1 checks that the two belong together.
+          if (-not (Test-Path scripts/release-public.key)) { throw "scripts/release-public.key is not in the repository. Make it with gameshare-admin release-keygen." }
+          if (-not $env:GAMESHARE_RELEASE_KEY) { throw "The secret GAMESHARE_RELEASE_KEY is not set: Settings, Secrets and variables, Actions." }
           "VERSION=$version" >> $env:GITHUB_ENV
+        env:
+          GAMESHARE_RELEASE_KEY: ${{ secrets.GAMESHARE_RELEASE_KEY }}
 
       - name: Build
         shell: pwsh
@@ -40,16 +46,16 @@ jobs:
       - name: Pack
         shell: pwsh
         run: ./scripts/package-release.ps1
+        env:
+          GAMESHARE_RELEASE_KEY: ${{ secrets.GAMESHARE_RELEASE_KEY }}
 
       - name: Publish the release
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # This version's section of CHANGELOG.md, from its heading to the next one.
-          $changelog = Get-Content CHANGELOG.md -Raw -Encoding utf8
-          $match = [regex]::Match($changelog, "(?ms)^## \[$([regex]::Escape($env:VERSION))\][^\n]*\n(.*?)(?=^## \[|\z)")
-          $notes = if ($match.Success) { $match.Groups[1].Value.Trim() } else { "GameShare $env:VERSION" }
-          Set-Content release-notes.md $notes -Encoding utf8
+          # The notes are this version's section of CHANGELOG.md, cut out by package-release.ps1.
+          # The update-*.json files go up with the zips: the programs look for them at .../releases/latest/download/.
           # Not a pre-release, even while the version starts with 0: .../releases/latest skips pre-releases, and the web page links there.
-          gh release create '${{ github.ref_name }}' (Get-ChildItem artifacts/release/*.zip).FullName --title "GameShare $env:VERSION" --notes-file release-notes.md
+          $assets = (Get-ChildItem artifacts/release/*.zip, artifacts/release/update-*.json).FullName
+          gh release create '${{ github.ref_name }}' $assets --title "GameShare $env:VERSION" --notes-file artifacts/release/release-notes.md

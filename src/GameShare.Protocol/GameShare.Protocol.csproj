@@ -6,4 +6,10 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <!-- The public half of the key GameShare releases are signed with, see ReleaseKey.cs. A build without the file
+       never updates itself. The private half is a GitHub secret and never goes into the repository. -->
+  <ItemGroup Condition="Exists('..\..\scripts\release-public.key')">
+    <EmbeddedResource Include="..\..\scripts\release-public.key" LogicalName="release-public.key" />
+  </ItemGroup>
+
 </Project>

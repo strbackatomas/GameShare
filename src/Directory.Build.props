@@ -7,4 +7,9 @@
          always agree on what "the same version" means. -->
     <Version>0.4.3</Version>
   </PropertyGroup>
+  <!-- Which published build this is (agent, agent-net10, lanparty), so the program takes only its own update package.
+       Set by scripts\publish.ps1 with -p:GameShareFlavor=...; a plain dotnet build has none and never updates itself. -->
+  <ItemGroup Condition="'$(GameShareFlavor)' != ''">
+    <AssemblyMetadata Include="GameShareFlavor" Value="$(GameShareFlavor)" />
+  </ItemGroup>
 </Project>
