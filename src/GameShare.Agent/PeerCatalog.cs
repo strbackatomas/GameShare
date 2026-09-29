@@ -263,7 +263,7 @@ public sealed partial class PeerCatalog
             throw new InvalidDataException($"{peer.Address} is not a local network address");
     }
 
-    private static string Url(PeerInfo peer, string path) =>
+    internal static string Url(PeerInfo peer, string path) =>
         $"http://{(peer.Address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6 ? $"[{peer.Address}]" : peer.Address.ToString())}:{peer.AgentPort}{path}";
 
     private static async Task<byte[]> GetBytesAsync(HttpClient client, string url, long limit, CancellationToken ct)

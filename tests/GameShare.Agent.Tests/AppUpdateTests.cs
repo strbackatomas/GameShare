@@ -54,23 +54,29 @@ public sealed class AppUpdateTests : IAsyncDisposable
         return release;
     }
 
-    private async Task<TestAgent> StartAsync(string running = "0.4.3", string? flavor = AppFlavors.Agent, string? existingDir = null)
+    private async Task<TestAgent> StartAsync(
+        string running = "0.4.3", string? flavor = AppFlavors.Agent, string? existingDir = null, int? discoveryPort = null,
+        bool withSource = true, TimeSpan? internetDelay = null, string? installDir = null)
     {
-        var agent = await TestAgent.StartAsync("updater", TestAgent.DiscoveryPort(), existingDir: existingDir, tweak: o =>
+        var agent = await TestAgent.StartAsync("updater", discoveryPort ?? TestAgent.DiscoveryPort(), existingDir: existingDir, tweak: o =>
         {
-            o.UpdateSource = _source;
+            o.UpdateSource = withSource ? _source : "";
             o.UpdatePublicKey = _key.PublicKey;
             o.UpdateFlavor = flavor;
             o.RunningVersion = running;
             o.UpdateCheckInterval = TimeSpan.FromHours(1);
+            o.UpdateLanPollInterval = TimeSpan.FromMilliseconds(300);
+            o.UpdateInternetDelay = internetDelay ?? TimeSpan.Zero;
+            o.UpdateLanStall = TimeSpan.FromSeconds(20);
+            o.UpdateInstallDir = installDir ?? Path.Combine(_source, "no-install"); // not the test's own folder
         });
         _agents.Add(agent);
         return agent;
     }
 
-    private static async Task<AppUpdateStatusDto> WaitForAsync(TestAgent agent, Func<AppUpdateStatusDto, bool> condition)
+    private static async Task<AppUpdateStatusDto> WaitForAsync(TestAgent agent, Func<AppUpdateStatusDto, bool> condition, int seconds = 30)
     {
-        var deadline = DateTime.UtcNow.AddSeconds(30);
+        var deadline = DateTime.UtcNow.AddSeconds(seconds);
         while (true)
         {
             var status = await agent.GetAsync<AppUpdateStatusDto>("/api/app-update");
@@ -200,5 +206,89 @@ public sealed class AppUpdateTests : IAsyncDisposable
         Assert.Equal(AppUpdateState.Disabled, status.State);
         Assert.Contains("publish.ps1", status.DisabledReason);
         Assert.False(Directory.Exists(Path.Combine(agent.Dir, "data", AppUpdateService.FolderName)));
+    }
+
+    // ---- the LAN ----
+
+    [Fact]
+    public async Task A_PC_without_internet_takes_the_new_version_from_a_PC_on_the_LAN_that_has_it()
+    {
+        var release = await PublishAsync("0.5.0");
+        int port = TestAgent.DiscoveryPort();
+        var online = await StartAsync(discoveryPort: port);
+        await WaitForAsync(online, s => s.State == AppUpdateState.Ready);
+
+        var offline = await StartAsync(discoveryPort: port, withSource: false);
+
+        var status = await WaitForAsync(offline, s => s.State == AppUpdateState.Ready, seconds: 60);
+        Assert.Equal("0.5.0", status.Version);
+        Assert.Equal(AppUpdateService.LanSource, status.Source);
+        var package = Path.Combine(VersionDir(offline, "0.5.0"), release.Manifest.FolderName);
+        Assert.True((await ManifestVerifier.VerifyAsync(release.Manifest, package, VerifyMode.Full)).IsValid);
+    }
+
+    [Fact]
+    public async Task A_PC_that_found_it_on_the_internet_waits_and_takes_it_from_the_LAN_instead()
+    {
+        await PublishAsync("0.5.0");
+        int port = TestAgent.DiscoveryPort();
+        var first = await StartAsync(discoveryPort: port);
+        await WaitForAsync(first, s => s.State == AppUpdateState.Ready);
+        // From now on the internet would fail: only the description is there, not the zip.
+        File.Delete(Path.Combine(_source, "GameShare-Update-agent.zip"));
+
+        var second = await StartAsync(discoveryPort: port, internetDelay: TimeSpan.FromMinutes(5));
+
+        var status = await WaitForAsync(second, s => s.State == AppUpdateState.Ready, seconds: 60);
+        Assert.Equal(AppUpdateService.LanSource, status.Source);
+    }
+
+    [Fact]
+    public async Task Files_the_running_program_already_has_are_copied_and_not_downloaded()
+    {
+        await PublishAsync("0.5.0");
+        File.Delete(Path.Combine(_source, "GameShare-Update-agent.zip")); // nothing to download from, and nobody on the LAN
+        var installed = Path.Combine(_source, "stage", "GameShare-Update-agent"); // the same files as the package
+
+        var agent = await StartAsync(installDir: installed);
+
+        var status = await WaitForAsync(agent, s => s.State == AppUpdateState.Ready);
+        Assert.Equal("0.5.0", status.Version);
+    }
+
+    [Fact]
+    public async Task The_peer_API_offers_what_is_ready_with_its_signed_description_and_nothing_while_sharing_is_off()
+    {
+        await PublishAsync("0.5.0");
+        var agent = await StartAsync();
+        await WaitForAsync(agent, s => s.State == AppUpdateState.Ready);
+
+        var offers = await agent.PeerApi.GetFromJsonAsync<List<AppUpdateOfferDto>>("/peer/app-update", TestAgent.Json);
+        Assert.Equal([new AppUpdateOfferDto(AppFlavors.Agent, "0.5.0")], offers);
+        var document = await agent.PeerApi.GetByteArrayAsync("/peer/app-update/agent/0.5.0");
+        Assert.Equal("0.5.0", ReleaseSigning.Open(document, _key.PublicKey).Version);
+        Assert.Equal(System.Net.HttpStatusCode.NotFound, (await agent.PeerApi.GetAsync("/peer/app-update/agent/0.6.0")).StatusCode);
+
+        var settings = await agent.GetAsync<SettingsDto>("/api/settings");
+        (await agent.SendAsync(HttpMethod.Put, "/api/settings", settings with { SeedingEnabled = false })).EnsureSuccessStatusCode();
+
+        Assert.Empty((await agent.PeerApi.GetFromJsonAsync<List<AppUpdateOfferDto>>("/peer/app-update", TestAgent.Json))!);
+    }
+
+    [Fact]
+    public async Task After_the_update_the_package_of_the_version_that_runs_is_still_offered_to_the_others()
+    {
+        await PublishAsync("0.5.0");
+        var before = await StartAsync(running: "0.4.3");
+        await WaitForAsync(before, s => s.State == AppUpdateState.Ready);
+        await before.StopAsync();
+        _agents.Remove(before);
+
+        var after = await StartAsync(running: "0.5.0", existingDir: before.Dir); // as if it had been applied
+
+        var status = await WaitForAsync(after, s => s.LastChecked is not null);
+        Assert.Equal(AppUpdateState.UpToDate, status.State);
+        var offers = await after.PeerApi.GetFromJsonAsync<List<AppUpdateOfferDto>>("/peer/app-update", TestAgent.Json);
+        Assert.Equal([new AppUpdateOfferDto(AppFlavors.Agent, "0.5.0")], offers);
     }
 }

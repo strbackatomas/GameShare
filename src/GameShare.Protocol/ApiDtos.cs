@@ -308,6 +308,12 @@ public sealed record AppUpdateStatusDto(
 
 // ---- Agent to agent API, served to other PCs on the LAN ----
 
+/// <summary>
+/// An update package of GameShare itself that a PC holds whole and checked, and sends to others over the transfer port.
+/// Its signed description is at /peer/app-update/{flavor}/{version}. A PC may hold a newer one than it runs: downloaded, not applied yet.
+/// </summary>
+public sealed record AppUpdateOfferDto(string Flavor, string Version);
+
 public sealed record PeerHelloDto(string MachineId, string MachineName, int ProtocolVersion, string? AppVersion = null);
 
 /// <summary>A game this PC is willing to serve: installed, verified and seeding.</summary>

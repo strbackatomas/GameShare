@@ -23,6 +23,14 @@ public static partial class PeerApi
 
         peer.MapGet("/hello", (AgentIdentity me) => new PeerHelloDto(me.MachineId, me.MachineName, DiscoveryMessage.CurrentVersion, AppVersion.Current));
 
+        // Update packages of GameShare itself this PC holds whole, and their signed descriptions. The other PCs check the signature
+        // themselves; this PC only passes on what it checked for itself.
+        peer.MapGet("/app-update", (AppUpdateService updates) => updates.Offers());
+        peer.MapGet("/app-update/{flavor}/{version}", (string flavor, string version, AppUpdateService updates) =>
+            updates.OfferedDocument(flavor, version) is { } document
+                ? Results.File(document, "application/json")
+                : throw new KeyNotFoundException("This PC does not offer that update package."));
+
         peer.MapGet("/games", async (GameShareDb db, SettingsService settings, SeedManager seeds, CancellationToken ct) =>
             (await OfferedAsync(db, settings, seeds, ct)).Select(o => new OfferedGameDto(
                 o.Stored.Manifest.ContentHash, o.Stored.Manifest.GameId, o.Stored.Manifest.Name, o.Stored.Manifest.Version, o.Stored.Manifest.TotalSize)

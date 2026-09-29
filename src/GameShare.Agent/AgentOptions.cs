@@ -101,6 +101,26 @@ public sealed class AgentOptions
 
     public TimeSpan UpdateCheckInterval { get; set; } = TimeSpan.FromHours(6);
 
+    /// <summary>How often the other PCs are asked which update packages they hold. Small answers; the description is fetched only when it is new.</summary>
+    public TimeSpan UpdateLanPollInterval { get; set; } = TimeSpan.FromMinutes(2);
+
+    /// <summary>
+    /// A version found on the internet is downloaded from there only after a random wait of up to this long, and not at all when a PC
+    /// on the LAN offers it meanwhile. So one PC fetches it from the internet and the others take it from that PC.
+    /// </summary>
+    public TimeSpan UpdateInternetDelay { get; set; } = TimeSpan.FromMinutes(10);
+
+    /// <summary>A download from the LAN that receives nothing for this long is given up for the zip, when there is one.</summary>
+    public TimeSpan UpdateLanStall { get; set; } = TimeSpan.FromMinutes(2);
+
+    /// <summary>
+    /// Where the running program's files are. Files of a new version that are the same as these are copied instead of downloaded.
+    /// Left out, the program's own folder.
+    /// </summary>
+    public string? UpdateInstallDir { get; set; }
+
+    public string ResolveUpdateInstallDir() => Path.GetFullPath(UpdateInstallDir ?? AppContext.BaseDirectory);
+
     /// <summary>
     /// The key releases must be signed with. Left out, the one built into the program (<see cref="ReleaseKey"/>).
     /// Only tests set it; it is deliberately not read from appsettings.json, see <see cref="ReleaseKey"/>.

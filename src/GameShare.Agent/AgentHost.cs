@@ -130,7 +130,9 @@ public static class AgentHost
         // Redirects are followed, GitHub's download links are one. Reading the zip has its own stall timeout.
         services.AddHttpClient("update", c => c.Timeout = TimeSpan.FromSeconds(60));
         services.AddSingleton(sp => new AppUpdateService(
-            options, sp.GetRequiredService<IHttpClientFactory>().CreateClient("update"), sp.GetRequiredService<ILogger<AppUpdateService>>()));
+            options, sp.GetRequiredService<IHttpClientFactory>().CreateClient("update"), sp.GetRequiredService<IHttpClientFactory>(),
+            sp.GetRequiredService<TorrentEngine>(), sp.GetRequiredService<DiscoveryService>(), sp.GetRequiredService<SettingsService>(),
+            sp.GetRequiredService<ILogger<AppUpdateService>>()));
 
         services.AddExceptionHandler<ApiExceptionHandler>();
         services.AddProblemDetails();
