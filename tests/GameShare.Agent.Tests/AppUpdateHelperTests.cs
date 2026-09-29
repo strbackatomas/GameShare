@@ -36,9 +36,11 @@ public sealed class AppUpdateHelperTests : IDisposable
 
     private sealed class FakeService : IServiceControl
     {
+        /// <summary>Whether the outcome was already written each time the service was started: the agent reads it once, at startup.</summary>
+        public Func<bool> ResultWritten { get; set; } = () => false;
         public List<string> Calls { get; } = [];
         public void Stop() => Calls.Add("stop");
-        public void Start() => Calls.Add("start");
+        public void Start() => Calls.Add(ResultWritten() ? "start (result written)" : "start");
     }
 
     private async Task<AppUpdateApplyRequest> RequestAsync()
@@ -73,10 +75,13 @@ public sealed class AppUpdateHelperTests : IDisposable
     {
         var service = new FakeService();
 
+        service.ResultWritten = () => File.Exists(Path.Combine(_root, AppUpdateResult.FileName));
+
         var code = await AppUpdateHelper.RunAsync(await RequestAsync(), service, _ => Task.FromResult<string?>(null), TimeSpan.FromSeconds(2));
 
         Assert.Equal(1, code);
-        Assert.Equal(["stop", "start", "stop", "start"], service.Calls);
+        // The agent that comes back must find the reason when it starts, or the user never learns the update failed.
+        Assert.Equal(["stop", "start", "stop", "start (result written)"], service.Calls);
         Assert.Equal("agent 0.4.3", Read("GameShare.Agent.exe"));
         Assert.Equal("client 0.4.3", Read("Client/GameShare.exe"));
         Assert.False(AppUpdateFiles.HasPendingSwap(Install));
@@ -89,14 +94,14 @@ public sealed class AppUpdateHelperTests : IDisposable
     [Fact]
     public async Task When_the_files_cannot_be_swapped_the_old_version_is_started_again_untouched()
     {
-        var service = new FakeService();
+        var service = new FakeService { ResultWritten = () => File.Exists(Path.Combine(_root, AppUpdateResult.FileName)) };
         var request = await RequestAsync();
         Write(Staging, "GameShare.Agent.exe", "agent 0.5.0, changed after it was checked");
 
         var code = await AppUpdateHelper.RunAsync(request, service, _ => Task.FromResult<string?>("0.5.0"), TimeSpan.FromSeconds(2));
 
         Assert.Equal(1, code);
-        Assert.Equal(["stop", "start"], service.Calls);
+        Assert.Equal(["stop", "start (result written)"], service.Calls);
         Assert.Equal("agent 0.4.3", Read("GameShare.Agent.exe"));
         Assert.Contains("vyměnit", Result().Error);
     }

@@ -172,9 +172,10 @@ public static class AppUpdateHelper
             }
             catch (Exception ex)
             {
-                // SwapAsync already put the old files back.
+                // SwapAsync already put the old files back. The outcome is written before the agent starts: it reads it once, at startup.
+                var code = Finish(false, $"Soubory se nepodařilo vyměnit, běží dál předchozí verze: {ex.Message}");
                 service.Start();
-                return Finish(false, $"Soubory se nepodařilo vyměnit, běží dál předchozí verze: {ex.Message}");
+                return code;
             }
             Log("Files swapped, starting the service");
             service.Start();
@@ -188,14 +189,16 @@ public static class AppUpdateHelper
             Log($"The new version did not answer within {startTimeout.TotalSeconds:N0} s, putting the previous one back");
             service.Stop();
             AppUpdateFiles.Rollback(request.InstallDir);
+            var failed = Finish(false, $"Verze {request.Version} se nerozběhla, vrátila se předchozí. Podrobnosti jsou v {request.LogFile}.");
             service.Start();
-            return Finish(false, $"Verze {request.Version} se nerozběhla, vrátila se předchozí. Podrobnosti jsou v {request.LogFile}.");
+            return failed;
         }
         catch (Exception ex)
         {
             Log(ex.ToString());
+            var code = Finish(false, $"Aktualizace se nepovedla: {ex.Message}");
             try { service.Start(); } catch (Exception start) { Log($"Could not start the service: {start.Message}"); }
-            return Finish(false, $"Aktualizace se nepovedla: {ex.Message}");
+            return code;
         }
     }
 
