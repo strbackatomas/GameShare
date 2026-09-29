@@ -15,8 +15,9 @@ public sealed class ProcessClientRestarter : IClientRestarter
     {
         try
         {
-            var dll = typeof(ProcessClientRestarter).Assembly.Location;
-            if (string.IsNullOrEmpty(dll) || !File.Exists(dll)) return null;
+            // Not Assembly.Location, which a single-file build leaves empty; there the file simply is not on disk.
+            var dll = Path.Combine(AppContext.BaseDirectory, typeof(ProcessClientRestarter).Assembly.GetName().Name + ".dll");
+            if (!File.Exists(dll)) return null;
             // Written by the build from the one <Version>, as MAJOR.MINOR.PATCH.0; the fourth part is always 0.
             return AssemblyName.GetAssemblyName(dll).Version is { } v ? $"{v.Major}.{v.Minor}.{Math.Max(v.Build, 0)}" : null;
         }
