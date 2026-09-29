@@ -106,9 +106,16 @@ public static class TrustSigning
     public static TrustEnvelope Sign(TrustPayload payload, string privateKey, string? password = null)
     {
         Validate(payload);
-        using var key = ImportPrivate(privateKey, password);
+        return SignBytes(JsonSerializer.SerializeToUtf8Bytes(payload, GameShareJson.Options), privateKey, password);
+    }
 
-        var payloadBytes = JsonSerializer.SerializeToUtf8Bytes(payload, GameShareJson.Options);
+    /// <summary>
+    /// Signs any payload in the envelope format of the trust list. The release descriptions of GameShare itself
+    /// (<see cref="ReleaseSigning"/>) use it with their own key.
+    /// </summary>
+    public static TrustEnvelope SignBytes(byte[] payloadBytes, string privateKey, string? password = null)
+    {
+        using var key = ImportPrivate(privateKey, password);
         var signature = key.SignData(payloadBytes, HashAlgorithmName.SHA256, DSASignatureFormat.IeeeP1363FixedFieldConcatenation);
         var keyId = Convert.ToHexString(SHA256.HashData(key.ExportSubjectPublicKeyInfo()))[..16].ToLowerInvariant();
         return new TrustEnvelope(CurrentFormat, keyId, Convert.ToBase64String(payloadBytes), Convert.ToBase64String(signature));
@@ -121,29 +128,7 @@ public static class TrustSigning
     /// <exception cref="InvalidDataException">The list is malformed, signed by another key, or the signature does not match. The message says which.</exception>
     public static TrustPayload Open(byte[] envelopeJson, string publicKey)
     {
-        if (envelopeJson.Length > MaxEnvelopeBytes) throw new InvalidDataException($"The trust list is larger than {MaxEnvelopeBytes / 1024 / 1024} MB.");
-
-        TrustEnvelope envelope;
-        try { envelope = JsonSerializer.Deserialize<TrustEnvelope>(envelopeJson, GameShareJson.Options) ?? throw new JsonException("empty"); }
-        catch (JsonException ex) { throw new InvalidDataException("The trust list is not a valid signed list.", ex); }
-
-        if (envelope.Format != CurrentFormat) throw new InvalidDataException($"The trust list has format {envelope.Format}, this version understands {CurrentFormat}.");
-        if (string.IsNullOrEmpty(envelope.Payload) || string.IsNullOrEmpty(envelope.Signature)) throw new InvalidDataException("The trust list has no payload or no signature.");
-
-        var expected = KeyId(publicKey);
-        if (!string.Equals(envelope.KeyId, expected, StringComparison.OrdinalIgnoreCase))
-            throw new InvalidDataException($"The trust list is signed with key {envelope.KeyId}, this PC trusts key {expected}.");
-
-        byte[] payloadBytes, signature;
-        try { payloadBytes = Convert.FromBase64String(envelope.Payload); signature = Convert.FromBase64String(envelope.Signature); }
-        catch (FormatException ex) { throw new InvalidDataException("The trust list is not valid base64.", ex); }
-
-        ImportPublic(publicKey, out var key);
-        using (key)
-        {
-            if (!key.VerifyData(payloadBytes, signature, HashAlgorithmName.SHA256, DSASignatureFormat.IeeeP1363FixedFieldConcatenation))
-                throw new InvalidDataException("The signature of the trust list is wrong. The list was changed, or it was not signed by the administrator.");
-        }
+        var payloadBytes = OpenBytes(envelopeJson, publicKey, "trust list", "the administrator");
 
         TrustPayload payload;
         try { payload = JsonSerializer.Deserialize<TrustPayload>(payloadBytes, GameShareJson.Options) ?? throw new JsonException("empty"); }
@@ -151,6 +136,38 @@ public static class TrustSigning
 
         Validate(payload);
         return payload;
+    }
+
+    /// <summary>Checks an envelope against the public key and returns the payload bytes that were signed.</summary>
+    /// <param name="what">What the document is, for the messages: "trust list".</param>
+    /// <param name="signer">Who should have signed it, for the messages: "the administrator".</param>
+    /// <exception cref="InvalidDataException">The envelope is malformed, signed by another key, or the signature does not match. The message says which.</exception>
+    public static byte[] OpenBytes(byte[] envelopeJson, string publicKey, string what, string signer)
+    {
+        if (envelopeJson.Length > MaxEnvelopeBytes) throw new InvalidDataException($"The {what} is larger than {MaxEnvelopeBytes / 1024 / 1024} MB.");
+
+        TrustEnvelope envelope;
+        try { envelope = JsonSerializer.Deserialize<TrustEnvelope>(envelopeJson, GameShareJson.Options) ?? throw new JsonException("empty"); }
+        catch (JsonException ex) { throw new InvalidDataException($"The {what} is not a valid signed document.", ex); }
+
+        if (envelope.Format != CurrentFormat) throw new InvalidDataException($"The {what} has format {envelope.Format}, this version understands {CurrentFormat}.");
+        if (string.IsNullOrEmpty(envelope.Payload) || string.IsNullOrEmpty(envelope.Signature)) throw new InvalidDataException($"The {what} has no payload or no signature.");
+
+        var expected = KeyId(publicKey);
+        if (!string.Equals(envelope.KeyId, expected, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException($"The {what} is signed with key {envelope.KeyId}, this PC trusts key {expected}.");
+
+        byte[] payloadBytes, signature;
+        try { payloadBytes = Convert.FromBase64String(envelope.Payload); signature = Convert.FromBase64String(envelope.Signature); }
+        catch (FormatException ex) { throw new InvalidDataException($"The {what} is not valid base64.", ex); }
+
+        ImportPublic(publicKey, out var key);
+        using (key)
+        {
+            if (!key.VerifyData(payloadBytes, signature, HashAlgorithmName.SHA256, DSASignatureFormat.IeeeP1363FixedFieldConcatenation))
+                throw new InvalidDataException($"The signature of the {what} is wrong. It was changed, or it was not signed by {signer}.");
+        }
+        return payloadBytes;
     }
 
     private static byte[] ImportPublic(string publicKey, out ECDsa key)
