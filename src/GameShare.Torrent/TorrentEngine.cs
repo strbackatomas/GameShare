@@ -28,12 +28,13 @@ public sealed record TorrentEngineOptions
     public bool AllowMultipleConnectionsPerIp { get; init; }
 
     /// <summary>
-    /// How many files the library keeps open at once. On Windows an open file is memory-mapped, and a program that replaces such a file
-    /// by truncating it, which is how most games save their settings, is refused. A game must never notice that its files are shared,
-    /// so only a few files are held open, and see <see cref="IdleReleaseAfter"/> for the rest.
-    /// Measured with 3000 small files: the transfer was not slower with 2, 4 or 16 than with the default.
+    /// How many files the library keeps open at once, for all transfers together. On Windows an open file is memory-mapped, and a program
+    /// that replaces such a file by truncating it, which is how most games save their settings, is refused. That only matters while a seed
+    /// sends: an idle one lets go of its files (<see cref="IdleReleaseAfter"/>) and the seed of a game being played is suspended.
+    /// Measured with 3000 small files in one transfer: not slower with 2, 4 or 16. Several games going out at once share the pool though,
+    /// so this is libtorrent's own default rather than a handful.
     /// </summary>
-    public int OpenFileLimit { get; init; } = 8;
+    public int OpenFileLimit { get; init; } = 40;
 
     /// <summary>
     /// A seed that has not uploaded anything for this long lets go of its files, so a game can rewrite them.

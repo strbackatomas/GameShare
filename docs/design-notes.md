@@ -237,10 +237,13 @@ Found by tests that failed or by measuring, kept here so nobody rediscovers them
 - **Served files cannot be rewritten by the game.** On Windows the library memory-maps the files it reads. A program that replaces such a file by
   truncating it, which is how most games save their settings (`File.WriteAllText`, `fopen("w")`), gets "the requested operation cannot be performed on a file
   with a user-mapped section open". Measured: while a seed checked its files, while it uploaded, and afterwards, every served file refused it.
-  Disk I/O modes and the mapping cutoff changed nothing. What helps: the file pool is limited to 8 files (a transfer of 3000 small files was not slower
-  with 2, 4 or 16 files than with the default), and a seed that uploaded nothing for 20 s is paused and resumed one tick later, which closes its files.
+  Disk I/O modes and the mapping cutoff changed nothing. What helps: a seed that uploaded nothing for 20 s is paused and resumed one tick later, which closes its files.
   Resuming does not re-check it and it keeps seeding, tested by installing from it afterwards. While a peer is downloading a game nobody plays here, its files being served are
-  still open; a game that is played is different, see Launcher: its seed is stopped. A game started outside GameShare and not recognised as running has the old limit. Agent settings: `OpenFileLimit`, `SeedIdleRelease`.
+  still open; a game that is played is different, see Launcher: its seed is stopped. A game started outside GameShare and not recognised as running can therefore fail to save while
+  its seed sends. The file pool was first limited to 8 files for this (a single transfer of 3000 small files was not slower with 2, 4 or 16), but every
+  transfer shares the pool, so with several games going out at once they all had those 8. It is back at libtorrent's default of 40. Whether 8 was
+  why one of several games at once got almost nothing is not known: raising it by hand on the sending PC did not visibly change that.
+  Agent settings: `OpenFileLimit`, `SeedIdleRelease`.
   The upload rate the library reports is a moving average that stays above zero long after the last byte, so idleness is judged by bytes uploaded.
 - **Removal is asynchronous.** Adding the same torrent right after removing it fails with "already attached". `RemoveAsync` waits for the library's notification and `AddAsync` retries briefly if it is late.
 - **Saving resume data can hang.** While a torrent is checking or being removed the library may never answer. Every save has a timeout, a failed save never fails a pause or a shutdown, and the next start simply re-checks the files. A save that is still in flight when a torrent is removed keeps the library holding on to it, so saves and removal are ordered per download.

@@ -141,10 +141,9 @@ public sealed class AgentOptions
         (UpdateSource ?? "").Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
 
     /// <summary>
-    /// How many game files the transfer engine keeps open at once. An open file cannot be replaced by a game that saves by truncating it,
-    /// so this is kept low. See TorrentEngineOptions.OpenFileLimit.
+    /// How many game files the transfer engine keeps open at once, for all games together. See TorrentEngineOptions.OpenFileLimit.
     /// </summary>
-    public int OpenFileLimit { get; set; } = 8;
+    public int OpenFileLimit { get; set; } = 40;
 
     /// <summary>How often the PC is looked at for games that are running.</summary>
     public TimeSpan RunningCheckInterval { get; set; } = TimeSpan.FromSeconds(5);

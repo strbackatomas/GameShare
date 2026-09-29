@@ -12,6 +12,10 @@ this is wired into the build and where a peer's version shows up.
 - A graph of the download speed over the last 5 minutes on the Přenosy page, with the current, average and highest speed, like
   Steam's. Each download has a small one of its own, so it shows which game gets the speed when several download at once.
 
+### Changed
+- The transfer engine keeps up to 40 game files open at once instead of 8, for all games together. With several games going out
+  at once they had to share 8. `Agent:OpenFileLimit` still sets it.
+
 ### Fixed
 - Sending several games at once to the same PC kept breaking off. A game that waited its turn for 20 seconds counted as idle, its
   seed let go of its files and so disconnected that PC, which dropped out of the list of where the game goes and stalled until it
