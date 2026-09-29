@@ -184,36 +184,8 @@ public sealed class TrustService
     private Loaded? Usable() =>
         _current is { } c && (c.List.ValidUntil is not { } until || until >= _time.GetUtcNow()) ? c : null;
 
-    private async Task<byte[]> FetchAsync(string source, CancellationToken ct)
-    {
-        if (Uri.TryCreate(source, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https")
-        {
-            using var response = await _http.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
-            response.EnsureSuccessStatusCode();
-            if (response.Content.Headers.ContentLength > TrustSigning.MaxEnvelopeBytes)
-                throw new InvalidDataException($"The trust list at {source} is larger than {TrustSigning.MaxEnvelopeBytes / 1024 / 1024} MB.");
-            return await ReadLimitedAsync(await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false), ct).ConfigureAwait(false);
-        }
-
-        var info = new FileInfo(source);
-        if (!info.Exists) throw new FileNotFoundException($"The trust list file '{source}' does not exist or cannot be reached.");
-        await using var file = new FileStream(source, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-        return await ReadLimitedAsync(file, ct).ConfigureAwait(false);
-    }
-
-    /// <summary>A server that does not announce its size cannot make this PC read without end.</summary>
-    private static async Task<byte[]> ReadLimitedAsync(Stream stream, CancellationToken ct)
-    {
-        using var buffer = new MemoryStream();
-        var chunk = new byte[64 * 1024];
-        int read;
-        while ((read = await stream.ReadAsync(chunk, ct).ConfigureAwait(false)) > 0)
-        {
-            buffer.Write(chunk, 0, read);
-            if (buffer.Length > TrustSigning.MaxEnvelopeBytes) throw new InvalidDataException($"The trust list is larger than {TrustSigning.MaxEnvelopeBytes / 1024 / 1024} MB.");
-        }
-        return buffer.ToArray();
-    }
+    private Task<byte[]> FetchAsync(string source, CancellationToken ct) =>
+        SourceFetch.ReadAsync(_http, source, TrustSigning.MaxEnvelopeBytes, "trust list", ct);
 
     private void LoadCache()
     {

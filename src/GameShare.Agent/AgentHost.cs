@@ -126,6 +126,12 @@ public static class AgentHost
         services.AddSingleton(sp => new TrustService(
             options, sp.GetRequiredService<IHttpClientFactory>().CreateClient("trust"), sp.GetRequiredService<ILogger<TrustService>>()));
 
+        // GameShare's own releases: a small signed description, then the package's zip unless the LAN has it. Carries nothing about this PC.
+        // Redirects are followed, GitHub's download links are one. Reading the zip has its own stall timeout.
+        services.AddHttpClient("update", c => c.Timeout = TimeSpan.FromSeconds(60));
+        services.AddSingleton(sp => new AppUpdateService(
+            options, sp.GetRequiredService<IHttpClientFactory>().CreateClient("update"), sp.GetRequiredService<ILogger<AppUpdateService>>()));
+
         services.AddExceptionHandler<ApiExceptionHandler>();
         services.AddProblemDetails();
         services.ConfigureHttpJsonOptions(o => o.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));

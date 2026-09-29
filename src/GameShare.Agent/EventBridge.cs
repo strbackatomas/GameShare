@@ -24,6 +24,7 @@ public sealed class EventBridge : IHostedService
     private readonly SeedManager _seeds;
     private readonly GameChangeTracker _changes;
     private readonly TrustService _trust;
+    private readonly AppUpdateService _updates;
     private readonly RunningGames _running;
     private readonly GameView _view;
     private readonly ILogger<EventBridge> _log;
@@ -37,11 +38,12 @@ public sealed class EventBridge : IHostedService
 
     public EventBridge(
         IHubContext<EventsHub> hub, DiscoveryService discovery, PeerCatalog catalog, GameLibrary library,
-        DownloadManager downloads, SeedManager seeds, GameChangeTracker changes, TrustService trust, RunningGames running, GameView view, ILogger<EventBridge> log)
+        DownloadManager downloads, SeedManager seeds, GameChangeTracker changes, TrustService trust, AppUpdateService updates, RunningGames running, GameView view, ILogger<EventBridge> log)
     {
         _running = running;
         _changes = changes;
         _trust = trust;
+        _updates = updates;
         _hub = hub;
         _discovery = discovery;
         _catalog = catalog;
@@ -66,6 +68,7 @@ public sealed class EventBridge : IHostedService
         _seeds.SeedEventRaised += OnSeed;
         _changes.Changed += OnTrackedChange;
         _trust.Changed += OnTrustChanged;
+        _updates.Changed += OnAppUpdateChanged;
         _running.Changed += OnRunningChanged;
         return Task.CompletedTask;
     }
@@ -81,6 +84,7 @@ public sealed class EventBridge : IHostedService
         _seeds.SeedEventRaised -= OnSeed;
         _changes.Changed -= OnTrackedChange;
         _trust.Changed -= OnTrustChanged;
+        _updates.Changed -= OnAppUpdateChanged;
         _running.Changed -= OnRunningChanged;
 
         _queue.Writer.TryComplete();
@@ -152,6 +156,10 @@ public sealed class EventBridge : IHostedService
             }
             return null;
         });
+
+    /// <summary>The status is read when the event is sent, so a burst of progress reports sends the newest one.</summary>
+    private void OnAppUpdateChanged(object? sender, EventArgs e) =>
+        Enqueue(() => Task.FromResult<(string, object)?>((GameShareEvents.AppUpdateChanged, _updates.Status())));
 
     private void OnLocalGameDiscovered(object? sender, LibraryGame g) =>
         Enqueue(() => GameChangedAsync(g.Stored.Manifest.ContentHash));

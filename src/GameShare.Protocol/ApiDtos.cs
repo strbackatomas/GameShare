@@ -276,6 +276,36 @@ public sealed record TrustStatusDto(
 
 public sealed record StatusDto(string MachineId, string MachineName, string Version, int PeerCount, int GameCount, int ActiveDownloads);
 
+/// <summary>Where the update of GameShare itself stands on this PC.</summary>
+public enum AppUpdateState
+{
+    /// <summary>This build does not update itself: made without scripts\publish.ps1, or without the release key. See <see cref="AppUpdateStatusDto.DisabledReason"/>.</summary>
+    Disabled,
+    /// <summary>Nothing newer was found.</summary>
+    UpToDate,
+    /// <summary>A newer version is known and is not being downloaded right now, for example after a download failed. It is tried again.</summary>
+    Available,
+    /// <summary>The newer version is being downloaded and checked.</summary>
+    Downloading,
+    /// <summary>The newer version is here and checked, it is put in place when the user asks.</summary>
+    Ready,
+    /// <summary>It is being put in place. The agent restarts.</summary>
+    Applying,
+}
+
+/// <param name="CurrentVersion">The version running now.</param>
+/// <param name="Flavor">Which build this is: agent, agent-net10 or lanparty. Null for one that does not update itself.</param>
+/// <param name="Version">The newer version, when one is known.</param>
+/// <param name="Notes">What changed in it, from CHANGELOG.md, Markdown.</param>
+/// <param name="Source">Where it is coming from: "LAN" or the address or folder it was found at.</param>
+/// <param name="Error">The last thing that went wrong, looking for it or downloading it. What was already here stays usable.</param>
+/// <param name="CanApply">Whether putting it in place can be asked for now.</param>
+/// <param name="CannotApplyReason">Why not, when it is <see cref="AppUpdateState.Ready"/> but cannot be applied here.</param>
+public sealed record AppUpdateStatusDto(
+    string CurrentVersion, string? Flavor, AppUpdateState State, string? Version, string? Notes, DateTimeOffset? ReleasedAt,
+    long BytesDone, long BytesTotal, string? Source, string? Error, DateTimeOffset? LastChecked,
+    bool CanApply, string? CannotApplyReason, string? DisabledReason);
+
 // ---- Agent to agent API, served to other PCs on the LAN ----
 
 public sealed record PeerHelloDto(string MachineId, string MachineName, int ProtocolVersion, string? AppVersion = null);
@@ -318,4 +348,6 @@ public static class GameShareEvents
     /// <summary>SeedDto.</summary>
     public const string SeedStarted = nameof(SeedStarted);
     public const string SeedStopped = nameof(SeedStopped);
+    /// <summary>AppUpdateStatusDto. A newer GameShare was found, is downloading, is ready, or looking for one failed.</summary>
+    public const string AppUpdateChanged = nameof(AppUpdateChanged);
 }

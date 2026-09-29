@@ -89,6 +89,37 @@ public sealed class AgentOptions
 
     public TimeSpan TrustRefreshInterval { get; set; } = TimeSpan.FromHours(1);
 
+    /// <summary>Where GameShare's own releases are published, the default for <see cref="UpdateSource"/>.</summary>
+    public const string DefaultUpdateSource = "https://github.com/strbackatomas/GameShare/releases/latest/download/";
+
+    /// <summary>
+    /// Where newer versions of GameShare are looked for: an https:// address or a folder (a share for a LAN party without internet)
+    /// that holds update-&lt;build&gt;.json and the zip it names. Several separated by ';' are all asked, the newest valid release wins.
+    /// Empty turns looking off; the PCs on the LAN still pass a newer version on to each other.
+    /// </summary>
+    public string? UpdateSource { get; set; } = DefaultUpdateSource;
+
+    public TimeSpan UpdateCheckInterval { get; set; } = TimeSpan.FromHours(6);
+
+    /// <summary>
+    /// The key releases must be signed with. Left out, the one built into the program (<see cref="ReleaseKey"/>).
+    /// Only tests set it; it is deliberately not read from appsettings.json, see <see cref="ReleaseKey"/>.
+    /// </summary>
+    [Microsoft.Extensions.Configuration.ConfigurationKeyName("__UpdatePublicKeyIsNotASetting")]
+    public string? UpdatePublicKey { get; set; } = ReleaseKey.PublicKey;
+
+    /// <summary>Which build this is, for the update. Left out, the one publish.ps1 built into the program. Only tests set it.</summary>
+    [Microsoft.Extensions.Configuration.ConfigurationKeyName("__UpdateFlavorIsNotASetting")]
+    public string? UpdateFlavor { get; set; } = AppVersion.Flavor;
+
+    /// <summary>The version that counts as running, for the update. Only tests set it.</summary>
+    [Microsoft.Extensions.Configuration.ConfigurationKeyName("__RunningVersionIsNotASetting")]
+    public string RunningVersion { get; set; } = AppVersion.Current;
+
+    /// <summary>The places of <see cref="UpdateSource"/>, as for the trust list.</summary>
+    public IReadOnlyList<string> UpdateSources() =>
+        (UpdateSource ?? "").Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+
     /// <summary>
     /// How many game files the transfer engine keeps open at once. An open file cannot be replaced by a game that saves by truncating it,
     /// so this is kept low. See TorrentEngineOptions.OpenFileLimit.
@@ -150,6 +181,8 @@ public sealed class AgentOptions
             if (TrustRefreshInterval < TimeSpan.FromSeconds(1))
                 throw new InvalidOperationException("Agent:TrustRefreshInterval must be at least one second.");
         }
+        if (UpdateCheckInterval < TimeSpan.FromSeconds(1))
+            throw new InvalidOperationException("Agent:UpdateCheckInterval must be at least one second.");
         if (PeerTimeout < HelloInterval * 2)
             throw new InvalidOperationException("Agent:PeerTimeout must be at least twice Agent:HelloInterval.");
     }

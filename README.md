@@ -123,13 +123,13 @@ The one request that may leave the LAN is the optional download of the administr
 ## Local API
 
 `GET /api/status`, `GET|PUT /api/settings`, `GET /api/peers`, `GET /api/games`, `GET /api/games/{contentHash}`,
-`GET /api/trust`, `POST /api/trust/refresh`, `POST /api/games/{contentHash}/launch?entry=N`, `GET .../executables`, `PUT .../launcher`, `GET .../icon`,
+`GET /api/trust`, `POST /api/trust/refresh`, `GET /api/app-update`, `POST /api/app-update/check`, `POST /api/games/{contentHash}/launch?entry=N`, `GET .../executables`, `PUT .../launcher`, `GET .../icon`,
 `GET|DELETE .../setup`, `POST .../setup/done`, `POST /api/games/scan`, `POST /api/games/{contentHash}/install`, `.../update`, `.../repair`, `.../check`, `.../register`, `.../volatile`,
 `GET /api/downloads`, `GET /api/downloads/{id}`, `POST /api/downloads/{id}/pause`, `.../resume`, `DELETE /api/downloads/{id}?deleteFiles=false`.
 
 Live events arrive on the SignalR hub at `/hub/events`: `PeerConnected`, `PeerDisconnected`, `GameDiscovered`, `GameUpdated`,
 `GameRemoved`, `DownloadStarted`, `DownloadProgress`, `DownloadPaused`, `DownloadCompleted`, `DownloadFailed`, `DownloadCancelled`,
-`SeedStarted`, `SeedStopped`. Payload types are documented in `GameShare.Protocol/ApiDtos.cs`.
+`SeedStarted`, `SeedStopped`, `AppUpdateChanged`. Payload types are documented in `GameShare.Protocol/ApiDtos.cs`.
 
 A game is identified by its content hash, not by the name of its folder.
 

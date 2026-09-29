@@ -86,6 +86,10 @@ public static partial class LocalApi
         api.MapGet("/trust", (TrustService trust) => trust.Status());
         api.MapPost("/trust/refresh", async (TrustService trust, CancellationToken ct) => await trust.RefreshAsync(ct));
 
+        // GameShare itself: whether a newer version is known, downloading or ready. Checking asks the configured places again now.
+        api.MapGet("/app-update", (AppUpdateService updates) => updates.Status());
+        api.MapPost("/app-update/check", async (AppUpdateService updates, CancellationToken ct) => await updates.CheckAsync(ct));
+
         api.MapGet("/peers", (DiscoveryService discovery, GameView view) => discovery.Peers.Select(view.ToDto).ToList());
 
         // Who is pulling data from this PC right now, and how fast. Only games with at least one active peer.
