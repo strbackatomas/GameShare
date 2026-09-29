@@ -17,7 +17,9 @@ public static class AgentHost
     public const string ServiceName = "GameShare Agent";
 
     /// <param name="configure">Applied after appsettings and environment variables. Tests use it to pick ports and folders.</param>
-    public static async Task<WebApplication> BuildAsync(string[] args, Action<AgentOptions>? configure = null, CancellationToken ct = default)
+    /// <param name="configureServices">Applied after the agent's own services, so a host can replace one, such as the <see cref="IAppUpdateApplier"/>.</param>
+    public static async Task<WebApplication> BuildAsync(
+        string[] args, Action<AgentOptions>? configure = null, CancellationToken ct = default, Action<IServiceCollection>? configureServices = null)
     {
         // ContentRoot is the exe folder, so appsettings.json is found when running as a service (whose working directory is System32).
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions { Args = args, ContentRootPath = AppContext.BaseDirectory });
@@ -129,10 +131,11 @@ public static class AgentHost
         // GameShare's own releases: a small signed description, then the package's zip unless the LAN has it. Carries nothing about this PC.
         // Redirects are followed, GitHub's download links are one. Reading the zip has its own stall timeout.
         services.AddHttpClient("update", c => c.Timeout = TimeSpan.FromSeconds(60));
+        services.AddSingleton<IAppUpdateApplier, ServiceUpdateApplier>();
         services.AddSingleton(sp => new AppUpdateService(
             options, sp.GetRequiredService<IHttpClientFactory>().CreateClient("update"), sp.GetRequiredService<IHttpClientFactory>(),
             sp.GetRequiredService<TorrentEngine>(), sp.GetRequiredService<DiscoveryService>(), sp.GetRequiredService<SettingsService>(),
-            sp.GetRequiredService<ILogger<AppUpdateService>>()));
+            sp.GetRequiredService<IAppUpdateApplier>(), sp.GetRequiredService<ILogger<AppUpdateService>>()));
 
         services.AddExceptionHandler<ApiExceptionHandler>();
         services.AddProblemDetails();
@@ -142,6 +145,7 @@ public static class AgentHost
         // Order matters: the bridge subscribes before the worker starts producing events.
         services.AddHostedService<EventBridge>();
         services.AddHostedService<AgentWorker>();
+        configureServices?.Invoke(services);
 
         var app = builder.Build();
         app.UseExceptionHandler();

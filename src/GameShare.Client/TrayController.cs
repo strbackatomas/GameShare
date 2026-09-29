@@ -108,7 +108,7 @@ internal static class TrayController
         window.Activate();
     }
 
-    private static async Task ShutdownAsync(IClassicDesktopStyleApplicationLifetime desktop)
+    internal static async Task ShutdownAsync(IClassicDesktopStyleApplicationLifetime desktop)
     {
         _exiting = true;
         if (App.BeforeShutdownAsync is { } beforeShutdown) await beforeShutdown().ConfigureAwait(true);

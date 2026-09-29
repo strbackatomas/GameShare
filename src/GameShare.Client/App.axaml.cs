@@ -17,6 +17,15 @@ public partial class App : Application
     /// standalone build sets it to stop its own embedded agent, which this project knows nothing about.</summary>
     public static Func<Task>? BeforeShutdownAsync { get; set; }
 
+    /// <summary>
+    /// Closes the application the way the tray's "Ukončit" does, from any thread. The portable build calls it after it put a new
+    /// version of itself in place and started it.
+    /// </summary>
+    public static void RequestExit() => Avalonia.Threading.Dispatcher.UIThread.Post(async () =>
+    {
+        if (Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop) await TrayController.ShutdownAsync(desktop).ConfigureAwait(true);
+    });
+
     public override void Initialize() => AvaloniaXamlLoader.Load(this);
 
     public override void OnFrameworkInitializationCompleted()

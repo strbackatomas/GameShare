@@ -47,6 +47,7 @@ public sealed class AppUpdateService
     private readonly TorrentEngine _engine;
     private readonly DiscoveryService _discovery;
     private readonly SettingsService _settings;
+    private readonly IAppUpdateApplier _applier;
     private readonly ILogger<AppUpdateService> _log;
     private readonly TimeProvider _time;
     private readonly SemaphoreSlim _checking = new(1, 1);
@@ -60,6 +61,7 @@ public sealed class AppUpdateService
     private StagedRelease? _running;
     private long _done, _total;
     private string? _error;
+    private string? _lastApplyError; // from the result the last update left, shown until the next attempt
     private DateTimeOffset? _lastChecked;
     private Task? _download;
     private CancellationToken _stopping;
@@ -80,7 +82,7 @@ public sealed class AppUpdateService
 
     public AppUpdateService(
         AgentOptions options, HttpClient http, IHttpClientFactory peerHttp, TorrentEngine engine, DiscoveryService discovery, SettingsService settings,
-        ILogger<AppUpdateService> log, TimeProvider? time = null)
+        IAppUpdateApplier applier, ILogger<AppUpdateService> log, TimeProvider? time = null)
     {
         _options = options;
         _http = http;
@@ -88,6 +90,7 @@ public sealed class AppUpdateService
         _engine = engine;
         _discovery = discovery;
         _settings = settings;
+        _applier = applier;
         _log = log;
         _time = time ?? TimeProvider.System;
         UpdatesDir = Path.Combine(options.ResolveDataDir(), FolderName);
@@ -113,10 +116,11 @@ public sealed class AppUpdateService
         lock (_lock)
         {
             var release = _ready?.Release ?? _known?.Release;
+            var cannot = _ready is not null && _state == AppUpdateState.Ready ? _applier.CannotApplyReason(_ready) : null;
             return new AppUpdateStatusDto(
                 _options.RunningVersion, _options.UpdateFlavor, _state, release?.Version, release?.Notes, release?.ReleasedAt,
-                _done, _total, _ready is not null ? _ready.Source : _known?.Source, _error, _lastChecked,
-                CanApply: false, CannotApplyReason: null, DisabledReason);
+                _done, _total, _ready is not null ? _ready.Source : _known?.Source, _lastApplyError ?? _error, _lastChecked,
+                CanApply: _ready is not null && _state == AppUpdateState.Ready && cannot is null, cannot, DisabledReason);
         }
     }
 
@@ -151,6 +155,8 @@ public sealed class AppUpdateService
 
         Directory.CreateDirectory(UpdatesDir);
         LockDown(UpdatesDir);
+        AppUpdateFiles.CleanupLeftovers(_options.ResolveUpdateInstallDir());
+        ReadLastResult();
         await LoadStagedAsync(ct).ConfigureAwait(false);
         await SeedStagedAsync(ct).ConfigureAwait(false);
 
@@ -188,6 +194,8 @@ public sealed class AppUpdateService
             await Task.WhenAll(_discovery.Peers.Select(p => AskPeerAsync(p, ct))).ConfigureAwait(false);
             // A seed that could not start earlier (sharing was off) starts once it is on again, and stops when it is turned off.
             await SeedStagedAsync(ct).ConfigureAwait(false);
+            // Old files the last update could not delete, because the client still ran from them, go once it has restarted.
+            AppUpdateFiles.CleanupLeftovers(_options.ResolveUpdateInstallDir());
         }
     }
 
@@ -314,6 +322,80 @@ public sealed class AppUpdateService
         _log.LogInformation("GameShare {Version} found at {Source}, downloading it", release.Version, source);
         RaiseChanged();
         return true;
+    }
+
+    // ---- applying ----
+
+    /// <summary>
+    /// Puts the version that is ready in place, when the user asks. Its files are checked once more first, all of them: they have lain
+    /// on disk since they were downloaded. Returns once the build's applier has taken over; the agent usually stops moments later.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">Nothing is ready, or it cannot be applied here. The message says why.</exception>
+    /// <exception cref="InvalidDataException">The files changed since they were checked. They are removed, and downloaded again later.</exception>
+    public async Task<AppUpdateStatusDto> ApplyAsync(CancellationToken ct = default)
+    {
+        StagedRelease staged;
+        IReadOnlyList<string>? previous;
+        lock (_lock)
+        {
+            if (DisabledReason is { } disabled) throw new InvalidOperationException(disabled);
+            if (_state == AppUpdateState.Applying) throw new InvalidOperationException("Aktualizace se už instaluje.");
+            staged = _ready ?? throw new InvalidOperationException("Žádná novější verze zatím není stažená.");
+            if (_applier.CannotApplyReason(staged) is { } reason) throw new InvalidOperationException(reason);
+            previous = _running?.Release.Manifest.Files.Select(f => f.Path).ToList();
+            _state = AppUpdateState.Applying;
+            _error = null;
+            _lastApplyError = null;
+        }
+        RaiseChanged();
+
+        try
+        {
+            var check = await ManifestVerifier.VerifyAsync(staged.Release.Manifest, staged.PackageDir, VerifyMode.Full, cancellationToken: ct).ConfigureAwait(false);
+            if (!check.IsValid)
+            {
+                await StopSeedAsync(staged.Release.Version).ConfigureAwait(false);
+                lock (_lock) _ready = null;
+                DeleteQuietly(Path.GetDirectoryName(staged.PackageDir)!);
+                throw new InvalidDataException($"Stažené soubory verze {staged.Release.Version} se od kontroly změnily ({check}), stáhnou se znovu.");
+            }
+
+            _log.LogInformation("Applying GameShare {Version}", staged.Release.Version);
+            await _applier.ApplyAsync(new AppUpdateApplyContext(staged, previous, UpdatesDir), ct).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            lock (_lock)
+            {
+                _state = _ready is null ? AppUpdateState.UpToDate : AppUpdateState.Ready;
+                _error = ex.Message;
+            }
+            RaiseChanged();
+            throw;
+        }
+        return Status();
+    }
+
+    /// <summary>What the last update did, written by whoever applied it. A failure is shown until something else happens; the version stays ready to try again.</summary>
+    private void ReadLastResult()
+    {
+        var path = Path.Combine(UpdatesDir, AppUpdateResult.FileName);
+        try
+        {
+            if (!File.Exists(path)) return;
+            var result = GameShareJson.Deserialize<AppUpdateResult>(File.ReadAllText(path));
+            File.Delete(path);
+            if (result.Ok) _log.LogInformation("The update to GameShare {Version} succeeded", result.Version);
+            else
+            {
+                _log.LogWarning("The update to GameShare {Version} failed: {Error}", result.Version, result.Error);
+                lock (_lock) _lastApplyError = result.Error;
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Text.Json.JsonException)
+        {
+            _log.LogWarning("Could not read what the last update did: {Reason}", ex.Message);
+        }
     }
 
     // ---- downloading ----

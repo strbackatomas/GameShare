@@ -2,6 +2,7 @@ using Avalonia;
 using GameShare.Agent;
 using GameShare.Client;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace GameShare.Standalone;
 
@@ -23,6 +24,9 @@ internal static class Program
             Environment.ExitCode = exitCode;
             return;
         }
+
+        // Started by the previous version after it put this one in place: wait until it has quit, then carry on as a normal start.
+        args = StandaloneUpdateApplier.AfterUpdate(args);
 
         WebApplication? hosted = null;
 
@@ -77,7 +81,9 @@ internal static class Program
             o.InitialGameRoots = [gamesRoot];
             // No installer sets trust up for a guest: a trust-public.key handed out next to this exe does (publish.ps1 puts it there).
             if (o.UseTrustKeyFileIn(AppContext.BaseDirectory) is { } note) Console.WriteLine($"GameShare: {note}");
-        }).ConfigureAwait(false);
+        }, configureServices: services =>
+            // Only a self-hosted instance updates itself. One that attached to an installed agent leaves that to the service.
+            services.AddSingleton<IAppUpdateApplier>(new StandaloneUpdateApplier(App.RequestExit))).ConfigureAwait(false);
         await app.StartAsync().ConfigureAwait(false);
         return app;
     }

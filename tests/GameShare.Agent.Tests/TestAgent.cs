@@ -20,6 +20,7 @@ internal sealed class TestAgent : IAsyncDisposable
 
     private WebApplication _app = null!;
     private readonly Action<AgentOptions> _configure;
+    private Action<IServiceCollection>? _services;
 
     public string Name { get; }
     public string Dir { get; }
@@ -68,9 +69,9 @@ internal sealed class TestAgent : IAsyncDisposable
     /// <param name="preloadGame">Put a fake game in the game folder before the agent starts, so its first scan finds it.</param>
     public static async Task<TestAgent> StartAsync(
         string name, int discoveryPort, bool preloadGame = false, long bigFileBytes = 20_000_000, string? existingDir = null,
-        Action<AgentOptions>? tweak = null, Action<string>? customiseGame = null)
+        Action<AgentOptions>? tweak = null, Action<string>? customiseGame = null, Action<IServiceCollection>? services = null)
     {
-        var agent = new TestAgent(name, existingDir ?? TestGame.NewTempDir(), discoveryPort, tweak);
+        var agent = new TestAgent(name, existingDir ?? TestGame.NewTempDir(), discoveryPort, tweak) { _services = services };
         if (preloadGame)
         {
             using var template = new TestGame(largeFileBytes: bigFileBytes);
@@ -84,7 +85,7 @@ internal sealed class TestAgent : IAsyncDisposable
 
     private async Task BootAsync()
     {
-        _app = await AgentHost.BuildAsync([], _configure);
+        _app = await AgentHost.BuildAsync([], _configure, configureServices: _services);
         await _app.StartAsync();
     }
 

@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using GameShare.Protocol;
 using GameShare.Storage;
 using GameShare.Torrent;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace GameShare.Agent.Tests;
 
@@ -56,9 +57,10 @@ public sealed class AppUpdateTests : IAsyncDisposable
 
     private async Task<TestAgent> StartAsync(
         string running = "0.4.3", string? flavor = AppFlavors.Agent, string? existingDir = null, int? discoveryPort = null,
-        bool withSource = true, TimeSpan? internetDelay = null, string? installDir = null)
+        bool withSource = true, TimeSpan? internetDelay = null, string? installDir = null, IAppUpdateApplier? applier = null)
     {
-        var agent = await TestAgent.StartAsync("updater", discoveryPort ?? TestAgent.DiscoveryPort(), existingDir: existingDir, tweak: o =>
+        var agent = await TestAgent.StartAsync("updater", discoveryPort ?? TestAgent.DiscoveryPort(), existingDir: existingDir,
+            services: applier is null ? null : s => s.AddSingleton(applier), tweak: o =>
         {
             o.UpdateSource = withSource ? _source : "";
             o.UpdatePublicKey = _key.PublicKey;
@@ -206,6 +208,127 @@ public sealed class AppUpdateTests : IAsyncDisposable
         Assert.Equal(AppUpdateState.Disabled, status.State);
         Assert.Contains("publish.ps1", status.DisabledReason);
         Assert.False(Directory.Exists(Path.Combine(agent.Dir, "data", AppUpdateService.FolderName)));
+    }
+
+    // ---- applying ----
+
+    /// <summary>Records what it was asked to do instead of replacing anything.</summary>
+    private sealed class FakeApplier : IAppUpdateApplier
+    {
+        public string? Refuse { get; set; }
+        public Exception? Fail { get; set; }
+        public List<AppUpdateApplyContext> Applied { get; } = [];
+
+        public string? CannotApplyReason(AppUpdateService.StagedRelease staged) => Refuse;
+
+        public Task ApplyAsync(AppUpdateApplyContext context, CancellationToken ct)
+        {
+            if (Fail is not null) throw Fail;
+            Applied.Add(context);
+            return Task.CompletedTask;
+        }
+    }
+
+    [Fact]
+    public async Task An_agent_that_is_not_the_installed_service_says_it_cannot_apply_and_why()
+    {
+        await PublishAsync("0.5.0");
+        var agent = await StartAsync();
+
+        var status = await WaitForAsync(agent, s => s.State == AppUpdateState.Ready);
+
+        Assert.False(status.CanApply);
+        Assert.Contains("služba Windows", status.CannotApplyReason);
+        Assert.Equal(System.Net.HttpStatusCode.Conflict, (await agent.SendAsync(HttpMethod.Post, "/api/app-update/apply")).StatusCode);
+    }
+
+    [Fact]
+    public async Task Applying_hands_the_checked_package_to_the_builds_applier()
+    {
+        await PublishAsync("0.5.0");
+        var applier = new FakeApplier();
+        var agent = await StartAsync(applier: applier);
+        var ready = await WaitForAsync(agent, s => s.State == AppUpdateState.Ready);
+        Assert.True(ready.CanApply);
+
+        var response = await agent.SendAsync(HttpMethod.Post, "/api/app-update/apply");
+
+        Assert.Equal(System.Net.HttpStatusCode.Accepted, response.StatusCode);
+        var context = Assert.Single(applier.Applied);
+        Assert.Equal("0.5.0", context.Staged.Release.Version);
+        Assert.Equal(Path.Combine(VersionDir(agent, "0.5.0"), "GameShare-Update-agent"), context.Staged.PackageDir);
+        Assert.Null(context.PreviousFiles); // installed by hand, its package is not here
+        Assert.Equal(AppUpdateState.Applying, (await agent.GetAsync<AppUpdateStatusDto>("/api/app-update")).State);
+    }
+
+    [Fact]
+    public async Task A_package_changed_on_disk_after_it_was_checked_is_never_applied_and_is_fetched_again()
+    {
+        await PublishAsync("0.5.0");
+        var applier = new FakeApplier();
+        var agent = await StartAsync(applier: applier);
+        await WaitForAsync(agent, s => s.State == AppUpdateState.Ready);
+        File.AppendAllText(Path.Combine(VersionDir(agent, "0.5.0"), "GameShare-Update-agent", "GameShare.Agent.exe"), "planted");
+
+        var response = await agent.SendAsync(HttpMethod.Post, "/api/app-update/apply");
+
+        Assert.Equal(System.Net.HttpStatusCode.UnprocessableEntity, response.StatusCode);
+        Assert.Empty(applier.Applied);
+        Assert.False(Directory.Exists(VersionDir(agent, "0.5.0")));
+        var status = await agent.GetAsync<AppUpdateStatusDto>("/api/app-update");
+        Assert.NotEqual(AppUpdateState.Ready, status.State);
+        Assert.Contains("změnily", status.Error);
+    }
+
+    [Fact]
+    public async Task A_failure_of_the_applier_leaves_the_version_ready_to_try_again_with_the_reason()
+    {
+        await PublishAsync("0.5.0");
+        var applier = new FakeApplier { Fail = new IOException("disk full") };
+        var agent = await StartAsync(applier: applier);
+        await WaitForAsync(agent, s => s.State == AppUpdateState.Ready);
+
+        await agent.SendAsync(HttpMethod.Post, "/api/app-update/apply");
+
+        var status = await agent.GetAsync<AppUpdateStatusDto>("/api/app-update");
+        Assert.Equal(AppUpdateState.Ready, status.State);
+        Assert.True(status.CanApply);
+        Assert.Equal("disk full", status.Error);
+    }
+
+    [Fact]
+    public async Task The_outcome_of_the_last_update_is_shown_by_the_agent_that_starts_next()
+    {
+        var dir = TestGame.NewTempDir();
+        var updates = Path.Combine(dir, "data", AppUpdateService.FolderName);
+        Directory.CreateDirectory(updates);
+        File.WriteAllText(Path.Combine(updates, AppUpdateResult.FileName),
+            GameShareJson.Serialize(new AppUpdateResult("0.5.0", false, "Verze 0.5.0 se nerozběhla, vrátila se předchozí.", DateTimeOffset.UtcNow)));
+
+        var agent = await StartAsync(existingDir: dir);
+
+        var status = await WaitForAsync(agent, s => s.LastChecked is not null);
+        Assert.Contains("nerozběhla", status.Error);
+        Assert.False(File.Exists(Path.Combine(updates, AppUpdateResult.FileName)));
+    }
+
+    [Fact]
+    public async Task After_an_update_the_old_files_are_named_when_the_next_one_is_applied()
+    {
+        await PublishAsync("0.5.0");
+        var first = await StartAsync(running: "0.4.3");
+        await WaitForAsync(first, s => s.State == AppUpdateState.Ready);
+        await first.StopAsync();
+        _agents.Remove(first);
+        await PublishAsync("0.6.0");
+        var applier = new FakeApplier();
+
+        var after = await StartAsync(running: "0.5.0", existingDir: first.Dir, applier: applier); // 0.5.0 was applied, 0.6.0 is out
+        await WaitForAsync(after, s => s.State == AppUpdateState.Ready && s.Version == "0.6.0");
+        await after.SendAsync(HttpMethod.Post, "/api/app-update/apply");
+
+        var context = Assert.Single(applier.Applied);
+        Assert.Equal(["Client/GameShare.exe", "GameShare.Agent.exe"], context.PreviousFiles);
     }
 
     // ---- the LAN ----

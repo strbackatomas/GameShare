@@ -1,5 +1,8 @@
 using GameShare.Agent;
 
+// Started from a downloaded and checked package to put that version in place of the service: only that, no agent.
+if (AppUpdateHelper.TryRun(args) is { } exitCode) return exitCode;
+
 try
 {
     var app = await AgentHost.BuildAsync(args);
