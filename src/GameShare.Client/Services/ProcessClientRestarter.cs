@@ -1,20 +1,26 @@
 using System.Diagnostics;
+using System.Reflection;
 
 namespace GameShare.Client.Services;
 
 /// <summary>Restarts the client from its own program file, which an update of the service replaced while it ran.</summary>
 public sealed class ProcessClientRestarter : IClientRestarter
 {
+    /// <remarks>
+    /// Read from the client's assembly metadata, not from the version resource of its exe: asked about its own running exe, Windows
+    /// answers from the image loaded in memory, which is the old version however the file on disk changed. Null for the portable
+    /// single-file build, which has no assembly file of its own on disk and restarts itself anyway.
+    /// </remarks>
     public string? VersionOnDisk()
     {
         try
         {
-            if (Environment.ProcessPath is not { } exe || !File.Exists(exe)) return null;
-            var info = FileVersionInfo.GetVersionInfo(exe);
+            var dll = typeof(ProcessClientRestarter).Assembly.Location;
+            if (string.IsNullOrEmpty(dll) || !File.Exists(dll)) return null;
             // Written by the build from the one <Version>, as MAJOR.MINOR.PATCH.0; the fourth part is always 0.
-            return Version.TryParse(info.FileVersion, out var v) ? $"{v.Major}.{v.Minor}.{Math.Max(v.Build, 0)}" : null;
+            return AssemblyName.GetAssemblyName(dll).Version is { } v ? $"{v.Major}.{v.Minor}.{Math.Max(v.Build, 0)}" : null;
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return null; }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or BadImageFormatException) { return null; }
     }
 
     public void Restart()

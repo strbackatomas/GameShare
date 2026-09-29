@@ -89,6 +89,13 @@ internal sealed class TestAgent : IAsyncDisposable
         await _app.StartAsync();
     }
 
+    /// <summary>Stops the agent and starts it again on the same folders and ports, as restarting the service does.</summary>
+    public async Task RestartAsync()
+    {
+        await StopAsync();
+        await BootAsync();
+    }
+
     /// <summary>Graceful stop, like stopping the Windows service. Sends a goodbye and saves resume data.</summary>
     public async Task StopAsync()
     {

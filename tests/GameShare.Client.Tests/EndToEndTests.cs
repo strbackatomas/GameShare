@@ -146,4 +146,19 @@ public class EndToEndTests
         Assert.NotEmpty(app.ConnectionText);
         Assert.Single(main.Library.MyGames); // what it knew stays on screen, greyed by the banner rather than blanked
     }
+
+    [Fact]
+    public async Task After_the_agent_restarts_the_window_connects_again_by_itself()
+    {
+        // A service that stops gracefully closes the live connection cleanly, which automatic reconnect does not cover.
+        // An update of the service is exactly that, and the window has to see the new version to restart into it.
+        await using var pc = await TestAgent.StartAsync("PC-01", TestAgent.DiscoveryPort());
+        var (app, _, ui) = await ConnectAsync(pc);
+        await using var _ = app;
+        await ui.UntilAsync(() => app.IsConnected, "the first connection");
+
+        await pc.RestartAsync();
+
+        await ui.UntilAsync(() => app.IsConnected && app.ConnectionText == "Připojeno", "the client to reconnect by itself", 30_000);
+    }
 }
