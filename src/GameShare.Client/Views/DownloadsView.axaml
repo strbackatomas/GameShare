@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:GameShare.Client.ViewModels"
+             xmlns:v="using:GameShare.Client.Views"
              x:Class="GameShare.Client.Views.DownloadsView"
              x:DataType="vm:DownloadsViewModel">
 
@@ -46,6 +47,19 @@
 
             <TextBlock Classes="section" Text="STAHOVÁNÍ" Margin="0,16,0,0" IsVisible="{Binding HasUploads}" />
 
+            <!-- Total download speed of the last minutes, like Steam's. Appears with the first download and stays for the session. -->
+            <Border Classes="card" IsVisible="{Binding App.DownloadSpeed.HasSamples}">
+                <StackPanel Spacing="8">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Grid.Column="0" Text="Rychlost stahování" Classes="title" />
+                        <TextBlock Grid.Column="1" Text="posledních 5 minut" Classes="muted" FontSize="12" VerticalAlignment="Center" />
+                    </Grid>
+                    <v:SpeedGraph History="{Binding App.DownloadSpeed}" Height="110"
+                                  Stroke="{StaticResource AccentBrush}" Grid="{StaticResource LineBrush}" />
+                    <TextBlock Text="{Binding App.DownloadSpeed.StatsText}" FontSize="12" />
+                </StackPanel>
+            </Border>
+
             <TextBlock Classes="muted" HorizontalAlignment="Center" Margin="0,40" TextAlignment="Center"
                        IsVisible="{Binding !Downloads.Count}" Text="Nic se právě nestahuje." />
 
@@ -76,6 +90,8 @@
 
                                 <StackPanel Grid.Row="1" Grid.ColumnSpan="2" Margin="0,12,0,0" Spacing="6" IsVisible="{Binding HasProgress}">
                                     <ProgressBar Value="{Binding Percent}" Maximum="100" />
+                                    <v:SpeedGraph History="{Binding History}" Height="44" IsVisible="{Binding History.HasSamples}"
+                                                  Stroke="{StaticResource BadgeBrush}" Grid="{StaticResource LineBrush}" />
                                     <Grid ColumnDefinitions="Auto,*,Auto">
                                         <TextBlock Grid.Column="0" Text="{Binding PercentText}" FontWeight="SemiBold" />
                                         <TextBlock Grid.Column="1" Text="{Binding SizeText}" Classes="muted" Margin="12,0,0,0" />
@@ -84,6 +100,7 @@
                                             <TextBlock Text="{Binding EtaText}" Classes="muted" />
                                         </StackPanel>
                                     </Grid>
+                                    <TextBlock Text="{Binding History.StatsText}" Classes="muted" FontSize="12" IsVisible="{Binding History.HasSamples}" />
                                 </StackPanel>
 
                                 <TextBlock Grid.Row="1" Grid.ColumnSpan="2" Text="{Binding StatsText}" Classes="muted" Margin="0,10,0,0" IsVisible="{Binding IsFinished}" />

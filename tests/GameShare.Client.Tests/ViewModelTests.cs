@@ -1005,6 +1005,56 @@ public class DownloadsTests
     }
 
     [Fact]
+    public void Speed_history_keeps_one_sample_a_second_and_the_average_and_maximum_of_all_of_them()
+    {
+        var h = new SpeedHistory();
+        var t = new DateTime(2026, 9, 29, 14, 0, 0, DateTimeKind.Utc);
+        Assert.False(h.HasSamples);
+
+        h.Add(t, 10_000_000);
+        h.Add(t.AddMilliseconds(500), 30_000_000); // same second: replaces, the agent reports twice a second
+        h.Add(t.AddSeconds(1), 10_000_000);
+        h.Add(t.AddSeconds(2), 0);
+
+        Assert.Equal([30_000_000L, 10_000_000, 0], h.Values);
+        Assert.Equal(0, h.Current);
+        Assert.Equal(40_000_000 / 3, h.Average);
+        Assert.Equal(30_000_000, h.Peak);
+        Assert.Equal("Aktuálně 0 B/s · průměr 12,7 MB/s · maximum 28,6 MB/s", h.StatsText);
+
+        for (int s = 3; s < SpeedHistory.Capacity + 10; s++) h.Add(t.AddSeconds(s), 1_000);
+        Assert.Equal(SpeedHistory.Capacity, h.Values.Count); // the graph scrolls, oldest seconds drop off
+        Assert.Equal(30_000_000, h.Peak); // but the maximum remembers them
+    }
+
+    [Fact]
+    public async Task The_total_speed_graph_adds_up_all_downloads_and_each_download_keeps_its_own()
+    {
+        var (main, app, _, events) = await StartAsync(
+            Download(1, A, "BeamNG.drive", "Downloading", 10),
+            Download(2, B, "GTA V", "Downloading", 20));
+        var t = new DateTime(2026, 9, 29, 14, 0, 0, DateTimeKind.Utc);
+
+        app.Now = () => t;
+        events.Raise(GameShareEvents.DownloadProgress, Download(1, A, "BeamNG.drive", "Downloading", 11, speed: 20_000_000, sources: [("PC01", 20_000_000)]));
+        events.Raise(GameShareEvents.DownloadProgress, Download(2, B, "GTA V", "Downloading", 21, speed: 40_000, sources: [("PC01", 40_000)]));
+        app.Now = () => t.AddSeconds(1);
+        events.Raise(GameShareEvents.DownloadProgress, Download(1, A, "BeamNG.drive", "Downloading", 12, speed: 0, sources: [("PC01", 0)]));
+
+        Assert.Equal([20_040_000L, 40_000], app.DownloadSpeed.Values);
+        var gta = main.Downloads.Downloads.Single(d => d.Id == 2);
+        Assert.Equal(40_000, gta.History.Peak);
+        Assert.Equal(20_000_000, main.Downloads.Downloads.Single(d => d.Id == 1).History.Peak);
+
+        // Nothing downloading any more: the total graph stops instead of drawing a flat line for as long as the window is open.
+        events.Raise(GameShareEvents.DownloadPaused, Download(1, A, "BeamNG.drive", "Paused", 12));
+        events.Raise(GameShareEvents.DownloadPaused, Download(2, B, "GTA V", "Paused", 21));
+        app.Now = () => t.AddSeconds(5);
+        events.Raise(GameShareEvents.DownloadPaused, Download(2, B, "GTA V", "Paused", 21));
+        Assert.Equal(2, app.DownloadSpeed.Values.Count);
+    }
+
+    [Fact]
     public async Task A_new_download_appears_on_top_and_a_cancelled_one_disappears()
     {
         var (main, app, _, events) = await StartAsync(Download(1, A, "BeamNG.drive", "Downloading", 10));

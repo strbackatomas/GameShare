@@ -180,6 +180,31 @@ public class RenderTests
         Assert.True(DistinctColours(frame) > 200);
     }
 
+    /// <summary>Two games taking turns, the way a busy source hands out its speed: the total stays up while each one rises and falls.</summary>
+    [AvaloniaFact]
+    public async Task Downloads_page_draws_the_speed_graphs()
+    {
+        var agent = Populated();
+        var events = new FakeEvents();
+        var app = new AppModel(agent, events, new ImmediateDispatcher());
+        var main = new MainViewModel(app);
+        await app.StartAsync();
+
+        var start = new DateTime(2026, 9, 29, 14, 0, 0, DateTimeKind.Utc);
+        for (int s = 0; s < 240; s++)
+        {
+            app.Now = () => start.AddSeconds(s);
+            long first = (long)(20_000_000 * (0.5 + 0.5 * Math.Cos(s / 30.0)));
+            events.Raise(GameShareEvents.DownloadProgress, Download(3, B, "Grand Theft Auto V", "Downloading", 54, speed: first, sources: [("PC-01", first)]));
+            events.Raise(GameShareEvents.DownloadProgress, Download(4, D, "Assetto Corsa", "Downloading", 20, speed: 20_000_000 - first, sources: [("PC-01", 20_000_000 - first)]));
+        }
+
+        var frame = await ShowAsync(main, "Přenosy", "downloads-graph.png");
+        Assert.True(DistinctColours(frame) > 200);
+        Assert.Equal(240, app.DownloadSpeed.Values.Count);
+        Assert.InRange(app.DownloadSpeed.Peak, 19_000_000, 20_000_000); // the two add up to the total all along
+    }
+
     [AvaloniaFact]
     public async Task Network_page_lists_the_other_pcs()
     {

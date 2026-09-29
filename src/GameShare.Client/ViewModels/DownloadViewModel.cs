@@ -54,6 +54,12 @@ public sealed partial class DownloadViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(HasMessage))]
     public partial string? Message { get; set; }
 
+    /// <summary>Download speed as the agent reported it last, in bytes per second.</summary>
+    public long Speed { get; private set; }
+
+    /// <summary>This download's speed over the last minutes, for its own small graph.</summary>
+    public SpeedHistory History { get; } = new();
+
     /// <summary>Where the data comes from right now, with each source's speed.</summary>
     public ObservableCollection<PeerSpeed> Sources { get; } = [];
 
@@ -98,6 +104,8 @@ public sealed partial class DownloadViewModel : ViewModelBase
         Percent = d.Percent;
         PercentText = Format.Percent(d.Percent);
         SizeText = $"{Format.Size(d.BytesDone)} z {Format.Size(d.BytesTotal)}";
+        Speed = IsRunning ? d.SpeedBytesPerSecond : 0;
+        if (d.State == "Downloading") History.Add(_app.Now(), Speed);
         SpeedText = IsRunning && !IsWaitingForSource ? Format.Speed(d.SpeedBytesPerSecond) : "";
         EtaText = IsWaitingForSource ? "žádné PC se hrou není připojené"
             : IsRunning ? Format.Eta(d.EtaSeconds) : "";

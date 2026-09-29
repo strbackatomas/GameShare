@@ -164,6 +164,12 @@ public sealed partial class AppModel : ViewModelBase, IAsyncDisposable
     }
 
     /// <summary>Downloads that are running or paused. Drives the badge on the navigation bar.</summary>
+    /// <summary>Total speed of everything this PC downloads, for the graph above the downloads. Recorded only while something downloads.</summary>
+    public SpeedHistory DownloadSpeed { get; } = new();
+
+    /// <summary>The clock the speed graphs go by. Tests set their own.</summary>
+    internal Func<DateTime> Now { get; set; } = () => DateTime.UtcNow;
+
     public int ActiveDownloadCount => Downloads.Count(d => d.HasProgress);
 
     /// <summary>Raised after games were added, removed or changed state, so lists built from them can be rebuilt.</summary>
@@ -243,6 +249,7 @@ public sealed partial class AppModel : ViewModelBase, IAsyncDisposable
             case DownloadDto d when e.Name == GameShareEvents.DownloadCancelled: RemoveDownload(d.Id); break;
             case DownloadDto d:
                 UpsertDownload(d);
+                RecordDownloadSpeed();
                 break;
 
             case AppUpdateStatusDto u: AppUpdate = u; break;
@@ -308,6 +315,13 @@ public sealed partial class AppModel : ViewModelBase, IAsyncDisposable
             ResortDownloads();
             OnPropertyChanged(nameof(ActiveDownloadCount));
         }
+    }
+
+    /// <summary>One sample of the total speed. Each download reports on its own, so this sums the latest report of every one of them.</summary>
+    private void RecordDownloadSpeed()
+    {
+        if (Downloads.Any(v => v.State == "Downloading"))
+            DownloadSpeed.Add(Now(), Downloads.Sum(v => v.Speed));
     }
 
     /// <summary>What is happening now first, newest first within each group. Moves only what is out of place.</summary>

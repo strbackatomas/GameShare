@@ -8,6 +8,10 @@ this is wired into the build and where a peer's version shows up.
 
 ## [Unreleased]
 
+### Added
+- A graph of the download speed over the last 5 minutes on the Přenosy page, with the current, average and highest speed, like
+  Steam's. Each download has a small one of its own, so it shows which game gets the speed when several download at once.
+
 ### Fixed
 - Sending several games at once to the same PC kept breaking off. A game that waited its turn for 20 seconds counted as idle, its
   seed let go of its files and so disconnected that PC, which dropped out of the list of where the game goes and stalled until it
