@@ -88,7 +88,7 @@ public static partial class LocalApi
 
         // GameShare itself: whether a newer version is known, downloading or ready. Checking asks the configured places again now.
         api.MapGet("/app-update", (AppUpdateService updates) => updates.Status());
-        api.MapPost("/app-update/check", async (AppUpdateService updates, CancellationToken ct) => await updates.CheckAsync(ct));
+        api.MapPost("/app-update/check", async (AppUpdateService updates, CancellationToken ct) => await updates.CheckNowAsync(ct));
         // Puts the version that is ready in place. The agent stops and comes back as the new version, the client reconnects.
         api.MapPost("/app-update/apply", async (AppUpdateService updates, CancellationToken ct) => Results.Accepted(value: await updates.ApplyAsync(ct)));
 

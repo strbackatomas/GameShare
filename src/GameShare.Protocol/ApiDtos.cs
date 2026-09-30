@@ -307,10 +307,13 @@ public enum AppUpdateState
 /// <param name="Error">The last thing that went wrong, looking for it or downloading it. What was already here stays usable.</param>
 /// <param name="CanApply">Whether putting it in place can be asked for now.</param>
 /// <param name="CannotApplyReason">Why not, when it is <see cref="AppUpdateState.Ready"/> but cannot be applied here.</param>
+/// <param name="WaitingForLanUntil">
+/// While <see cref="AppUpdateState.Downloading"/>: found on the internet, and waited for until then in case a PC on the LAN gets it first.
+/// </param>
 public sealed record AppUpdateStatusDto(
     string CurrentVersion, string? Flavor, AppUpdateState State, string? Version, string? Notes, DateTimeOffset? ReleasedAt,
     long BytesDone, long BytesTotal, string? Source, string? Error, DateTimeOffset? LastChecked,
-    bool CanApply, string? CannotApplyReason, string? DisabledReason);
+    bool CanApply, string? CannotApplyReason, string? DisabledReason, DateTimeOffset? WaitingForLanUntil = null);
 
 // ---- Agent to agent API, served to other PCs on the LAN ----
 

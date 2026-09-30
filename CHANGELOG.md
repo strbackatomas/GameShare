@@ -8,6 +8,13 @@ this is wired into the build and where a peer's version shows up.
 
 ## [Unreleased]
 
+### Fixed
+- Looking for updates showed the version that was ready already (0.6.4) at 0 % while a newer one (0.6.5) was on its way. It
+  now shows the one coming in.
+- A version found on the internet waits up to 10 minutes for a PC on the LAN to get it first, so a LAN party fetches it once.
+  That wait stood at 0 % without a word. The settings now say until when it waits, and "Zkontrolovat aktualizace" fetches it
+  from the internet at once: someone who asked is not thirty PCs finding it at the same time.
+
 ## [0.6.5] - 2026-09-30
 
 ### Fixed

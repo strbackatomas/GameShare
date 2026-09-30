@@ -367,6 +367,38 @@ public sealed class AppUpdateTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task While_it_waits_for_the_lan_it_says_so_and_asking_to_check_fetches_it_from_the_internet_at_once()
+    {
+        await PublishAsync("0.5.0");
+        var agent = await StartAsync(internetDelay: TimeSpan.FromHours(1));
+
+        var waiting = await WaitForAsync(agent, s => s.WaitingForLanUntil is not null);
+        Assert.Equal((AppUpdateState.Downloading, "0.5.0"), (waiting.State, waiting.Version));
+        Assert.True(waiting.WaitingForLanUntil > DateTimeOffset.UtcNow);
+
+        (await agent.SendAsync(HttpMethod.Post, "/api/app-update/check")).EnsureSuccessStatusCode();
+
+        var ready = await WaitForAsync(agent, s => s.State == AppUpdateState.Ready);
+        Assert.Equal("0.5.0", ready.Version);
+        Assert.Null(ready.WaitingForLanUntil);
+    }
+
+    [Fact]
+    public async Task A_newer_version_coming_in_while_another_is_ready_is_the_one_shown()
+    {
+        await PublishAsync("0.5.0");
+        var agent = await StartAsync();
+        await WaitForAsync(agent, s => s.State == AppUpdateState.Ready && s.Version == "0.5.0");
+        await agent.StopAsync();
+
+        await PublishAsync("0.6.0");
+        var again = await StartAsync(existingDir: agent.Dir, internetDelay: TimeSpan.FromHours(1));
+
+        var status = await WaitForAsync(again, s => s.State == AppUpdateState.Downloading);
+        Assert.Equal("0.6.0", status.Version); // not 0.5.0, which is ready but is not what the percentage is about
+    }
+
+    [Fact]
     public async Task Files_the_running_program_already_has_are_copied_and_not_downloaded()
     {
         await PublishAsync("0.5.0");

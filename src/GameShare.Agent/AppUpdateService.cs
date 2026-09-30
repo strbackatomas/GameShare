@@ -64,6 +64,9 @@ public sealed class AppUpdateService
     private string? _lastApplyError; // from the result the last update left, shown until the next attempt
     private DateTimeOffset? _lastChecked;
     private Task? _download;
+    private DateTimeOffset? _waitingUntil;
+    /// <summary>The user asked to look now, so a download waiting for the LAN goes to the internet at once.</summary>
+    private volatile bool _hurry;
     private CancellationToken _stopping;
 
     /// <summary>Versions of this build some PC on the LAN offered, and when it last did.</summary>
@@ -115,12 +118,16 @@ public sealed class AppUpdateService
     {
         lock (_lock)
         {
-            var release = _ready?.Release ?? _known?.Release;
+            // While a newer one comes in, that is the one to show, not the one that is ready already.
+            var downloading = _state == AppUpdateState.Downloading && _known is not null;
+            var release = downloading ? _known!.Release : _ready?.Release ?? _known?.Release;
+            var source = downloading ? _known!.Source : _ready is not null ? _ready.Source : _known?.Source;
             var cannot = _ready is not null && _state == AppUpdateState.Ready ? _applier.CannotApplyReason(_ready) : null;
             return new AppUpdateStatusDto(
                 _options.RunningVersion, _options.UpdateFlavor, _state, release?.Version, release?.Notes, release?.ReleasedAt,
-                _done, _total, _ready is not null ? _ready.Source : _known?.Source, _lastApplyError ?? _error, _lastChecked,
-                CanApply: _ready is not null && _state == AppUpdateState.Ready && cannot is null, cannot, DisabledReason);
+                _done, _total, source, _lastApplyError ?? _error, _lastChecked,
+                CanApply: _ready is not null && _state == AppUpdateState.Ready && cannot is null, cannot, DisabledReason,
+                downloading ? _waitingUntil : null);
         }
     }
 
@@ -247,6 +254,17 @@ public sealed class AppUpdateService
             return SemVer.IsNewer(version, _options.RunningVersion)
                 && (_ready is null || SemVer.IsNewer(version, _ready.Release.Version))
                 && _download is null;
+    }
+
+    /// <summary>
+    /// The user asked to look now: as <see cref="CheckAsync"/>, and a version found on the internet is fetched from there at once, not
+    /// after waiting for a PC on the LAN to get it first. That wait is for thirty PCs finding it at the same time, not for someone waiting.
+    /// </summary>
+    public async Task<AppUpdateStatusDto> CheckNowAsync(CancellationToken ct = default)
+    {
+        _hurry = true;
+        try { return await CheckAsync(ct).ConfigureAwait(false); }
+        finally { lock (_lock) if (_download is null) _hurry = false; } // nothing to hurry: the next one found by itself waits as usual
     }
 
     /// <summary>Asks every configured place for the release of this build. A failure never throws, it is recorded in the status.</summary>
@@ -476,11 +494,13 @@ public sealed class AppUpdateService
             lock (_lock)
             {
                 _download = null;
+                _waitingUntil = null;
                 _state = _ready is null ? AppUpdateState.Available : AppUpdateState.Ready;
                 _error = ct.IsCancellationRequested ? null : $"Stažení verze {release.Version} se nepovedlo: {(ex is TaskCanceledException ? "zdroj přestal odpovídat." : ex.Message)}";
             }
             if (!ct.IsCancellationRequested) _log.LogWarning("Downloading GameShare {Version} failed, it is tried again later: {Reason}", release.Version, ex.Message);
         }
+        _hurry = false;
         RaiseChanged();
     }
 
@@ -521,8 +541,20 @@ public sealed class AppUpdateService
     {
         var wait = TimeSpan.FromMilliseconds(Random.Shared.NextDouble() * _options.UpdateInternetDelay.TotalMilliseconds);
         var until = _time.GetUtcNow() + wait;
-        while (_time.GetUtcNow() < until && !OnLan(version))
-            await Task.Delay(TimeSpan.FromMilliseconds(Math.Min(1000, Math.Max(1, (until - _time.GetUtcNow()).TotalMilliseconds))), _time, ct).ConfigureAwait(false);
+        if (_hurry || wait < TimeSpan.FromSeconds(1)) return;
+        lock (_lock) _waitingUntil = until;
+        RaiseChanged();
+        _log.LogInformation("Waiting until {Until:HH:mm:ss} for a PC on the LAN to get GameShare {Version}, then it comes from the internet", until.ToLocalTime(), version);
+        try
+        {
+            while (_time.GetUtcNow() < until && !OnLan(version) && !_hurry)
+                await Task.Delay(TimeSpan.FromMilliseconds(Math.Min(1000, Math.Max(1, (until - _time.GetUtcNow()).TotalMilliseconds))), _time, ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            lock (_lock) _waitingUntil = null;
+            RaiseChanged();
+        }
     }
 
     /// <summary>The package over the transfer port from the PCs that hold it, into <paramref name="savePath"/>, over what <see cref="PrefillAsync"/> put there.</summary>

@@ -46,6 +46,20 @@ public class AppUpdateViewModelTests
     }
 
     [Fact]
+    public async Task A_version_waiting_for_the_lan_says_until_when_instead_of_standing_at_zero_percent()
+    {
+        var (app, agent, _, _) = Create();
+        var until = new DateTimeOffset(2026, 9, 30, 12, 37, 0, TimeZoneInfo.Local.GetUtcOffset(new DateTime(2026, 9, 30)));
+        agent.AppUpdate = Status(AppUpdateState.Downloading, version: "0.6.5", total: 100) with { WaitingForLanUntil = until };
+        await app.StartAsync();
+
+        Assert.Contains("0.6.5", app.UpdateText);
+        Assert.Contains("12:37", app.UpdateText);
+        Assert.Contains("Zkontrolovat aktualizace", app.UpdateText);
+        Assert.DoesNotContain("0 %", app.UpdateText);
+    }
+
+    [Fact]
     public async Task A_version_that_cannot_be_applied_here_says_why_and_offers_no_button()
     {
         var (app, agent, _, _) = Create();

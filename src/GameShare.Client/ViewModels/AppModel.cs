@@ -112,6 +112,8 @@ public sealed partial class AppModel : ViewModelBase, IAsyncDisposable
             AppUpdateState.Disabled => u.DisabledReason ?? "Toto sestavení se samo neaktualizuje.",
             AppUpdateState.UpToDate => "Máš nejnovější verzi." + (u.LastChecked is { } at ? $" Naposledy ověřeno {Format.Date(at)}." : ""),
             AppUpdateState.Available => $"Je k dispozici verze {u.Version}, stažení se zkusí znovu.",
+            AppUpdateState.Downloading when u.WaitingForLanUntil is { } until =>
+                $"Je venku verze {u.Version}. Do {until.ToLocalTime():HH:mm} čekám, jestli ji nemá některé PC v síti, pak ji stáhnu z internetu. Zkontrolovat aktualizace ji stáhne hned.",
             AppUpdateState.Downloading => $"Stahuji verzi {u.Version}{FromWhere(u.Source)}: {Format.Percent(u.BytesTotal > 0 ? 100.0 * u.BytesDone / u.BytesTotal : 0)}.",
             AppUpdateState.Ready => $"Verze {u.Version} je stažená a ověřená." + (u.CannotApplyReason is { } why ? $" {why}" : " Nainstaluje se, až klikneš na Aktualizovat."),
             AppUpdateState.Applying => $"Instaluji verzi {u.Version}. GameShare se za chvíli restartuje.",
