@@ -8,6 +8,8 @@ this is wired into the build and where a peer's version shows up.
 
 ## [Unreleased]
 
+## [0.6.5] - 2026-09-30
+
 ### Fixed
 - A PC that had the shared redistributables package kept its old definition when the administrator fixed and signed a new
   one, so every game there went on running the old installers (and with Require refused to prepare at all). As for a game,
