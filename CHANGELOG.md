@@ -8,6 +8,8 @@ this is wired into the build and where a peer's version shows up.
 
 ## [Unreleased]
 
+## [0.6.2] - 2026-09-30
+
 ### Changed
 - A game's card in the library says what its download does and which phase it is in, like the Downloads page:
   "Instalace · Stahuje se · 42 % · 12 MB/s", "Aktualizace · Pozastaveno", "Instalace · Ověřuji soubory". It said
