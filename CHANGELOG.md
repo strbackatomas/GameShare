@@ -8,6 +8,8 @@ this is wired into the build and where a peer's version shows up.
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-09-30
+
 ### Fixed
 - The portable exe started twice in quick succession ran two transfer engines on the same games, which could break off
   downloads and seeding. Started again, it now only brings up the window of the copy that is already running. A built-in
