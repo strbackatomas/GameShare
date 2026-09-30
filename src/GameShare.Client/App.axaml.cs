@@ -26,6 +26,13 @@ public partial class App : Application
         if (Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop) await TrayController.ShutdownAsync(desktop).ConfigureAwait(true);
     });
 
+    /// <summary>Brings the window up the way the tray's "Otevřít" does, from any thread. The portable build calls it when the exe is
+    /// started again while this copy runs.</summary>
+    public static void ShowMainWindow() => Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+    {
+        if (Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime { MainWindow: { } window }) TrayController.Restore(window);
+    });
+
     public override void Initialize() => AvaloniaXamlLoader.Load(this);
 
     public override void OnFrameworkInitializationCompleted()

@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using Avalonia;
 using GameShare.Agent;
 using GameShare.Client;
@@ -15,6 +16,10 @@ internal static class Program
 {
     private static readonly Uri LocalAgentUrl = new("http://127.0.0.1:47701"); // AgentOptions.LocalApiPort default
 
+    // Per signed-in user: a copy started by someone else on this PC still finds the agent through the probe below.
+    private const string InstanceName = @"Local\GameShare.LanParty";
+    private const string ShowWindowName = @"Local\GameShare.LanParty.ShowWindow";
+
     [STAThread]
     public static void Main(string[] args)
     {
@@ -27,6 +32,18 @@ internal static class Program
 
         // Started by the previous version after it put this one in place: wait until it has quit, then carry on as a normal start.
         args = StandaloneUpdateApplier.AfterUpdate(args);
+
+        // One copy at a time. The probe alone let a second copy started while the first was still starting host an agent too,
+        // which then ran next to the first one on the same data and game files. Started again, the exe only brings the window up.
+        using var instance = new Mutex(false, InstanceName, out var firstCopy);
+        using var showWindow = new EventWaitHandle(false, EventResetMode.AutoReset, ShowWindowName);
+        if (!firstCopy)
+        {
+            AllowSetForegroundWindow(AsfwAny); // this process was started by the user, so it may hand the foreground on
+            showWindow.Set();
+            return;
+        }
+        var showWindowWait = ThreadPool.RegisterWaitForSingleObject(showWindow, (_, _) => App.ShowMainWindow(), null, Timeout.Infinite, executeOnlyOnce: false);
 
         WebApplication? hosted = null;
 
@@ -53,10 +70,16 @@ internal static class Program
         };
 
         GameShare.Client.Program.BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
+        showWindowWait.Unregister(null);
     }
 
+    private const int AsfwAny = -1;
+
+    [DllImport("user32.dll")]
+    private static extern bool AllowSetForegroundWindow(int processId);
+
     /// <summary>True when something already answers as a GameShare agent on the fixed local port — for example the
-    /// real Windows-Service install on this same PC, or another copy of this exe started a moment ago. In that case
+    /// real Windows-Service install on this same PC, or this exe run by another user signed in here. In that case
     /// this process must not also try to bind the agent's ports, it just becomes a plain client of the existing one.</summary>
     private static async Task<bool> ProbeExistingAgentAsync()
     {
@@ -84,7 +107,18 @@ internal static class Program
         }, configureServices: services =>
             // Only a self-hosted instance updates itself. One that attached to an installed agent leaves that to the service.
             services.AddSingleton<IAppUpdateApplier>(new StandaloneUpdateApplier(App.RequestExit))).ConfigureAwait(false);
-        await app.StartAsync().ConfigureAwait(false);
+        try
+        {
+            await app.StartAsync().ConfigureAwait(false);
+        }
+        catch
+        {
+            // Background work starts before the ports are bound, so a failed start (a port taken) would leave a second agent
+            // seeding and downloading from the same files with nothing to stop it. Stop it here.
+            await app.StopAsync().ConfigureAwait(false);
+            await app.DisposeAsync().ConfigureAwait(false);
+            throw;
+        }
         return app;
     }
 }

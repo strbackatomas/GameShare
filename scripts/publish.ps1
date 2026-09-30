@@ -32,7 +32,8 @@ Write-Host "Building GameShare v$version`n"
 # $flavor names the build for the updater (agent, agent-net10, lanparty): a program takes only the update package of its own build.
 # The administrator's tools have none, they are not updated from the app.
 function Publish-App($project, $target, [bool]$selfContained, [bool]$singleFile = $false, [string]$flavor = '') {
-    if (Test-Path $target) { Remove-Item -Recurse -Force $target }
+    # Emptied, not deleted: a folder open in Explorer or a terminal cannot be removed, only its contents can.
+    if (Test-Path $target) { Get-ChildItem -Force $target | Remove-Item -Recurse -Force }
     $flag = if ($selfContained) { 'true' } else { 'false' }  # PowerShell would otherwise pass "True"/"False", dotnet wants lowercase
     # Built up from an empty array: "if (...) { @() }" yields $null, and adding a string to that makes one string, not a list.
     $extra = @()

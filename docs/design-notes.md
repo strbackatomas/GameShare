@@ -164,8 +164,13 @@ duplicating either.
 
 - **Probe before self-hosting.** On startup it asks `127.0.0.1:47701/api/status`. If something answers, this PC
   already has a real agent (the installed service, or another copy of this same exe started a moment ago) and the
-  process just becomes an ordinary thin client of it. Only when nothing answers does it host its own agent. This
-  also means launching the exe twice in a row is harmless: the second instance quietly attaches to the first.
+  process just becomes an ordinary thin client of it. Only when nothing answers does it host its own agent.
+- **One copy per signed-in user.** A named mutex (`Local\GameShare.LanParty`) is taken before the probe; a second launch
+  only signals the first copy to bring its window up, and quits. The probe alone was not enough: a copy started while
+  the first was still starting found nothing answering and hosted an agent too. That one failed to bind the local port,
+  but the host starts its background work before binding, so it went on seeding and downloading next to the first one
+  on the same data and game files (seen as `agent-<date>_001.log`, the second log Serilog opens when the first is
+  taken). A host that fails to start is now also stopped, whatever the reason.
 - **Its own data and game folder.** A self-hosted instance uses `%LocalAppData%\GameShare`, never the installed
   service's `%ProgramData%\GameShare` — always writable without elevation, and never collides with a real install's
   data even in a race with the probe above. `Documents\GameShare Games` is created and pre-configured as the one

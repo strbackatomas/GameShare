@@ -115,7 +115,7 @@ internal static class TrayController
         RefreshTooltip(tray, app);
     }
 
-    private static void Restore(Window window)
+    internal static void Restore(Window window)
     {
         window.Show();
         window.WindowState = WindowState.Normal;
