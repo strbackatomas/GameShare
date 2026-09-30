@@ -8,6 +8,8 @@ this is wired into the build and where a peer's version shows up.
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-09-30
+
 ### Added
 - A graph of the download speed over the last 5 minutes on the Přenosy page, with the current, average and highest speed, like
   Steam's. Each download has a small one of its own, so it shows which game gets the speed when several download at once.
