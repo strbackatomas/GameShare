@@ -5,7 +5,7 @@
     <!-- The one place the app's version is set. Follows semver.org; bump it and add an entry to CHANGELOG.md together,
          see "Verzování" in README.md. Every project under src\ picks it up, so agent, client and peers on the LAN
          always agree on what "the same version" means. -->
-    <Version>0.6.5</Version>
+    <Version>0.6.6</Version>
   </PropertyGroup>
   <!-- Which published build this is (agent, agent-net10, lanparty), so the program takes only its own update package.
        Set by scripts\publish.ps1 with -p:GameShareFlavor=...; a plain dotnet build has none and never updates itself. -->

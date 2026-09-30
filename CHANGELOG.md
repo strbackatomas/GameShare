@@ -8,6 +8,8 @@ this is wired into the build and where a peer's version shows up.
 
 ## [Unreleased]
 
+## [0.6.6] - 2026-09-30
+
 ### Changed
 - A fixed and signed `gameshare.json` reaches every PC by itself. When a new signed list arrives, or a PC on the LAN starts
   offering something, the agent fetches the signed definition of every game and redistributables package it has whose own
