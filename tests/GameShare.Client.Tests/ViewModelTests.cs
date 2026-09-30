@@ -960,6 +960,24 @@ public class DownloadsTests
     }
 
     [Theory]
+    [InlineData("Downloading", "Install", "Instalace · Stahuje se · 42 % · 12 MB/s · 3 min 0 s", false)]
+    [InlineData("Verifying", "Install", "Instalace · Ověřuji soubory", true)] // all data is here, no percentage or speed to show
+    [InlineData("Paused", "Update", "Aktualizace · Pozastaveno · 42 %", false)]
+    [InlineData("Queued", "Repair", "Oprava · Ve frontě", false)]
+    public async Task The_game_card_says_what_its_download_does_and_which_phase_it_is_in(string state, string kind, string expected, bool verifying)
+    {
+        var d = Download(1, A, "BeamNG.drive", state, 42, speed: 12 * 1024 * 1024, kind: kind, sources: [("PC01", 12 * 1024 * 1024)], eta: 180);
+        var agent = new FakeAgent { Games = [Game(A, "BeamNG.drive", GameState.Downloading)], Downloads = [d] };
+        var app = new AppModel(agent, new FakeEvents(), new ImmediateDispatcher());
+        await app.StartAsync();
+
+        var card = app.Games.Single();
+        Assert.Equal(expected, card.ProgressText);
+        Assert.Equal(DownloadViewModel.PhaseText(state, false, false), card.StateText);
+        Assert.Equal(verifying, card.IsVerifying);
+    }
+
+    [Theory]
     [InlineData("Retrying", 1, "zdroj přestal posílat data, žádám o ně znovu")]
     [InlineData("Reconnecting", 0, "zdroj neposílal data, připojuji se znovu")] // no peer during the reconnect: still not "waiting for a source"
     public async Task A_stuck_download_says_the_connection_is_being_restored_instead_of_standing_at_zero(string recovery, int peers, string why)
@@ -978,7 +996,7 @@ public class DownloadsTests
         Assert.False(row.IsRunningWithSource);
         Assert.Equal(why, row.EtaText);
         Assert.Equal("", row.SpeedText);
-        Assert.Equal("97 % · obnovuji spojení", app.Games.Single().ProgressText);
+        Assert.Equal("Instalace · Obnovuji spojení · 97 %", app.Games.Single().ProgressText);
     }
 
     [Fact]
@@ -995,7 +1013,7 @@ public class DownloadsTests
         Assert.False(d.IsRunningWithSource);
         Assert.True(d.IsRunning); // still running: it goes on by itself once a PC with the game shows up
         Assert.Equal("", d.SpeedText);
-        Assert.Equal("40 % · čeká na zdroj", app.Games.Single().ProgressText);
+        Assert.Equal("Instalace · Čeká na zdroj · 40 %", app.Games.Single().ProgressText);
     }
 
     [Theory]

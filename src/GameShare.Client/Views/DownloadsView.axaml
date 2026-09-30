@@ -90,7 +90,7 @@
                                 </StackPanel>
 
                                 <StackPanel Grid.Row="1" Grid.ColumnSpan="2" Margin="0,12,0,0" Spacing="6" IsVisible="{Binding HasProgress}">
-                                    <ProgressBar Value="{Binding Percent}" Maximum="100" />
+                                    <ProgressBar Value="{Binding Percent}" Maximum="100" IsIndeterminate="{Binding IsVerifying}" />
                                     <v:SpeedGraph History="{Binding History}" Height="44" IsVisible="{Binding History.HasSamples}"
                                                   Stroke="{StaticResource BadgeBrush}" Grid="{StaticResource LineBrush}" />
                                     <Grid ColumnDefinitions="Auto,*,Auto">

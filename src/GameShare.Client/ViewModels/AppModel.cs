@@ -296,7 +296,7 @@ public sealed partial class AppModel : ViewModelBase, IAsyncDisposable
     private void UpsertDownload(DownloadDto d)
     {
         // The card of the game shows the same progress. This runs for snapshots too, so a window opened mid-download is not stuck at 0.
-        if (d.State is "Downloading" or "Queued" or "Verifying")
+        if (d.State is "Downloading" or "Queued" or "Verifying" or "Paused")
             Games.FirstOrDefault(c => c.ContentHash == d.ContentHash)?.ApplyProgress(d);
 
         var vm = Downloads.FirstOrDefault(v => v.Id == d.Id);

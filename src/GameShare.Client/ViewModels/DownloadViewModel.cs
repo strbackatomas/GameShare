@@ -38,7 +38,7 @@ public sealed partial class DownloadViewModel : ViewModelBase
     [ObservableProperty] public partial string? Error { get; set; }
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(StateText), nameof(IsRunning), nameof(IsPaused), nameof(IsFinished), nameof(IsFailed), nameof(HasProgress), nameof(IsWaitingForSource), nameof(IsRunningWithSource))]
+    [NotifyPropertyChangedFor(nameof(StateText), nameof(IsRunning), nameof(IsVerifying), nameof(IsPaused), nameof(IsFinished), nameof(IsFailed), nameof(HasProgress), nameof(IsWaitingForSource), nameof(IsRunningWithSource))]
     public partial string State { get; set; } = "";
 
     /// <summary>What the agent does about a stall: null, "Retrying" or "Reconnecting". See <see cref="DownloadDto.Recovery"/>.</summary>
@@ -92,17 +92,25 @@ public sealed partial class DownloadViewModel : ViewModelBase
     public bool CanAct => !IsBusy;
     public bool HasMessage => !string.IsNullOrEmpty(Message);
 
-    public string StateText => State switch
+    public bool IsVerifying => State == "Verifying";
+
+    public string StateText => PhaseText(State, IsRecovering, IsWaitingForSource);
+
+    /// <summary>Which phase a download is in, in a few words. Shared with the game's card, so both say the same.</summary>
+    internal static string PhaseText(string state, bool recovering, bool waiting) => state switch
     {
-        "Downloading" when IsRecovering => "Obnovuji spojení",
-        "Downloading" => IsWaitingForSource ? "Čeká na zdroj" : "Stahuje se",
+        "Downloading" when recovering => "Obnovuji spojení",
+        "Downloading" => waiting ? "Čeká na zdroj" : "Stahuje se",
         "Queued" => "Ve frontě",
         "Verifying" => "Ověřuji soubory",
         "Paused" => "Pozastaveno",
         "Completed" => "Hotovo",
         "Failed" => "Selhalo",
-        _ => State,
+        _ => state,
     };
+
+    /// <summary>What a download does to the game. Shared with the game's card.</summary>
+    internal static string KindLabel(string kind) => kind switch { "Update" => "Aktualizace", "Repair" => "Oprava", _ => "Instalace" };
 
     /// <summary>Why a download stands and what is being done, in a few words. Shared with the game's card.</summary>
     internal static string RecoveryText(string? recovery) => recovery switch
@@ -114,7 +122,7 @@ public sealed partial class DownloadViewModel : ViewModelBase
     public void Apply(DownloadDto d)
     {
         Name = d.GameName;
-        KindText = d.Kind switch { "Update" => "Aktualizace", "Repair" => "Oprava", _ => "Instalace" };
+        KindText = KindLabel(d.Kind);
         State = d.State;
         PeerCount = d.Peers;
         Recovery = d.Recovery;

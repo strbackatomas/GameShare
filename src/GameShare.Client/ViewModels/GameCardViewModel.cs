@@ -192,6 +192,14 @@ public sealed partial class GameCardViewModel : ViewModelBase
     [ObservableProperty] public partial double Percent { get; set; }
     [ObservableProperty] public partial string ProgressText { get; set; } = "";
 
+    /// <summary>Which phase the download of this game is in, for example "Ověřuji soubory". Null until the first progress.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(StateText))]
+    public partial string? DownloadPhase { get; set; }
+
+    /// <summary>All data arrived and the files are being checked. There is no percentage to show for that.</summary>
+    [ObservableProperty] public partial bool IsVerifying { get; set; }
+
     /// <summary>An operation on this game is running, so its buttons are off.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanAct), nameof(CanModify), nameof(CanRunSetup))]
@@ -259,7 +267,7 @@ public sealed partial class GameCardViewModel : ViewModelBase
     {
         GameState.Installed => "Nainstalováno",
         GameState.Damaged => "Soubory se změnily",
-        GameState.Downloading => "Stahuje se",
+        GameState.Downloading => DownloadPhase ?? "Stahuje se",
         GameState.AvailableOnLan when !FullyAvailable => "Zatím nekompletní",
         GameState.AvailableOnLan => UpdatesContentHash is null ? "Dostupné na LAN" : "Nová verze na LAN",
         _ => "Nedostupné",
@@ -289,7 +297,7 @@ public sealed partial class GameCardViewModel : ViewModelBase
         CoverageText = g.State == GameState.AvailableOnLan && !g.FullyAvailable
             ? $"Dohromady je k dispozici jen {Format.Percent(g.CoveragePercent ?? 0)} dat hry. Instalace půjde, až se objeví PC s chybějícími částmi."
             : "";
-        if (g.State != GameState.Downloading) { Percent = 0; ProgressText = ""; }
+        if (g.State != GameState.Downloading) { Percent = 0; ProgressText = ""; DownloadPhase = null; IsVerifying = false; }
         // The message and the suggestion of a check the user ran must survive a refresh of the game.
         // What the agent noticed by itself follows the game: it appears while the game is played and goes when the game is intact again.
         _noticedPatterns = g.State == GameState.Damaged ? g.SuggestedPatterns : [];
@@ -350,12 +358,17 @@ public sealed partial class GameCardViewModel : ViewModelBase
     public void ApplyProgress(DownloadDto d)
     {
         Percent = d.Percent;
-        // Connected to no PC, nothing comes in: say so instead of a speed.
+        IsVerifying = d.State == "Verifying";
+        // Connected to no PC, nothing comes in: the phase says so instead of a speed.
         bool recovering = d.State == "Downloading" && d.Recovery is not null;
         bool waiting = d.State == "Downloading" && d.Peers == 0 && !recovering;
-        var speed = recovering ? "obnovuji spojení" : waiting ? "čeká na zdroj" : Format.Speed(d.SpeedBytesPerSecond);
-        var eta = recovering || waiting ? "" : Format.Eta(d.EtaSeconds);
-        ProgressText = string.Join(" · ", new[] { Format.Percent(d.Percent), speed, eta }.Where(s => s.Length > 0));
+        DownloadPhase = DownloadViewModel.PhaseText(d.State, recovering, waiting);
+        // Speed and time left only mean something while data comes in. Checking the files has no percentage.
+        bool flowing = d.State == "Downloading" && !recovering && !waiting;
+        var percent = d.State is "Downloading" or "Paused" ? Format.Percent(d.Percent) : "";
+        var speed = flowing ? Format.Speed(d.SpeedBytesPerSecond) : "";
+        var eta = flowing ? Format.Eta(d.EtaSeconds) : "";
+        ProgressText = string.Join(" · ", new[] { DownloadViewModel.KindLabel(d.Kind), DownloadPhase, percent, speed, eta }.Where(s => s.Length > 0));
     }
 
     /// <summary>The agent checks the game and says what to start, the client starts it. A refusal is shown as the agent worded it.</summary>

@@ -8,6 +8,12 @@ this is wired into the build and where a peer's version shows up.
 
 ## [Unreleased]
 
+### Changed
+- A game's card in the library says what its download does and which phase it is in, like the Downloads page:
+  "Instalace · Stahuje se · 42 % · 12 MB/s", "Aktualizace · Pozastaveno", "Instalace · Ověřuji soubory". It said
+  "Stahuje se" throughout, and a paused download kept showing its last speed. While the files are checked, the progress
+  bar runs without a percentage instead of standing at 100 %.
+
 ## [0.6.1] - 2026-09-30
 
 ### Fixed
