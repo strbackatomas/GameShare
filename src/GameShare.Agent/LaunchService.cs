@@ -36,6 +36,8 @@ public sealed class LaunchService
         if (installation is null) return LaunchState.None;
         var plan = LaunchRules.Plan(manifest, await ChoiceAsync(manifest.GameId, ct).ConfigureAwait(false), out _);
         if (plan is not null) return LaunchState.Ready;
+        // A redistributables package is installed by the games that need it, its installers are not something to pick and play.
+        if (manifest.Definition?.Kind == GameKind.Redist) return LaunchState.None;
         return LaunchRules.Candidates(manifest).Count > 0 ? LaunchState.NeedsExecutable : LaunchState.None;
     }
 

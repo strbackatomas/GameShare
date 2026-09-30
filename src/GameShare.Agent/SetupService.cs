@@ -148,8 +148,14 @@ public sealed class SetupService
             var stored = await _db.GetManifestAsync(installation.ContentHash, ct).ConfigureAwait(false);
             if (stored?.Manifest.Definition is not { Kind: GameKind.Redist }) continue;
             if (_trust.Check(installation.ContentHash).Verdict == TrustVerdict.Revoked) continue;
-            var verified = _trust.CheckDefinition(installation.ContentHash, stored.Manifest.Definition) == DefinitionVerdict.Verified;
-            result.Add((new InstalledPackage(stored.Manifest, installation.InstallPath), verified));
+            var manifest = stored.Manifest;
+            // The administrator fixed the package (an installer's arguments, say) and signed it after this PC got it: fetch that one,
+            // as for a game, or every game here would go on running the old installers.
+            if (_trust.CheckDefinition(installation.ContentHash, manifest.Definition) == DefinitionVerdict.Different
+                && await RefreshDefinitionAsync(installation.ContentHash, ct).ConfigureAwait(false) is { Definition.Kind: GameKind.Redist } refreshed)
+                manifest = refreshed;
+            var verified = _trust.CheckDefinition(installation.ContentHash, manifest.Definition) == DefinitionVerdict.Verified;
+            result.Add((new InstalledPackage(manifest, installation.InstallPath), verified));
         }
         return result;
     }

@@ -103,7 +103,8 @@ public class SetupApiTests
               "provides": { "fakedx": { "name": "Fake DirectX", "file": "dxsetup.exe", "args": "/silent", "installedIf": { "file": "{{marker.Replace("\\", "\\\\")}}" } } } }
             """);
         await pc.SendAsync(HttpMethod.Post, "/api/games/scan");
-        await pc.WaitForGameAsync(g => g.Name == "Redist" && g.State == GameState.Installed, "the redistributables package to be scanned");
+        var redist = await pc.WaitForGameAsync(g => g.Name == "Redist" && g.State == GameState.Installed, "the redistributables package to be scanned");
+        Assert.Equal(LaunchState.None, redist.Launch); // the games install it, there is no program in it to pick and play
         var game = await pc.WaitForGameAsync(g => g.Name == "Test Game", "the game");
 
         var plan = await pc.GetAsync<SetupPlanDto>($"/api/games/{game.ContentHash}/setup");

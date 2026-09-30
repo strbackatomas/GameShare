@@ -8,6 +8,13 @@ this is wired into the build and where a peer's version shows up.
 
 ## [Unreleased]
 
+### Fixed
+- A PC that had the shared redistributables package kept its old definition when the administrator fixed and signed a new
+  one, so every game there went on running the old installers (and with Require refused to prepare at all). As for a game,
+  the agent now fetches the signed definition of the package from another PC on the LAN when its own is not the signed one.
+- The card of the redistributables package offered to pick a program to start it. It is installed by the games that need
+  it, so the card no longer offers to play it.
+
 ## [0.6.4] - 2026-09-30
 
 ### Fixed
