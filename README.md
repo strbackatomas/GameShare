@@ -232,7 +232,8 @@ they vouch for, and every PC checks games against it. Nobody has to trust the PC
 `gameshare.json` is outside the content hash (editing how a game starts must not make it another game), so adding a game also signs a
 hash of its definition when the folder has one. That is what makes the preparation and `runAsAdmin` trustworthy: with `Require` they run
 only with the signed definition, with `Warn` the player is told when a definition is unsigned or not the signed one. A PC that has another
-definition asks the other PCs for the signed one. Lists made before this (no `definitionHash`) still work, they just vouch for files only.
+definition fetches the signed one from the other PCs by itself, as soon as a new list arrives or a PC that has it turns up, so fixing
+a `gameshare.json` (an installer's arguments, say) and signing it reaches every PC without anybody downloading anything. Lists made before this (no `definitionHash`) still work, they just vouch for files only.
 
 On the administrator's PC, either the command line or the graphical tool, whichever is easier. Both call the same code
 (`GameShare.Storage/TrustWorkflow.cs`), so they behave the same and either can carry on where the other left off on the

@@ -186,22 +186,24 @@ public class TrustTests : IDisposable
         Assert.Equal(DefinitionVerdict.Verified, signed.DefinitionTrust);
     }
 
+    /// <summary>A game that requires "vc2005", and next to it the same redistributables package on every PC, with these arguments.</summary>
+    private static Action<string> WithPackage(string args) => game =>
+    {
+        File.WriteAllText(Path.Combine(game, "gameshare.json"), """
+            { "gameId": "testgame", "name": "TestGame", "launch": [ { "executable": "Game.exe" } ], "setup": { "requires": [ "vc2005" ] } }
+            """);
+        var package = Path.Combine(Path.GetDirectoryName(game)!, "_Redist");
+        Directory.CreateDirectory(package);
+        File.WriteAllBytes(Path.Combine(package, "vcredist_x86.exe"), [1, 2, 3]); // the same files on both PCs, so the same package
+        File.WriteAllText(Path.Combine(package, "gameshare.json"), $$"""
+            { "gameId": "redist", "name": "Redist", "kind": "redist",
+              "provides": { "vc2005": { "name": "Visual C++ 2005", "file": "vcredist_x86.exe", "args": "{{args}}" } } }
+            """);
+    };
+
     [Fact]
     public async Task A_redistributables_package_the_administrator_fixed_and_signed_is_fetched_from_the_lan_by_a_pc_with_the_old_one()
     {
-        static Action<string> WithPackage(string args) => game =>
-        {
-            File.WriteAllText(Path.Combine(game, "gameshare.json"), """
-                { "gameId": "testgame", "name": "TestGame", "launch": [ { "executable": "Game.exe" } ], "setup": { "requires": [ "vc2005" ] } }
-                """);
-            var package = Path.Combine(Path.GetDirectoryName(game)!, "_Redist");
-            Directory.CreateDirectory(package);
-            File.WriteAllBytes(Path.Combine(package, "vcredist_x86.exe"), [1, 2, 3]); // the same files on both PCs, so the same package
-            File.WriteAllText(Path.Combine(package, "gameshare.json"), $$"""
-                { "gameId": "redist", "name": "Redist", "kind": "redist",
-                  "provides": { "vc2005": { "name": "Visual C++ 2005", "file": "vcredist_x86.exe", "args": "{{args}}" } } }
-                """);
-        };
         int discovery = TestAgent.DiscoveryPort();
         WriteList(1, []);
         await using var fixedPc = await TestAgent.StartAsync("PC-01", discovery, preloadGame: true, bigFileBytes: SmallGame,
@@ -224,6 +226,29 @@ public class TrustTests : IDisposable
         Assert.Equal("/q:a", plan.Steps.Single(s => s.Kind == SetupStepKind.Redist).Arguments);
         var refreshed = await oldPc.WaitForGameAsync(g => g.ContentHash == package.ContentHash, "the package");
         Assert.Equal(DefinitionVerdict.Verified, refreshed.DefinitionTrust); // kept, so the next plan needs no PC-01
+    }
+
+    [Fact]
+    public async Task A_new_list_brings_the_signed_definition_to_every_pc_without_anybody_preparing_a_game()
+    {
+        int discovery = TestAgent.DiscoveryPort();
+        WriteList(1, []);
+        await using var fixedPc = await TestAgent.StartAsync("PC-01", discovery, preloadGame: true, bigFileBytes: SmallGame,
+            tweak: Trust(TrustMode.Warn), customiseGame: WithPackage("/q:a"));
+        await using var oldPc = await TestAgent.StartAsync("PC-02", discovery, preloadGame: true, bigFileBytes: SmallGame,
+            tweak: Trust(TrustMode.Warn), customiseGame: WithPackage("/q:a /c:msiexec"));
+        var package = await fixedPc.WaitForGameAsync(g => g.Name == "Redist" && g.State == GameState.Installed, "PC-01 to scan the package");
+        await oldPc.WaitForGameAsync(g => g.ContentHash == package.ContentHash && g.PeerNames.Count > 0, "PC-02 to see PC-01 offer the package");
+
+        File.WriteAllBytes(ListPath, TrustSigning.Serialize(TrustSigning.Sign(new TrustPayload(2, Now, null,
+            [new TrustedGame(package.ContentHash, "redist", "Redist", null) { DefinitionHash = DefinitionHasher.Compute(package.Definition!) }], []), _keys.PrivateKey)));
+        await RefreshAsync(oldPc); // only the new list: nobody plays anything
+
+        var fetched = await oldPc.WaitForGameAsync(g => g.ContentHash == package.ContentHash && g.DefinitionTrust == DefinitionVerdict.Verified,
+            "PC-02 to fetch the signed definition by itself");
+        Assert.Equal("/q:a", fetched.Definition!.Provides["vc2005"].Args);
+        var onDisk = await File.ReadAllTextAsync(Path.Combine(oldPc.GamesRoot, "_Redist", "gameshare.json"));
+        Assert.Contains("\"/q:a\"", onDisk); // written into the folder too, so a rescan keeps it
     }
 
     [Fact]

@@ -18,19 +18,19 @@ public sealed class SetupService
     public const string RedistGameId = "redist";
 
     private readonly GameShareDb _db;
-    private readonly GameLibrary _library;
     private readonly TrustService _trust;
     private readonly PeerCatalog _catalog;
+    private readonly DefinitionSync _definitions;
     private readonly ISetupProbe _probe;
     private readonly ILogger<SetupService> _log;
     private readonly ConcurrentDictionary<string, string?> _done = new(StringComparer.Ordinal);
 
-    public SetupService(GameShareDb db, GameLibrary library, TrustService trust, PeerCatalog catalog, ISetupProbe probe, ILogger<SetupService> log)
+    public SetupService(GameShareDb db, TrustService trust, PeerCatalog catalog, DefinitionSync definitions, ISetupProbe probe, ILogger<SetupService> log)
     {
         _db = db;
-        _library = library;
         _trust = trust;
         _catalog = catalog;
+        _definitions = definitions;
         _probe = probe;
         _log = log;
     }
@@ -54,7 +54,7 @@ public sealed class SetupService
         if (verdict == DefinitionVerdict.Different)
         {
             // An administrator changed the definition and signed it after this PC installed the game: fetch the signed one from the LAN.
-            if (await RefreshDefinitionAsync(contentHash, ct).ConfigureAwait(false) is { } refreshed)
+            if (await _definitions.RefreshAsync(contentHash, ct).ConfigureAwait(false) is { } refreshed)
             {
                 manifest = refreshed;
                 verdict = _trust.CheckDefinition(contentHash, manifest.Definition);
@@ -152,27 +152,12 @@ public sealed class SetupService
             // The administrator fixed the package (an installer's arguments, say) and signed it after this PC got it: fetch that one,
             // as for a game, or every game here would go on running the old installers.
             if (_trust.CheckDefinition(installation.ContentHash, manifest.Definition) == DefinitionVerdict.Different
-                && await RefreshDefinitionAsync(installation.ContentHash, ct).ConfigureAwait(false) is { Definition.Kind: GameKind.Redist } refreshed)
+                && await _definitions.RefreshAsync(installation.ContentHash, ct).ConfigureAwait(false) is { Definition.Kind: GameKind.Redist } refreshed)
                 manifest = refreshed;
             var verified = _trust.CheckDefinition(installation.ContentHash, manifest.Definition) == DefinitionVerdict.Verified;
             result.Add((new InstalledPackage(manifest, installation.InstallPath), verified));
         }
         return result;
-    }
-
-    private async Task<GameManifest?> RefreshDefinitionAsync(string contentHash, CancellationToken ct)
-    {
-        try
-        {
-            var (fetched, _) = await _catalog.FetchAsync(contentHash, ct, m => _trust.CheckDefinition(contentHash, m.Definition) == DefinitionVerdict.Verified).ConfigureAwait(false);
-            if (_trust.CheckDefinition(contentHash, fetched.Definition) != DefinitionVerdict.Verified || fetched.Definition is null) return null;
-            return await _library.ReplaceDefinitionAsync(contentHash, fetched.Definition, ct).ConfigureAwait(false);
-        }
-        catch (Exception ex) when (ex is KeyNotFoundException or HttpRequestException)
-        {
-            _log.LogInformation("No PC on the LAN has the signed definition of {Hash}: {Reason}", contentHash[..12], ex.Message);
-            return null;
-        }
     }
 
     private async Task<(Installation Installation, GameManifest Manifest)> InstalledAsync(string contentHash, CancellationToken ct)

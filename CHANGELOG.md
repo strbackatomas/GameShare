@@ -8,6 +8,13 @@ this is wired into the build and where a peer's version shows up.
 
 ## [Unreleased]
 
+### Changed
+- A fixed and signed `gameshare.json` reaches every PC by itself. When a new signed list arrives, or a PC on the LAN starts
+  offering something, the agent fetches the signed definition of every game and redistributables package it has whose own
+  definition is not the signed one. Until now that happened only when somebody prepared a game on that PC, and the package's
+  card never offered anything, since its files, and so its version, stayed the same. PCs that did not have it are asked again
+  after 10 minutes, or at once when the list or the PCs change: a manifest can be megabytes.
+
 ### Fixed
 - Looking for updates showed the version that was ready already (0.6.4) at 0 % while a newer one (0.6.5) was on its way. It
   now shows the one coming in.

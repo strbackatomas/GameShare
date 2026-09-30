@@ -120,6 +120,7 @@ public static class AgentHost
         services.AddSingleton<LaunchService>();
         services.AddSingleton<IconService>();
         services.AddSingleton<GameShare.Storage.ISetupProbe, WindowsSetupProbe>();
+        services.AddSingleton<DefinitionSync>();
         services.AddSingleton<SetupService>();
 
         // The only request that may leave the LAN: a small download of the administrator's signed list. It carries nothing about this PC,
