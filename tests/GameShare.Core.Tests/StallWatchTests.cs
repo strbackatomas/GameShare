@@ -39,7 +39,7 @@ public class StallWatchTests
         w.Observe(T0.AddSeconds(25), 1000, 1, true); // nudged again while reconnecting: it stays at the further stage
         Assert.Equal(DownloadRecovery.Reconnecting, w.Stage);
 
-        w.Observe(T0.AddSeconds(26), 5000, 1, true); // data again
+        w.Observe(T0.AddSeconds(26), 1000 + StallWatch.MinProgress, 1, true); // data again
         Assert.Equal(DownloadRecovery.None, w.Stage);
     }
 
@@ -67,9 +67,38 @@ public class StallWatchTests
         var w = new StallWatch();
         Assert.Equal(StallAction.None, w.Observe(T0, 1000, 1, true));
         Assert.Equal(StallAction.None, w.Observe(T0.AddSeconds(4), 1000, 1, true));
-        Assert.Equal(StallAction.None, w.Observe(T0.AddSeconds(4.5), 2000, 1, true)); // a piece came in
-        Assert.Equal(StallAction.None, w.Observe(T0.AddSeconds(9), 2000, 1, true));
-        Assert.Equal(StallAction.Nudge, w.Observe(T0.AddSeconds(9.5), 2000, 1, true));
+        Assert.Equal(StallAction.None, w.Observe(T0.AddSeconds(4.5), 1000 + StallWatch.MinProgress, 1, true)); // a block came in
+        Assert.Equal(StallAction.None, w.Observe(T0.AddSeconds(9), 1000 + StallWatch.MinProgress, 1, true));
+        Assert.Equal(StallAction.Nudge, w.Observe(T0.AddSeconds(9.5), 1000 + StallWatch.MinProgress, 1, true));
+    }
+
+    [Fact]
+    public void Protocol_chatter_below_a_block_is_not_data()
+    {
+        var w = new StallWatch();
+        var acted = new List<StallAction>();
+        for (int t = 0; t <= 15; t++)
+            if (w.Observe(T0.AddSeconds(t), 1000 + t * 100, 1, true) is not StallAction.None and var a) acted.Add(a); // keep-alives and the like
+        Assert.Equal([StallAction.Nudge, StallAction.Restart], acted);
+    }
+
+    /// <summary>A big piece arriving slowly: no piece is verified for a long while, but blocks keep coming. That is not a stall.</summary>
+    [Fact]
+    public void Data_that_keeps_arriving_is_never_a_stall_however_long_a_piece_takes()
+    {
+        var w = new StallWatch();
+        for (int t = 0; t <= 60; t++)
+            Assert.Equal(StallAction.None, w.Observe(T0.AddSeconds(t), 1000 + t * 2L * 1024 * 1024, 1, true)); // 2 MB/s
+    }
+
+    [Fact]
+    public void A_restart_that_sets_the_counter_back_to_zero_counts_as_progress()
+    {
+        var w = new StallWatch();
+        w.Observe(T0, 50_000_000, 1, true);
+        Assert.Equal(StallAction.None, w.Observe(T0.AddSeconds(4), 0, 1, true));
+        Assert.Equal(StallAction.None, w.Observe(T0.AddSeconds(8), 0, 1, true));
+        Assert.Equal(StallAction.Nudge, w.Observe(T0.AddSeconds(9), 0, 1, true));
     }
 
     [Fact]

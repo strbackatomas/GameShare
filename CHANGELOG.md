@@ -8,6 +8,11 @@ this is wired into the build and where a peer's version shows up.
 
 ## [Unreleased]
 
+### Fixed
+- The check for a stuck download went by verified data, which grows only once a whole piece is in. A game with big pieces
+  arriving slowly (Wreckfest: 16 MB, so 8 s each at 2 MB/s) looked stuck while data was flowing, got "Obnovuji spojení" and a
+  reconnect it did not need, and so came in bursts. It now goes by the data received, and steps in only when nothing arrives.
+
 ## [0.6.3] - 2026-09-30
 
 ### Fixed

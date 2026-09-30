@@ -578,7 +578,7 @@ public sealed class DownloadManager
     /// <summary>Acts on what <see cref="StallWatch"/> says. Caller holds the gate.</summary>
     private void UnstickIfStalled(Active a, TransferStatus s)
     {
-        switch (a.Stall.Observe(DateTime.UtcNow, s.BytesDone, s.PeerCount, s.State == TransferState.Downloading))
+        switch (a.Stall.Observe(DateTime.UtcNow, s.SessionDownloaded, s.PeerCount, s.State == TransferState.Downloading))
         {
             case StallAction.Nudge:
                 int pieces = a.Transfer.Nudge();
