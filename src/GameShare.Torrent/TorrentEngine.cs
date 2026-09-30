@@ -103,7 +103,12 @@ public sealed class TorrentEngine : IDisposable
             .Set(new EnableLsd(true))
             // Each torrent announces itself on the LAN once per interval, five minutes by default. A single lost multicast
             // datagram, easy on Wi-Fi, would leave a new download without peers for minutes. Announcements are tiny.
-            .Set(new LocalServiceAnnounceInterval(30))
+            // Every 10 s rather than 30: a download that DownloadManager restarts because it got stuck finds its source again
+            // only through the next announcement.
+            .Set(new LocalServiceAnnounceInterval(10))
+            // A peer that was just connected is otherwise tried again only after 60 s. On a LAN every peer is one of ours and
+            // a dropped connection is a hiccup, so waiting a minute to reconnect only stalls the download.
+            .Set(new MinReconnectTime(2))
             .Set(new EnableDht(false))
             .Set(new EnableUpnp(false))
             .Set(new EnableNatpmp(false))

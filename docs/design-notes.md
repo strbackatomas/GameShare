@@ -245,6 +245,17 @@ Found by tests that failed or by measuring, kept here so nobody rediscovers them
   why one of several games at once got almost nothing is not known: raising it by hand on the sending PC did not visibly change that.
   Agent settings: `OpenFileLimit`, `SeedIdleRelease`.
   The upload rate the library reports is a moving average that stays above zero long after the last byte, so idleness is judged by bytes uploaded.
+- **A download can stall with its source connected.** Measured with a benchmark of three games at once between two engines on one
+  PC (about 300 MB each: a few big archives, thousands of small files, a mix), about one run in three had a game get nothing for
+  60 s or more, usually near its end. Two kinds: the connection is up on both sides and a request is never answered, and the source
+  dropped the connection while this side still counts it. Not affected by the file pool size, the idle release, upload mode or
+  shorter `request_timeout`/`piece_timeout`. libtorrent says nothing about it through the binding, not even with its debug categories.
+  What works, in `DownloadManager` with `StallWatch`: after 5 s without a byte from a connected source every missing piece gets a
+  deadline (`TorrentTransfer.Nudge`), which ends the first kind; after 10 s more the transfer is stopped and started, which ends the
+  second. A restart only helps if the peer is tried again soon, and libtorrent waits `min_reconnect_time` (60 s) for that, so it
+  is 2 s; a new connection also needs the next LSD announcement, so that is every 10 s. With all of it the longest stall in the
+  benchmark was 17 s. `RateLimitTests.Two_downloads_share_the_total_limit_instead_of_each_getting_all_of_it` runs on bare engines
+  without the watch and hits such a stall now and then (1 in 22 before these changes, 3 in 22 after, too few to tell apart).
 - **Removal is asynchronous.** Adding the same torrent right after removing it fails with "already attached". `RemoveAsync` waits for the library's notification and `AddAsync` retries briefly if it is late.
 - **Saving resume data can hang.** While a torrent is checking or being removed the library may never answer. Every save has a timeout, a failed save never fails a pause or a shutdown, and the next start simply re-checks the files. A save that is still in flight when a torrent is removed keeps the library holding on to it, so saves and removal are ordered per download.
 - **A seed repairs what it sees as damaged.** Left alone, a seed downloads the original of any file a game changed and overwrites it. Seeds are upload-only.

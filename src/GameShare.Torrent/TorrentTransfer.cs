@@ -131,6 +131,21 @@ public sealed class TorrentTransfer
         return have;
     }
 
+    /// <summary>
+    /// Gives every missing piece a short deadline. A request the source never answered is otherwise waited on for about a minute,
+    /// with the connection up and nothing arriving; a piece past its deadline is asked for again at once. Measured with three games
+    /// at once between two engines: this ends most such stalls within seconds. See DownloadManager for when it is used.
+    /// </summary>
+    /// <returns>How many pieces got one.</returns>
+    public int Nudge(int deadlineMs = 500)
+    {
+        var map = _manager.GetPieceMap();
+        int n = 0;
+        for (int i = 0; i < map.Length; i++)
+            if (map[i] == 0) { _manager.SetPieceDeadline(i, deadlineMs); n++; }
+        return n;
+    }
+
     public IReadOnlyList<PeerSnapshot> GetPeers() =>
         _manager.GetPeers().Select(p => new PeerSnapshot(p.Address, p.DownloadRate, p.UploadRate, p.IsSeed)).ToList();
 

@@ -83,6 +83,12 @@ public sealed class DownloadManager
         /// </summary>
         public SemaphoreSlim SaveLock { get; } = new(1, 1);
         public bool Retired { get; set; }
+
+        /// <summary>Notices a transfer that is connected but gets nothing. See <see cref="StallWatch"/>.</summary>
+        public StallWatch Stall { get; } = new();
+
+        /// <summary>The transfer was stopped to drop a dead connection and is started again on the next tick.</summary>
+        public bool RestartPending { get; set; }
         public string InstallPath => Path.GetFullPath(Path.Combine(Row.TargetRoot, Manifest.FolderName));
     }
 
@@ -525,6 +531,11 @@ public sealed class DownloadManager
             foreach (var a in _active.Values.ToList())
             {
                 if (a.Verification is not null) continue;
+                if (a.RestartPending)
+                {
+                    a.RestartPending = false;
+                    a.Transfer.Start();
+                }
 
                 var s = a.Last = a.Transfer.GetStatus();
                 if (s.DownloadRate > a.PeakDownloadRate) a.PeakDownloadRate = s.DownloadRate;
@@ -544,6 +555,7 @@ public sealed class DownloadManager
                 }
                 else
                 {
+                    UnstickIfStalled(a, s);
                     if (DateTimeOffset.UtcNow - a.LastResumeSave >= _options.ResumeSaveInterval)
                     {
                         a.LastResumeSave = DateTimeOffset.UtcNow; // also when the save fails, so a stuck one is not retried every tick
@@ -558,6 +570,25 @@ public sealed class DownloadManager
 
         // Outside the gate on purpose. The library can take seconds to answer, and pause, cancel and status must not wait for it.
         foreach (var a in dueForResumeSave) await SaveResumeAsync(a, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>Acts on what <see cref="StallWatch"/> says. Caller holds the gate.</summary>
+    private void UnstickIfStalled(Active a, TransferStatus s)
+    {
+        switch (a.Stall.Observe(DateTime.UtcNow, s.BytesDone, s.PeerCount, s.State == TransferState.Downloading))
+        {
+            case StallAction.Nudge:
+                int pieces = a.Transfer.Nudge();
+                _log.LogInformation("Download stalled: {Name} got nothing for {Seconds:0} s with {Peers} source(s) connected, asking again for its {Pieces} missing pieces",
+                    a.Manifest.Name, StallWatch.NudgeAfter.TotalSeconds, s.PeerCount, pieces);
+                break;
+            case StallAction.Restart:
+                _log.LogWarning("Download still stalled: {Name} got nothing for {Seconds:0} s, reconnecting to its sources",
+                    a.Manifest.Name, StallWatch.RestartAfter.TotalSeconds);
+                a.Transfer.Stop(); // drops the connections, started again on the next tick
+                a.RestartPending = true;
+                break;
+        }
     }
 
     /// <summary>Full manifest check. Runs off the tick loop because hashing a large game takes minutes.</summary>

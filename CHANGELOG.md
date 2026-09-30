@@ -17,6 +17,11 @@ this is wired into the build and where a peer's version shows up.
   at once they had to share 8. `Agent:OpenFileLimit` still sets it.
 
 ### Fixed
+- A download could stop dead for a minute or longer, most often near its end, with the source still connected. Measured with three
+  games at once between two engines, about one run in three had such a stall. The agent now notices a download that gets nothing
+  from a connected source: after 5 s it asks again for the missing pieces, after 10 s more it reconnects. Reconnecting to a peer
+  waits 2 s instead of 60 s, and each game announces itself on the LAN every 10 s instead of 30 s. The longest stall measured since
+  was 17 s.
 - Sending several games at once to the same PC kept breaking off. A game that waited its turn for 20 seconds counted as idle, its
   seed let go of its files and so disconnected that PC, which dropped out of the list of where the game goes and stalled until it
   found the seed again. A seed now keeps its files while a PC that lacks the game is connected to it.
