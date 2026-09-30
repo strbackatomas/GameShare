@@ -959,6 +959,28 @@ public class DownloadsTests
         Assert.Equal(expected, main.Downloads.Downloads.Single().StateText);
     }
 
+    [Theory]
+    [InlineData("Retrying", 1, "zdroj přestal posílat data, žádám o ně znovu")]
+    [InlineData("Reconnecting", 0, "zdroj neposílal data, připojuji se znovu")] // no peer during the reconnect: still not "waiting for a source"
+    public async Task A_stuck_download_says_the_connection_is_being_restored_instead_of_standing_at_zero(string recovery, int peers, string why)
+    {
+        var sources = peers > 0 ? new[] { ("PC01", 0L) } : null;
+        var d = Download(1, A, "BeamNG.drive", "Downloading", 97, sources: sources) with { Recovery = recovery };
+        var agent = new FakeAgent { Games = [Game(A, "BeamNG.drive", GameState.Downloading)], Downloads = [d] };
+        var app = new AppModel(agent, new FakeEvents(), new ImmediateDispatcher());
+        var main = new MainViewModel(app);
+        await app.StartAsync();
+
+        var row = main.Downloads.Downloads.Single();
+        Assert.Equal("Obnovuji spojení", row.StateText);
+        Assert.True(row.IsRecovering);
+        Assert.False(row.IsWaitingForSource);
+        Assert.False(row.IsRunningWithSource);
+        Assert.Equal(why, row.EtaText);
+        Assert.Equal("", row.SpeedText);
+        Assert.Equal("97 % · obnovuji spojení", app.Games.Single().ProgressText);
+    }
+
     [Fact]
     public async Task A_download_connected_to_no_pc_says_it_waits_for_a_source_instead_of_downloading()
     {

@@ -140,6 +140,7 @@ public sealed class GameView
             Kind = d.Kind.ToString(),
             DurationSeconds = d.Duration?.TotalSeconds,
             PeakSpeedBytesPerSecond = d.PeakDownloadRate,
+            Recovery = d.Recovery == DownloadRecovery.None ? null : d.Recovery.ToString(),
         };
     }
 

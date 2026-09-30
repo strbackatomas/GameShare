@@ -22,6 +22,46 @@ public class StallWatchTests
     }
 
     [Fact]
+    public void The_stage_says_what_is_being_done_until_data_comes_in_again()
+    {
+        var w = new StallWatch();
+        w.Observe(T0, 1000, 1, true);
+        Assert.Equal(DownloadRecovery.None, w.Stage);
+
+        w.Observe(T0.AddSeconds(5), 1000, 1, true);
+        Assert.Equal(DownloadRecovery.Retrying, w.Stage);
+
+        w.Observe(T0.AddSeconds(15), 1000, 1, true);
+        Assert.Equal(DownloadRecovery.Reconnecting, w.Stage);
+        w.Observe(T0.AddSeconds(16), 1000, 0, true); // the restart dropped the connection: still reconnecting, not "waiting for a source"
+        Assert.Equal(DownloadRecovery.Reconnecting, w.Stage);
+        w.Observe(T0.AddSeconds(20), 1000, 1, true);
+        w.Observe(T0.AddSeconds(25), 1000, 1, true); // nudged again while reconnecting: it stays at the further stage
+        Assert.Equal(DownloadRecovery.Reconnecting, w.Stage);
+
+        w.Observe(T0.AddSeconds(26), 5000, 1, true); // data again
+        Assert.Equal(DownloadRecovery.None, w.Stage);
+    }
+
+    [Fact]
+    public void A_source_that_is_gone_ends_the_recovery_and_the_download_waits_for_one()
+    {
+        var w = new StallWatch();
+        w.Observe(T0, 1000, 1, true);
+        w.Observe(T0.AddSeconds(5), 1000, 1, true);
+        w.Observe(T0.AddSeconds(6), 1000, 0, true);
+        Assert.Equal(DownloadRecovery.None, w.Stage); // it was only asking again, and now there is nobody to ask
+
+        w.Observe(T0.AddSeconds(7), 1000, 1, true);
+        w.Observe(T0.AddSeconds(22), 1000, 1, true);
+        Assert.Equal(DownloadRecovery.Reconnecting, w.Stage);
+        w.Observe(T0.AddSeconds(40), 1000, 0, true);
+        Assert.Equal(DownloadRecovery.Reconnecting, w.Stage);
+        w.Observe(T0.AddSeconds(22) + StallWatch.ReconnectGrace, 1000, 0, true);
+        Assert.Equal(DownloadRecovery.None, w.Stage);
+    }
+
+    [Fact]
     public void Any_progress_starts_the_count_again()
     {
         var w = new StallWatch();

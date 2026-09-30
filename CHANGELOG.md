@@ -22,6 +22,8 @@ this is wired into the build and where a peer's version shows up.
   from a connected source: after 5 s it asks again for the missing pieces, after 10 s more it reconnects. Reconnecting to a peer
   waits 2 s instead of 60 s, and each game announces itself on the LAN every 10 s instead of 30 s. The longest stall measured since
   was 17 s.
+- Meanwhile the download says "Obnovuji spojení" with what is being done, in the list and on the game's card, instead of just
+  standing at zero.
 - Sending several games at once to the same PC kept breaking off. A game that waited its turn for 20 seconds counted as idle, its
   seed let go of its files and so disconnected that PC, which dropped out of the list of where the game goes and stalled until it
   found the seed again. A seed now keeps its files while a PC that lacks the game is connected to it.

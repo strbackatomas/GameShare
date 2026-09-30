@@ -41,6 +41,11 @@ public sealed partial class DownloadViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(StateText), nameof(IsRunning), nameof(IsPaused), nameof(IsFinished), nameof(IsFailed), nameof(HasProgress), nameof(IsWaitingForSource), nameof(IsRunningWithSource))]
     public partial string State { get; set; } = "";
 
+    /// <summary>What the agent does about a stall: null, "Retrying" or "Reconnecting". See <see cref="DownloadDto.Recovery"/>.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(StateText), nameof(IsWaitingForSource), nameof(IsRunningWithSource), nameof(IsRecovering))]
+    public partial string? Recovery { get; set; }
+
     /// <summary>How many PCs this download is connected to right now.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(StateText), nameof(IsWaitingForSource), nameof(IsRunningWithSource))]
@@ -78,14 +83,18 @@ public sealed partial class DownloadViewModel : ViewModelBase
     public bool IsFailed => State == "Failed";
 
     /// <summary>Running, but connected to no PC, so nothing is coming in. Saying "downloading" then would be a lie.</summary>
-    public bool IsWaitingForSource => State == "Downloading" && PeerCount == 0;
-    public bool IsRunningWithSource => IsRunning && !IsWaitingForSource;
+    public bool IsWaitingForSource => State == "Downloading" && PeerCount == 0 && !IsRecovering;
+
+    /// <summary>Stuck, and the agent is getting it going again. Shown instead of a speed of zero, so nobody wonders why it stands.</summary>
+    public bool IsRecovering => State == "Downloading" && Recovery is not null;
+    public bool IsRunningWithSource => IsRunning && !IsWaitingForSource && !IsRecovering;
     public bool HasProgress => IsRunning || IsPaused;
     public bool CanAct => !IsBusy;
     public bool HasMessage => !string.IsNullOrEmpty(Message);
 
     public string StateText => State switch
     {
+        "Downloading" when IsRecovering => "Obnovuji spojení",
         "Downloading" => IsWaitingForSource ? "Čeká na zdroj" : "Stahuje se",
         "Queued" => "Ve frontě",
         "Verifying" => "Ověřuji soubory",
@@ -95,19 +104,28 @@ public sealed partial class DownloadViewModel : ViewModelBase
         _ => State,
     };
 
+    /// <summary>Why a download stands and what is being done, in a few words. Shared with the game's card.</summary>
+    internal static string RecoveryText(string? recovery) => recovery switch
+    {
+        "Reconnecting" => "zdroj neposílal data, připojuji se znovu",
+        _ => "zdroj přestal posílat data, žádám o ně znovu",
+    };
+
     public void Apply(DownloadDto d)
     {
         Name = d.GameName;
         KindText = d.Kind switch { "Update" => "Aktualizace", "Repair" => "Oprava", _ => "Instalace" };
         State = d.State;
         PeerCount = d.Peers;
+        Recovery = d.Recovery;
         Percent = d.Percent;
         PercentText = Format.Percent(d.Percent);
         SizeText = $"{Format.Size(d.BytesDone)} z {Format.Size(d.BytesTotal)}";
         Speed = IsRunning ? d.SpeedBytesPerSecond : 0;
         if (d.State == "Downloading") History.Add(_app.Now(), Speed);
-        SpeedText = IsRunning && !IsWaitingForSource ? Format.Speed(d.SpeedBytesPerSecond) : "";
-        EtaText = IsWaitingForSource ? "žádné PC se hrou není připojené"
+        SpeedText = IsRunningWithSource ? Format.Speed(d.SpeedBytesPerSecond) : "";
+        EtaText = IsRecovering ? RecoveryText(Recovery)
+            : IsWaitingForSource ? "žádné PC se hrou není připojené"
             : IsRunning ? Format.Eta(d.EtaSeconds) : "";
         StatsText = IsFinished && d.DurationSeconds is not null
             ? string.Join(" · ", new[] { $"Staženo za {Format.Duration(d.DurationSeconds)}", Format.Speed(d.PeakSpeedBytesPerSecond ?? 0) is { Length: > 0 } peak ? $"špička {peak}" : "" }.Where(s => s.Length > 0))

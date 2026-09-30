@@ -351,9 +351,10 @@ public sealed partial class GameCardViewModel : ViewModelBase
     {
         Percent = d.Percent;
         // Connected to no PC, nothing comes in: say so instead of a speed.
-        bool waiting = d.State == "Downloading" && d.Peers == 0;
-        var speed = waiting ? "čeká na zdroj" : Format.Speed(d.SpeedBytesPerSecond);
-        var eta = waiting ? "" : Format.Eta(d.EtaSeconds);
+        bool recovering = d.State == "Downloading" && d.Recovery is not null;
+        bool waiting = d.State == "Downloading" && d.Peers == 0 && !recovering;
+        var speed = recovering ? "obnovuji spojení" : waiting ? "čeká na zdroj" : Format.Speed(d.SpeedBytesPerSecond);
+        var eta = recovering || waiting ? "" : Format.Eta(d.EtaSeconds);
         ProgressText = string.Join(" · ", new[] { Format.Percent(d.Percent), speed, eta }.Where(s => s.Length > 0));
     }
 

@@ -106,6 +106,12 @@ public sealed record DownloadDto(
 
     /// <summary>The highest download speed seen while it ran, in bytes per second. Null until something was measured.</summary>
     public long? PeakSpeedBytesPerSecond { get; init; }
+
+    /// <summary>
+    /// Null while data comes in. "Retrying" when the connected source sent nothing for a while and the missing pieces were asked for
+    /// again, "Reconnecting" when that did not help and the connection is being made again.
+    /// </summary>
+    public string? Recovery { get; init; }
 }
 
 public sealed record SeedDto(string ContentHash, string GameName, string InstallPath);

@@ -47,6 +47,9 @@ public sealed record DownloadStatus(
 
     /// <summary>The highest download speed seen while it ran, in bytes per second. Null until something was measured.</summary>
     public long? PeakDownloadRate { get; init; }
+
+    /// <summary>What is being done about it when it got stuck. None while data comes in, and when it is not running.</summary>
+    public DownloadRecovery Recovery { get; init; }
 }
 
 public enum DownloadEventKind { Started, Progress, Paused, Resumed, Completed, Failed, Cancelled }
@@ -788,7 +791,7 @@ public sealed class DownloadManager
         ToStatus((await _db.GetDownloadAsync(id, ct).ConfigureAwait(false))!, manifest, live);
 
     private static DownloadStatus ToStatus(Active a) =>
-        ToStatus(a.Row, a.Manifest, a.Last ?? a.Transfer.GetStatus(), a.SmoothedDownloadRate) with { PeerDetails = a.Transfer.GetPeers() };
+        ToStatus(a.Row, a.Manifest, a.Last ?? a.Transfer.GetStatus(), a.SmoothedDownloadRate) with { PeerDetails = a.Transfer.GetPeers(), Recovery = a.Stall.Stage };
 
     private static DownloadStatus ToStatus(Download row, GameManifest manifest, TransferStatus? live, double? smoothedDownloadRate = null)
     {
