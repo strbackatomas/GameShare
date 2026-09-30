@@ -143,7 +143,7 @@ public sealed class AgentOptions
     /// <summary>
     /// How many game files the transfer engine keeps open at once, for all games together. See TorrentEngineOptions.OpenFileLimit.
     /// </summary>
-    public int OpenFileLimit { get; set; } = 40;
+    public int OpenFileLimit { get; set; } = 500;
 
     /// <summary>How often the PC is looked at for games that are running.</summary>
     public TimeSpan RunningCheckInterval { get; set; } = TimeSpan.FromSeconds(5);

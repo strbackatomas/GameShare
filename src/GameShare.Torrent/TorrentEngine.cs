@@ -31,10 +31,11 @@ public sealed record TorrentEngineOptions
     /// How many files the library keeps open at once, for all transfers together. On Windows an open file is memory-mapped, and a program
     /// that replaces such a file by truncating it, which is how most games save their settings, is refused. That only matters while a seed
     /// sends: an idle one lets go of its files (<see cref="IdleReleaseAfter"/>) and the seed of a game being played is suspended.
-    /// Measured with 3000 small files in one transfer: not slower with 2, 4 or 16. Several games going out at once share the pool though,
-    /// so this is libtorrent's own default rather than a handful.
+    /// A piece is read from, or written to, every file it spans, and a game of many small files with big pieces has pieces that span
+    /// thousands (Wreckfest: 47,204 files, 16 MB pieces, up to 2,989 files in one piece, 313 pieces over 40). With 40 such a game
+    /// came in bursts with stalls in between, about 4 MB/s on average between two PCs; with 500 it ran at 14.5 MB/s. See design-notes.md.
     /// </summary>
-    public int OpenFileLimit { get; init; } = 40;
+    public int OpenFileLimit { get; init; } = 500;
 
     /// <summary>
     /// A seed that has not uploaded anything for this long lets go of its files, so a game can rewrite them.
@@ -130,7 +131,8 @@ public sealed class TorrentEngine : IDisposable
         _maxDownload = options.MaxDownloadBytesPerSecond ?? 0;
         _ = Task.Run(() => BalanceLoopAsync(_stopBalancer.Token));
 
-        _log.LogInformation("Torrent engine started. Port={Port} LanOnly={LanOnly}", options.ListenPort, options.LanOnly);
+        _log.LogInformation("Torrent engine started. Port={Port} LanOnly={LanOnly} OpenFileLimit={OpenFileLimit}",
+            options.ListenPort, options.LanOnly, options.OpenFileLimit);
     }
 
     public IReadOnlyCollection<TorrentTransfer> Transfers => _transfers.Values.ToList();

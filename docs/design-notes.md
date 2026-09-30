@@ -246,8 +246,10 @@ Found by tests that failed or by measuring, kept here so nobody rediscovers them
   Resuming does not re-check it and it keeps seeding, tested by installing from it afterwards. While a peer is downloading a game nobody plays here, its files being served are
   still open; a game that is played is different, see Launcher: its seed is stopped. A game started outside GameShare and not recognised as running can therefore fail to save while
   its seed sends. The file pool was first limited to 8 files for this (a single transfer of 3000 small files was not slower with 2, 4 or 16), but every
-  transfer shares the pool, so with several games going out at once they all had those 8. It is back at libtorrent's default of 40. Whether 8 was
-  why one of several games at once got almost nothing is not known: raising it by hand on the sending PC did not visibly change that.
+  transfer shares the pool, so with several games going out at once they all had those 8. It went to libtorrent's default of 40 first, and then to 500: a piece is
+  read from every file it spans, and Wreckfest (47,204 files, 16 MB pieces) has pieces that span up to 2,989 files, 313 of them more than 40. With 40 on
+  the sending PC it came in bursts, a few pieces after each reconnect and then nothing, about 4 MB/s on average; with 500 it ran at 14.5 MB/s over five
+  minutes, under 0.5 MB/s only 4 % of the time. The three-game benchmark did not show this, its pieces spanned few files.
   Agent settings: `OpenFileLimit`, `SeedIdleRelease`.
   The upload rate the library reports is a moving average that stays above zero long after the last byte, so idleness is judged by bytes uploaded.
 - **A download can stall with its source connected.** Measured with a benchmark of three games at once between two engines on one

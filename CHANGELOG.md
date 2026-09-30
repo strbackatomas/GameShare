@@ -8,6 +8,13 @@ this is wired into the build and where a peer's version shows up.
 
 ## [Unreleased]
 
+## [0.6.3] - 2026-09-30
+
+### Fixed
+- A game made of many small files with big pieces came in bursts, a few pieces and then nothing, over and over. The sending PC
+  kept only 40 files open, and a piece of Wreckfest spans up to 2,989 of them. It now keeps up to 500 open: Wreckfest went from
+  about 4 MB/s on average to 14.5 MB/s. The limit is written to the log when the agent starts.
+
 ## [0.6.2] - 2026-09-30
 
 ### Changed
