@@ -421,7 +421,11 @@ public sealed partial class GameCardViewModel : ViewModelBase
         IsBusy = true;
         Message = plan.NeedsAdmin ? "Připravuji hru, potvrď dotaz Windows na oprávnění…" : "Připravuji hru…";
         IReadOnlyList<SetupStepResultDto> results;
-        try { results = await _app.SetupRunner.RunAsync(plan).ConfigureAwait(true); }
+        try
+        {
+            results = await _app.SetupRunner.RunAsync(plan).ConfigureAwait(true);
+            results = await ForgiveInstalledAsync(plan, results).ConfigureAwait(true);
+        }
         finally { IsBusy = false; }
 
         foreach (var result in results)
@@ -435,6 +439,30 @@ public sealed partial class GameCardViewModel : ViewModelBase
             return;
         }
         await FinishSetupAsync(plan).ConfigureAwait(true);
+    }
+
+    /// <summary>
+    /// Installers that failed although what they install is on the PC now: the VC++ 2010 one ends with 5100 when a newer version is
+    /// there already. The agent looks again, such a step counts as done, and the player's own steps, held back by the failure, run.
+    /// </summary>
+    private async Task<IReadOnlyList<SetupStepResultDto>> ForgiveInstalledAsync(SetupPlanDto plan, IReadOnlyList<SetupStepResultDto> results)
+    {
+        var redists = plan.Steps.Where(s => s.Kind == SetupStepKind.Redist).Select(s => s.Title).ToHashSet();
+        var failed = results.Where(r => !r.Ok).ToList();
+        if (failed.Count == 0 || !failed.All(r => redists.Contains(r.Title))) return results;
+
+        SetupPlanDto fresh;
+        try { fresh = await _app.Client.GetSetupPlanAsync(ContentHash).ConfigureAwait(true); }
+        catch (AgentException) { return results; }
+        var installed = fresh.Steps.Where(s => s.Kind == SetupStepKind.Redist && s.AlreadyDone).Select(s => s.Title).ToHashSet();
+        if (!failed.All(r => installed.Contains(r.Title))) return results;
+
+        var forgiven = results.Select(r => r.Ok ? r : new SetupStepResultDto(r.Title, true, $"Na tomto PC už je (instalátor hlásil: {r.Message})")).ToList();
+        // Every machine step ran in the one elevated process, so what is left are the player's own.
+        var ran = results.Select(r => r.Title).ToHashSet();
+        var rest = plan with { Steps = [.. plan.Steps.Select(s => ran.Contains(s.Title) ? s with { AlreadyDone = true } : s)] };
+        if (rest.Steps.Any(s => !s.AlreadyDone)) forgiven.AddRange(await _app.SetupRunner.RunAsync(rest).ConfigureAwait(true));
+        return forgiven;
     }
 
     private async Task FinishSetupAsync(SetupPlanDto plan)

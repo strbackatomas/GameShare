@@ -104,13 +104,22 @@ public sealed class SetupService
     }
 
     /// <summary>Remembers the preparation as done, for this game's setup in this folder.</summary>
-    /// <exception cref="InvalidOperationException">The setup changed since the plan was made. Plan again.</exception>
+    /// <exception cref="InvalidOperationException">The setup changed since the plan was made, or a redistributable its package can
+    /// look for is still not installed. The message says which.</exception>
     public async Task MarkDoneAsync(string contentHash, string setupHash, CancellationToken ct = default)
     {
         var (installation, manifest) = await InstalledAsync(contentHash, ct).ConfigureAwait(false);
         if (!SetupPlanner.HasSetup(manifest)) return;
         if (SetupPlanner.SetupHash(manifest.Definition!, installation.InstallPath) != setupHash)
             throw new InvalidOperationException($"The setup of {manifest.Name} changed while it was being prepared. Prepare it again.");
+        var notInstalled = SetupPlanner.NotInstalled(manifest, (await PackagesAsync(ct).ConfigureAwait(false)).Select(p => p.Package).ToList(), _probe);
+        if (notInstalled.Count > 0)
+        {
+            _log.LogWarning("Setup of {Name} ran, but {Missing} is still not installed", manifest.Name, string.Join(", ", notInstalled));
+            throw new InvalidOperationException(
+                $"Instalátor skončil, ale {string.Join(", ", notInstalled)} na tomto PC pořád není. Instalace možná ještě běží, " +
+                "nebo potichu selhala. Počkej chvíli a zkus přípravu znovu.");
+        }
         await _db.SetSettingAsync(KeyPrefix + manifest.GameId, setupHash, ct).ConfigureAwait(false);
         _done[manifest.GameId] = setupHash;
         _log.LogInformation("Setup of {Name} done", manifest.Name);

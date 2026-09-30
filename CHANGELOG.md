@@ -12,6 +12,13 @@ this is wired into the build and where a peer's version shows up.
 - The check for a stuck download went by verified data, which grows only once a whole piece is in. A game with big pieces
   arriving slowly (Wreckfest: 16 MB, so 8 s each at 2 MB/s) looked stuck while data was flowing, got "Obnovuji spojení" and a
   reconnect it did not need, and so came in bursts. It now goes by the data received, and steps in only when nothing arrives.
+- Preparing a game counted a redistributable as installed as soon as its installer ended with 0, although one that hands over
+  to another process ends before the installation does, or fails without saying so. Before noting the preparation as done, the
+  agent now looks for every redistributable its package says how to find ("installedIf"), and when one is missing it says so
+  and Play asks for the preparation again.
+- The other way round: an installer that ended with an error although what it installs is there (VC++ 2010 ends with 5100
+  when a newer version is installed) failed the whole preparation. The client now asks the agent to look, counts such a step
+  as done and runs the player's own steps that waited for it, without a second prompt for administrator rights.
 
 ## [0.6.3] - 2026-09-30
 

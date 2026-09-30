@@ -166,13 +166,15 @@ internal sealed class FakeStarter : IGameStarter
 public sealed class FakeSetupRunner : ISetupRunner
 {
     public List<SetupPlanDto> Ran { get; } = [];
+    /// <summary>What the next run reports, once. After it, and without it, every step that is not done yet succeeds.</summary>
     public List<SetupStepResultDto>? Results { get; set; }
 
     public Task<IReadOnlyList<SetupStepResultDto>> RunAsync(SetupPlanDto plan, CancellationToken ct = default)
     {
         Ran.Add(plan);
-        return Task.FromResult<IReadOnlyList<SetupStepResultDto>>(
-            Results ?? plan.Steps.Where(s => !s.AlreadyDone).Select(s => new SetupStepResultDto(s.Title, true, null)).ToList());
+        var results = Results ?? plan.Steps.Where(s => !s.AlreadyDone).Select(s => new SetupStepResultDto(s.Title, true, null)).ToList();
+        Results = null;
+        return Task.FromResult<IReadOnlyList<SetupStepResultDto>>(results);
     }
 }
 

@@ -179,6 +179,15 @@ public class SetupPlannerTests : IDisposable
     }
 
     [Fact]
+    public void After_the_installers_ran_a_redistributable_its_package_can_look_for_and_does_not_find_is_named()
+    {
+        var (game, _) = Battlefield(new GameSetup { Requires = ["directx9", "vcredist2005_x86", "physx"] });
+
+        Assert.Equal(["DirectX 9"], SetupPlanner.NotInstalled(game, [Redist()], new Probe())); // vcredist has no check, physx no package
+        Assert.Empty(SetupPlanner.NotInstalled(game, [Redist()], new Probe("d3dx9_43")));
+    }
+
+    [Fact]
     public async Task The_setup_hash_changes_with_the_setup_and_the_folder_but_not_with_anything_else()
     {
         var setup = new GameSetup { Requires = ["directx9"] };

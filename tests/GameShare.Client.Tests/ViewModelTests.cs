@@ -616,6 +616,26 @@ public class LibraryTests
     }
 
     [Fact]
+    public async Task An_installer_that_failed_although_its_redistributable_is_there_now_counts_as_done_and_the_rest_runs()
+    {
+        var (card, app, agent, runner) = await WithSetupAsync(Plan());
+        await card.PlayCommand.ExecuteAsync(null);
+        // VC++ 2010 ends with 5100 when a newer version is installed; the elevated steps ran, the player's waited.
+        runner.Results = [new SetupStepResultDto("Nainstalovat DirectX 9", false, "vcredist_x86.exe skončil s chybou 5100.")];
+        agent.SetupPlan = Plan(null,
+            new SetupStepDto(SetupStepKind.Redist, "Nainstalovat DirectX 9", true) { AlreadyDone = true }, new SetupStepDto(SetupStepKind.Profile, "Zkopírovat profil", false));
+
+        await card.RunSetupCommand.ExecuteAsync(null);
+
+        Assert.False(card.SetupSteps[0].Failed);
+        Assert.Contains("5100", card.SetupSteps[0].Outcome);
+        Assert.Equal(2, runner.Ran.Count);
+        Assert.Equal(["Zkopírovat profil"], runner.Ran[1].Steps.Where(s => !s.AlreadyDone).Select(s => s.Title)); // no second UAC prompt
+        Assert.Contains($"SetupDone({A}|setup-hash)", agent.Calls);
+        Assert.Single(StarterOf(app).Started);
+    }
+
+    [Fact]
     public async Task A_blocked_preparation_cannot_be_run_but_the_game_can_still_be_played_without_it()
     {
         var (card, app, _, _) = await WithSetupAsync(Plan(blocked: "Správce definici této hry nepodepsal."));

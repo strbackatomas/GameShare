@@ -57,12 +57,12 @@ public static partial class SetupPlanner
 
         foreach (var id in setup.Requires.Distinct(StringComparer.OrdinalIgnoreCase))
         {
-            var found = packages.Select(p => (p, entry: p.Manifest.Definition?.Provides.GetValueOrDefault(id))).FirstOrDefault(x => x.entry is not null);
-            if (found.entry is not { } entry) { missing.Add(id); continue; }
-            var file = LaunchRules.GameFile(found.p.Manifest, entry.File, out var problem);
+            var found = Provider(packages, id);
+            if (found.Entry is not { } entry) { missing.Add(id); continue; }
+            var file = LaunchRules.GameFile(found.Package!.Manifest, entry.File, out var problem);
             if (file is null) { problems.Add($"Balíček knihoven: {problem}"); continue; }
             var done = entry.InstalledIf is { } check && probe.IsInstalled(check);
-            var full = Inside(found.p.InstallPath, file.Path);
+            var full = Inside(found.Package.InstallPath, file.Path);
             steps.Add(new SetupStepDto(SetupStepKind.Redist, $"Nainstalovat {entry.Name ?? id}", NeedsAdmin: true)
             {
                 File = full, FileHash = file.Hash, Arguments = entry.Args, AlreadyDone = done,
@@ -168,6 +168,21 @@ public static partial class SetupPlanner
 
         return new SetupPlan(SetupHash(definition, root), steps, problems, missing, verify);
     }
+
+    /// <summary>
+    /// The redistributables the game requires that their package knows how to look for and that are still not on this PC. Asked once
+    /// the installers ran: exit code 0 only says the installer ended, and one that hands over to another process ends before the
+    /// installation does, or fails without saying so.
+    /// </summary>
+    public static IReadOnlyList<string> NotInstalled(GameManifest game, IReadOnlyList<InstalledPackage> packages, ISetupProbe probe) =>
+        (game.Definition?.Setup?.Requires ?? []).Distinct(StringComparer.OrdinalIgnoreCase)
+            .Select(id => (id, Provider(packages, id).Entry))
+            .Where(x => x.Entry?.InstalledIf is { } check && !probe.IsInstalled(check))
+            .Select(x => x.Entry!.Name ?? x.id)
+            .ToList();
+
+    private static (InstalledPackage? Package, RedistPackage? Entry) Provider(IReadOnlyList<InstalledPackage> packages, string id) =>
+        packages.Select(p => ((InstalledPackage?)p, p.Manifest.Definition?.Provides.GetValueOrDefault(id))).FirstOrDefault(x => x.Item2 is not null);
 
     /// <summary>{Documents}\Battlefield 2: a token and a plain relative path below it.</summary>
     public static bool IsProfileTarget(string target)

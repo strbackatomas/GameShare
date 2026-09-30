@@ -91,6 +91,41 @@ public class SetupApiTests
     }
 
     [Fact]
+    public async Task Preparing_is_not_done_while_a_redistributable_the_installer_said_it_installed_is_not_on_the_pc()
+    {
+        var marker = Path.Combine(Path.GetTempPath(), $"gameshare-fakedx-{Guid.NewGuid():N}.dll");
+        await using var pc = await StartAsync(Definition("\"fakedx\""));
+        var package = Path.Combine(pc.GamesRoot, "Redist");
+        Directory.CreateDirectory(package);
+        File.WriteAllBytes(Path.Combine(package, "dxsetup.exe"), [1, 2, 3]);
+        File.WriteAllText(Path.Combine(package, "gameshare.json"), $$"""
+            { "gameId": "redist", "name": "Redist", "kind": "redist",
+              "provides": { "fakedx": { "name": "Fake DirectX", "file": "dxsetup.exe", "args": "/silent", "installedIf": { "file": "{{marker.Replace("\\", "\\\\")}}" } } } }
+            """);
+        await pc.SendAsync(HttpMethod.Post, "/api/games/scan");
+        await pc.WaitForGameAsync(g => g.Name == "Redist" && g.State == GameState.Installed, "the redistributables package to be scanned");
+        var game = await pc.WaitForGameAsync(g => g.Name == "Test Game", "the game");
+
+        var plan = await pc.GetAsync<SetupPlanDto>($"/api/games/{game.ContentHash}/setup");
+        Assert.Null(plan.Blocked);
+        Assert.False(plan.Steps.Single(s => s.Kind == SetupStepKind.Redist).AlreadyDone);
+
+        // The installer ended with 0 and installed nothing: a launcher that handed over, say.
+        var refused = await pc.SendAsync(HttpMethod.Post, $"/api/games/{game.ContentHash}/setup/done", new SetupDoneRequest(plan.SetupHash));
+        Assert.Equal(HttpStatusCode.Conflict, refused.StatusCode);
+        Assert.Contains("Fake DirectX", await refused.Content.ReadAsStringAsync());
+        Assert.True((await pc.WaitForGameAsync(g => g.Name == "Test Game", "the game")).NeedsSetup);
+
+        try
+        {
+            File.WriteAllBytes(marker, []); // now it is there
+            var done = await pc.SendAsync(HttpMethod.Post, $"/api/games/{game.ContentHash}/setup/done", new SetupDoneRequest(plan.SetupHash));
+            Assert.Equal(HttpStatusCode.OK, done.StatusCode);
+        }
+        finally { File.Delete(marker); }
+    }
+
+    [Fact]
     public async Task A_required_redistributable_without_a_package_blocks_the_preparation_and_says_why()
     {
         await using var pc = await StartAsync(Definition("\"directx9\""));
