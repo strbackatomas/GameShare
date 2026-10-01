@@ -8,6 +8,9 @@ namespace GameShare.Agent;
 /// Control API and event hub: only the loopback port, only callers on this machine.
 /// Peer API: only its own port, only callers on a private network.
 /// The check uses the socket the request arrived on, never the Host header, which a client controls.
+/// The control API also refuses what a web page in a browser on this PC can send: anything with an Origin header, and a Host that is not
+/// this machine's own name for itself, which is what a page gets with DNS rebinding (its domain turned into 127.0.0.1 after it loaded).
+/// GameShare's own programs send neither.
 /// </summary>
 public sealed class AccessGuard
 {
@@ -32,6 +35,10 @@ public sealed class AccessGuard
         {
             if (port != _options.LocalApiPort || !IPAddress.IsLoopback(remote))
                 return Deny(context, remote, "control API is local only");
+            if (context.Request.Headers.Origin.Count > 0)
+                return Deny(context, remote, $"control API does not answer web pages (Origin {context.Request.Headers.Origin})");
+            if (!IsLoopbackName(context.Request.Host.Host))
+                return Deny(context, remote, $"control API answers only to a loopback name, not Host {context.Request.Host}");
         }
         else if (path.StartsWithSegments("/peer"))
         {
@@ -47,6 +54,11 @@ public sealed class AccessGuard
         }
         return _next(context);
     }
+
+    /// <summary>127.0.0.1, localhost or ::1: the names GameShare's programs use. Any other name came from a browser.</summary>
+    private static bool IsLoopbackName(string host) =>
+        host.Equals("localhost", StringComparison.OrdinalIgnoreCase)
+        || (IPAddress.TryParse(host.Trim('[', ']'), out var address) && IPAddress.IsLoopback(address));
 
     private Task Deny(HttpContext context, IPAddress remote, string reason)
     {

@@ -147,6 +147,23 @@ public class AgentApiTests
         forged.Headers.Host = $"127.0.0.1:{agent.LocalPort}";
         Assert.Equal(HttpStatusCode.Forbidden, (await agent.PeerApi.SendAsync(forged)).StatusCode);
 
+        // A web page in a browser on this PC: it sends an Origin, and with DNS rebinding its own name as the Host.
+        using var fromPage = new HttpRequestMessage(HttpMethod.Post, "/api/games/scan");
+        fromPage.Headers.Add("Origin", "https://evil.example");
+        Assert.Equal(HttpStatusCode.Forbidden, (await agent.Api.SendAsync(fromPage)).StatusCode);
+        using var rebound = new HttpRequestMessage(HttpMethod.Delete, $"/api/games/{new string('a', 64)}");
+        rebound.Headers.Host = $"evil.example:{agent.LocalPort}";
+        Assert.Equal(HttpStatusCode.Forbidden, (await agent.Api.SendAsync(rebound)).StatusCode);
+        using var hub = new HttpRequestMessage(HttpMethod.Post, "/hub/events/negotiate?negotiateVersion=1");
+        hub.Headers.Add("Origin", "https://evil.example");
+        Assert.Equal(HttpStatusCode.Forbidden, (await agent.Api.SendAsync(hub)).StatusCode);
+        foreach (var name in new[] { "localhost", "[::1]", "127.0.0.1" }) // what GameShare's programs may use
+        {
+            using var own = new HttpRequestMessage(HttpMethod.Get, "/api/status");
+            own.Headers.Host = $"{name}:{agent.LocalPort}";
+            Assert.Equal(HttpStatusCode.OK, (await agent.Api.SendAsync(own)).StatusCode);
+        }
+
         // And the control port does not serve the peer API.
         Assert.Equal(HttpStatusCode.Forbidden, (await agent.Api.GetAsync("/peer/games")).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await agent.Api.GetAsync("/anything-else")).StatusCode);

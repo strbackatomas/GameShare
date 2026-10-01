@@ -8,6 +8,13 @@ this is wired into the build and where a peer's version shows up.
 
 ## [Unreleased]
 
+### Security
+- A web page open in a browser on the PC could use the agent's control API. It is local only, but a page can send requests to
+  127.0.0.1 too: those without a body (start a scan, clear the log, install a game it knows the hash of) went through, and with
+  DNS rebinding, its domain turned into 127.0.0.1 after it loaded, everything did, uninstalling a game with its files too. The
+  control API and the event hub now refuse a request with an Origin header, and one whose Host is not 127.0.0.1, localhost or
+  ::1. GameShare's own programs send neither.
+
 ## [0.6.6] - 2026-09-30
 
 ### Changed
