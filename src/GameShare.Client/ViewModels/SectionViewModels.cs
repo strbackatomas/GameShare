@@ -412,6 +412,50 @@ public sealed partial class SettingsViewModel : ViewModelBase
     [ObservableProperty] public partial bool IsLoaded { get; set; }
     [ObservableProperty] public partial bool HasIgnoredAdapters { get; set; }
 
+    // Advanced tuning of the transfer engine. Empty means the default, which each field shows as its placeholder.
+    [ObservableProperty] public partial string OpenFilesText { get; set; } = "";
+    [ObservableProperty] public partial string SendBufferText { get; set; } = "";
+    [ObservableProperty] public partial string DiskQueueText { get; set; } = "";
+    [ObservableProperty] public partial string UploadSlotsText { get; set; } = "";
+    [ObservableProperty] public partial string RequestQueueText { get; set; } = "";
+    [ObservableProperty] public partial string DiskThreadsText { get; set; } = "";
+
+    /// <summary>Whether the advanced section is unfolded. Folded by default, it is not for everyday use.</summary>
+    [ObservableProperty] public partial bool IsTuningOpen { get; set; }
+
+    /// <summary>Empties every advanced field, so saving goes back to the defaults.</summary>
+    [RelayCommand]
+    private void ResetTuning() =>
+        OpenFilesText = SendBufferText = DiskQueueText = UploadSlotsText = RequestQueueText = DiskThreadsText = "";
+
+    private void ShowTuning(TransferTuningDto? t)
+    {
+        t ??= new TransferTuningDto();
+        OpenFilesText = t.OpenFiles?.ToString() ?? "";
+        SendBufferText = t.SendBufferKb?.ToString() ?? "";
+        DiskQueueText = t.DiskQueueKb?.ToString() ?? "";
+        UploadSlotsText = t.UploadSlots?.ToString() ?? "";
+        RequestQueueText = t.RequestQueue?.ToString() ?? "";
+        DiskThreadsText = t.DiskThreads?.ToString() ?? "";
+    }
+
+    /// <returns>Null when a field is not a whole number. The agent checks the ranges and says what is wrong.</returns>
+    private TransferTuningDto? ReadTuning()
+    {
+        static bool Parse(string text, out int? value)
+        {
+            value = null;
+            if (string.IsNullOrWhiteSpace(text)) return true;
+            if (!int.TryParse(text.Trim(), out var n)) return false;
+            value = n;
+            return true;
+        }
+        if (!Parse(OpenFilesText, out var files) || !Parse(SendBufferText, out var send) || !Parse(DiskQueueText, out var disk)
+            || !Parse(UploadSlotsText, out var slots) || !Parse(RequestQueueText, out var requests) || !Parse(DiskThreadsText, out var threads))
+            return null;
+        return new TransferTuningDto(files, send, disk, slots, requests, threads);
+    }
+
     /// <summary>Whether the administrator's list of verified games is followed, and whether it loaded. Read only, it is set on the PC itself.</summary>
     [ObservableProperty] public partial string TrustText { get; set; } = "";
     [ObservableProperty] public partial bool TrustEnabled { get; set; }
@@ -452,6 +496,7 @@ public sealed partial class SettingsViewModel : ViewModelBase
             SeedingEnabled = s.SeedingEnabled;
             MaxUploadText = s.MaxUploadMBps?.ToString() ?? "";
             MaxDownloadText = s.MaxDownloadMBps?.ToString() ?? "";
+            ShowTuning(s.Tuning);
             _unignoredAdapterIds = [.. s.AllowedVirtualAdapterIds ?? []];
             var adapters = await _app.Client.GetNetworkAdaptersAsync();
             SetIgnoredAdapters(adapters.Where(a => a.Ignored));
@@ -555,14 +600,26 @@ public sealed partial class SettingsViewModel : ViewModelBase
             Message = "Limit rychlosti musí být celé číslo v MB/s, nebo prázdný pro bez omezení.";
             return;
         }
+        if (ReadTuning() is not { } tuning)
+        {
+            Message = "Pokročilá nastavení musí být celá čísla, nebo prázdná pro výchozí hodnotu.";
+            return;
+        }
 
         await _saving.WaitAsync().ConfigureAwait(true);
         try
         {
             await TryAsync(async () =>
             {
-                var saved = await _app.Client.SaveSettingsAsync(new SettingsDto([.. Roots.Select(r => r.Path)], SeedingEnabled, up, down, _unignoredAdapterIds));
+                // From what the agent has, so a setting this page does not show (debug logging, toggled on the log page) stays as it is.
+                var basis = _saved ?? new SettingsDto([], SeedingEnabled, up, down);
+                var saved = await _app.Client.SaveSettingsAsync(basis with
+                {
+                    GameRoots = [.. Roots.Select(r => r.Path)], SeedingEnabled = SeedingEnabled, MaxUploadMBps = up, MaxDownloadMBps = down,
+                    AllowedVirtualAdapterIds = _unignoredAdapterIds, Tuning = tuning,
+                });
                 _saved = saved;
+                ShowTuning(saved.Tuning);
                 SetRoots(saved.GameRoots); // the agent normalises paths, show what it kept
                 _unignoredAdapterIds = [.. saved.AllowedVirtualAdapterIds ?? []];
                 Message = "Uloženo.";

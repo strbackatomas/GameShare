@@ -150,7 +150,31 @@ public sealed record AddVolatileRequest(IReadOnlyList<string> Patterns);
 /// </param>
 public sealed record SettingsDto(
     IReadOnlyList<string> GameRoots, bool SeedingEnabled, int? MaxUploadMBps, int? MaxDownloadMBps,
-    IReadOnlyList<string>? AllowedVirtualAdapterIds = null, bool TorrentDebugLogging = false);
+    IReadOnlyList<string>? AllowedVirtualAdapterIds = null, bool TorrentDebugLogging = false)
+{
+    /// <summary>
+    /// Advanced tuning of the transfer engine, applied at once. Null when a client that does not know it saves the settings:
+    /// the agent then keeps what it has, as for <see cref="AllowedVirtualAdapterIds"/>.
+    /// </summary>
+    public TransferTuningDto? Tuning { get; init; }
+}
+
+/// <summary>
+/// Advanced knobs of the transfer engine (libtorrent), for chasing a slow transfer between PCs. Each is null for the default.
+/// The defaults are in <see cref="Defaults"/>; ranges are checked by the agent.
+/// </summary>
+/// <param name="OpenFiles">Files kept open at once, for all transfers together.</param>
+/// <param name="SendBufferKb">Data read ahead for each connection that sends, in KiB. libtorrent's send_buffer_watermark.</param>
+/// <param name="DiskQueueKb">Received data allowed to wait for the disk, in KiB. When full, reading from the network stops. max_queued_disk_bytes.</param>
+/// <param name="UploadSlots">To how many PCs at once data is sent, -1 for all. unchoke_slots_limit.</param>
+/// <param name="RequestQueue">Blocks asked for from one source at once. max_out_request_queue.</param>
+/// <param name="DiskThreads">Threads reading and writing the disk. aio_threads.</param>
+public sealed record TransferTuningDto(
+    int? OpenFiles = null, int? SendBufferKb = null, int? DiskQueueKb = null, int? UploadSlots = null, int? RequestQueue = null, int? DiskThreads = null)
+{
+    /// <summary>What an empty field means. OpenFiles is GameShare's own default, the rest are libtorrent 2.0's.</summary>
+    public static readonly TransferTuningDto Defaults = new(OpenFiles: 500, SendBufferKb: 500, DiskQueueKb: 1024, UploadSlots: 8, RequestQueue: 500, DiskThreads: 10);
+}
 
 /// <summary>One configured game folder, with how much room is left on its drive.</summary>
 /// <param name="FreeBytes">Null when it could not be read, for example a network share.</param>

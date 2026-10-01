@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using GameShare.Protocol;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using TorrentSharp.Wrap;
@@ -42,6 +43,9 @@ public sealed record TorrentEngineOptions
     /// Null turns it off. Pausing and resuming a seed does not re-check it and it announces itself again straight away.
     /// </summary>
     public TimeSpan? IdleReleaseAfter { get; init; } = TimeSpan.FromSeconds(20);
+
+    /// <summary>Advanced settings from the Settings page. Null fields keep the defaults. <see cref="OpenFileLimit"/> applies when OpenFiles is null.</summary>
+    public TransferTuningDto? Tuning { get; init; }
 
     /// <summary>Address ranges allowed when <see cref="LanOnly"/> is on. Null means the private ranges. Mainly for tests.</summary>
     public IReadOnlyList<IpRange>? AllowedRanges { get; init; }
@@ -131,8 +135,10 @@ public sealed class TorrentEngine : IDisposable
         _maxDownload = options.MaxDownloadBytesPerSecond ?? 0;
         _ = Task.Run(() => BalanceLoopAsync(_stopBalancer.Token));
 
+        _defaultOpenFiles = Math.Max(1, options.OpenFileLimit);
         _log.LogInformation("Torrent engine started. Port={Port} LanOnly={LanOnly} OpenFileLimit={OpenFileLimit}",
             options.ListenPort, options.LanOnly, options.OpenFileLimit);
+        ApplyTuning(options.Tuning ?? new TransferTuningDto());
     }
 
     public IReadOnlyCollection<TorrentTransfer> Transfers => _transfers.Values.ToList();
@@ -223,6 +229,35 @@ public sealed class TorrentEngine : IDisposable
     /// So the total is enforced per torrent instead: it is divided between the transfers that are actually moving data
     /// and re-divided every second, so one busy game gets the whole allowance while the idle ones keep nothing back.
     /// </remarks>
+    private readonly int _defaultOpenFiles;
+
+    /// <summary>
+    /// Applies the advanced settings at once, to running transfers too. Every value is set, a null one to its default, so clearing a field
+    /// in the Settings page really goes back to the default.
+    /// </summary>
+    public void ApplyTuning(TransferTuningDto tuning)
+    {
+        var d = TransferTuningDto.Defaults;
+        int openFiles = tuning.OpenFiles ?? _defaultOpenFiles;
+        int sendKb = tuning.SendBufferKb ?? d.SendBufferKb!.Value;
+        int diskKb = tuning.DiskQueueKb ?? d.DiskQueueKb!.Value;
+        int slots = tuning.UploadSlots ?? d.UploadSlots!.Value;
+        int requests = tuning.RequestQueue ?? d.RequestQueue!.Value;
+        int threads = tuning.DiskThreads ?? d.DiskThreads!.Value;
+
+        _client.UpdateSettings(new SettingsPack()
+            .Set(new FilePoolSize(openFiles))
+            .Set(new SendBufferWatermark(sendKb * 1024))
+            .Set(new MaxQueuedDiskBytes(diskKb * 1024))
+            .Set(new UnchokeSlotsLimit(slots))
+            .Set(new MaxOutRequestQueue(requests))
+            .Set(new AioThreads(threads)));
+
+        _log.LogInformation(
+            "Transfer tuning: open files {OpenFiles}, send buffer {SendKb} KiB, disk queue {DiskKb} KiB, upload slots {Slots}, request queue {Requests}, disk threads {Threads}",
+            openFiles, sendKb, diskKb, slots < 0 ? "all" : slots, requests, threads);
+    }
+
     public void SetLimits(int? maxUploadBytesPerSecond, int? maxDownloadBytesPerSecond)
     {
         _maxUpload = maxUploadBytesPerSecond ?? 0;

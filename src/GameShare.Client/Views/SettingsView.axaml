@@ -4,6 +4,21 @@
              x:Class="GameShare.Client.Views.SettingsView"
              x:DataType="vm:SettingsViewModel">
 
+    <!-- The Fluent expander is black and grey; this one looks like the cards around it. -->
+    <UserControl.Styles>
+        <Style Selector="Expander /template/ ToggleButton#ExpanderHeader">
+            <Setter Property="Background" Value="{StaticResource CardBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
+        </Style>
+        <Style Selector="Expander /template/ ToggleButton#ExpanderHeader:pointerover /template/ Border#ToggleButtonBackground">
+            <Setter Property="Background" Value="{StaticResource LineBrush}" />
+        </Style>
+    </UserControl.Styles>
+    <UserControl.Resources>
+        <StaticResource x:Key="ExpanderContentBackground" ResourceKey="PanelBrush" />
+        <StaticResource x:Key="ExpanderContentBorderBrush" ResourceKey="LineBrush" />
+    </UserControl.Resources>
+
     <ScrollViewer>
         <StackPanel Margin="24,8,24,24" MaxWidth="760" HorizontalAlignment="Left" Spacing="6">
 
@@ -64,6 +79,56 @@
                 <TextBlock Grid.Column="2" Text="Stahování (MB/s)" VerticalAlignment="Center" Margin="24,0,10,0" />
                 <TextBox Grid.Column="3" Text="{Binding MaxDownloadText}" PlaceholderText="bez omezení" />
             </Grid>
+
+            <!-- Knobs of the transfer engine for chasing a slow transfer. Collapsed, they are not for everyday use. -->
+            <Expander Margin="0,14,0,0" HorizontalAlignment="Stretch" IsExpanded="{Binding IsTuningOpen}">
+                <Expander.Header>
+                    <TextBlock Classes="section" Text="POKROČILÉ – LADĚNÍ PŘENOSŮ" Margin="0" />
+                </Expander.Header>
+                <StackPanel Spacing="8">
+                    <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap"
+                               Text="Pro hledání příčiny pomalého přenosu. Prázdné pole znamená výchozí hodnotu. Po uložení platí hned, i pro běžící přenosy. Co se použilo, je v Protokolu (Transfer tuning)." />
+                    <Grid ColumnDefinitions="210,110,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto" Margin="0,4,0,0">
+                        <Grid.Styles>
+                            <Style Selector="TextBlock.hint">
+                                <Setter Property="FontSize" Value="12" />
+                                <Setter Property="Margin" Value="12,0,0,0" />
+                                <Setter Property="TextWrapping" Value="Wrap" />
+                                <Setter Property="VerticalAlignment" Value="Center" />
+                            </Style>
+                            <Style Selector="TextBox">
+                                <Setter Property="Margin" Value="0,3" />
+                            </Style>
+                        </Grid.Styles>
+
+                        <TextBlock Grid.Row="0" Grid.Column="0" Text="Otevřené soubory" VerticalAlignment="Center" />
+                        <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding OpenFilesText}" PlaceholderText="výchozí 500" />
+                        <TextBlock Grid.Row="0" Grid.Column="2" Classes="muted hint" Text="Kolik souborů her smí být otevřeno naráz. Hry z tisíců malých souborů potřebují hodně." />
+
+                        <TextBlock Grid.Row="1" Grid.Column="0" Text="Načítání dopředu (KiB)" VerticalAlignment="Center" />
+                        <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding SendBufferText}" PlaceholderText="výchozí 500" />
+                        <TextBlock Grid.Row="1" Grid.Column="2" Classes="muted hint" Text="Kolik dat má odesílající PC pro každé spojení připravených z disku. Zvýšení může pomoct, když jedno PC neposílá víc než kolem 20 MB/s." />
+
+                        <TextBlock Grid.Row="2" Grid.Column="0" Text="Fronta na zápis (KiB)" VerticalAlignment="Center" />
+                        <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding DiskQueueText}" PlaceholderText="výchozí 1024" />
+                        <TextBlock Grid.Row="2" Grid.Column="2" Classes="muted hint" Text="Kolik přijatých dat smí čekat na zápis na disk. Když je plná, stahování přestane číst ze sítě." />
+
+                        <TextBlock Grid.Row="3" Grid.Column="0" Text="Odesílat naráz PC" VerticalAlignment="Center" />
+                        <TextBox Grid.Row="3" Grid.Column="1" Text="{Binding UploadSlotsText}" PlaceholderText="výchozí 8" />
+                        <TextBlock Grid.Row="3" Grid.Column="2" Classes="muted hint" Text="Kolika PC se posílá zároveň, ostatní se střídají. -1 znamená všem." />
+
+                        <TextBlock Grid.Row="4" Grid.Column="0" Text="Žádostí naráz" VerticalAlignment="Center" />
+                        <TextBox Grid.Row="4" Grid.Column="1" Text="{Binding RequestQueueText}" PlaceholderText="výchozí 500" />
+                        <TextBlock Grid.Row="4" Grid.Column="2" Classes="muted hint" Text="Kolik bloků (po 16 KiB) si stahování od jednoho zdroje objedná dopředu." />
+
+                        <TextBlock Grid.Row="5" Grid.Column="0" Text="Vlákna pro disk" VerticalAlignment="Center" />
+                        <TextBox Grid.Row="5" Grid.Column="1" Text="{Binding DiskThreadsText}" PlaceholderText="výchozí 10" />
+                        <TextBlock Grid.Row="5" Grid.Column="2" Classes="muted hint" Text="Kolik vláken čte a zapisuje na disk zároveň." />
+                    </Grid>
+                    <Button Content="Vrátit výchozí hodnoty" Command="{Binding ResetTuningCommand}" HorizontalAlignment="Left" />
+                    <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap" Text="Vrátí pole na výchozí hodnoty. Platit začnou až po Uložit." />
+                </StackPanel>
+            </Expander>
 
             <TextBlock Classes="section" Text="OVĚŘENÉ HRY" />
             <TextBlock Text="{Binding TrustText}" Classes="muted" TextWrapping="Wrap" />

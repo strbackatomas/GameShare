@@ -208,6 +208,7 @@ public sealed class AgentWorker : BackgroundService
     private void OnSettingsChanged(object? sender, SettingsDto s)
     {
         _engine.SetLimits(SettingsService.ToBytesPerSecond(s.MaxUploadMBps), SettingsService.ToBytesPerSecond(s.MaxDownloadMBps));
+        _engine.ApplyTuning(s.Tuning ?? new TransferTuningDto());
         _log.LogInformation("Settings changed: upload limit {Up} MB/s, download limit {Down} MB/s, seeding {Seeding}, {Roots} game folder(s)",
             s.MaxUploadMBps?.ToString() ?? "none", s.MaxDownloadMBps?.ToString() ?? "none", s.SeedingEnabled ? "on" : "off", s.GameRoots.Count);
 

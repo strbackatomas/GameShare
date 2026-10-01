@@ -35,6 +35,24 @@ public class AgentApiTests
         Assert.Equal(saved.MaxUploadMBps, reloaded.MaxUploadMBps);
     }
 
+    [Fact]
+    public async Task Transfer_tuning_is_saved_kept_when_a_client_sends_none_and_cleared_field_by_field()
+    {
+        await using var agent = await TestAgent.StartAsync("PC-01", TestAgent.DiscoveryPort());
+
+        await agent.SetSettingsAsync(new SettingsDto([@"D:\Games"], true, null, null) { Tuning = new TransferTuningDto(OpenFiles: 2000, SendBufferKb: 8192, UploadSlots: -1) });
+        var saved = (await agent.GetAsync<SettingsDto>("/api/settings")).Tuning!;
+        Assert.Equal(new TransferTuningDto(OpenFiles: 2000, SendBufferKb: 8192, UploadSlots: -1), saved);
+
+        // A client from before the tuning existed saves its settings: the tuning stays.
+        await agent.SetSettingsAsync(new SettingsDto([@"D:\Games"], false, null, null));
+        Assert.Equal(saved, (await agent.GetAsync<SettingsDto>("/api/settings")).Tuning);
+
+        // Emptying a field in the Settings page sends it as null: back to the default.
+        await agent.SetSettingsAsync(new SettingsDto([@"D:\Games"], false, null, null) { Tuning = saved with { SendBufferKb = null } });
+        Assert.Null((await agent.GetAsync<SettingsDto>("/api/settings")).Tuning!.SendBufferKb);
+    }
+
     private static void SqliteClear() => Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
 
     [Fact]
@@ -117,6 +135,8 @@ public class AgentApiTests
     [InlineData("""{"gameRoots":["D:\\Games"],"seedingEnabled":true,"maxUploadMBps":0}""", "MaxUploadMBps")]
     [InlineData("""{"gameRoots":["D:\\Games"],"seedingEnabled":true,"maxDownloadMBps":999999}""", "MaxDownloadMBps")]
     [InlineData("""{"seedingEnabled":true}""", "GameRoots")]
+    [InlineData("""{"gameRoots":["D:\\Games"],"seedingEnabled":true,"tuning":{"openFiles":3}}""", "Open files")]
+    [InlineData("""{"gameRoots":["D:\\Games"],"seedingEnabled":true,"tuning":{"uploadSlots":0}}""", "Upload slots")]
     [InlineData("not json", "")]
     public async Task Invalid_settings_are_rejected_with_a_message_that_names_the_problem(string body, string expectedInMessage)
     {

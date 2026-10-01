@@ -225,6 +225,18 @@ public class RenderTests
     }
 
     [AvaloniaFact]
+    public async Task Settings_page_unfolds_the_advanced_transfer_tuning()
+    {
+        var agent = Populated();
+        agent.Settings = new SettingsDto([@"D:\Games"], true, null, null) { Tuning = new TransferTuningDto(OpenFiles: 2000, SendBufferKb: 8192) };
+        var main = await BuildAsync(agent);
+        await main.Settings.LoadAsync();
+        main.Settings.IsTuningOpen = true;
+        var frame = await ShowAsync(main, "Nastavení", "settings-tuning.png");
+        Assert.True(DistinctColours(frame) > 100);
+    }
+
+    [AvaloniaFact]
     public async Task A_new_version_that_is_ready_shows_a_strip_with_its_button_and_its_notes_in_the_settings()
     {
         var agent = Populated();

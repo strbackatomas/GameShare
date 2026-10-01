@@ -1264,6 +1264,44 @@ public class NetworkAndSettingsTests
     }
 
     [Fact]
+    public async Task Advanced_tuning_is_shown_saved_and_does_not_switch_off_debug_logging()
+    {
+        var agent = new FakeAgent
+        {
+            Settings = new SettingsDto([@"D:\Games"], true, null, null, TorrentDebugLogging: true) { Tuning = new TransferTuningDto(OpenFiles: 2000) },
+        };
+        var (main, _, _, _) = await StartAsync(agent);
+        await main.Settings.LoadAsync();
+        Assert.Equal("2000", main.Settings.OpenFilesText);
+        Assert.Equal("", main.Settings.SendBufferText); // default
+
+        main.Settings.SendBufferText = "8192";
+        main.Settings.UploadSlotsText = "-1";
+        await main.Settings.SaveCommand.ExecuteAsync(null);
+
+        Assert.Equal(new TransferTuningDto(OpenFiles: 2000, SendBufferKb: 8192, UploadSlots: -1), agent.Settings!.Tuning);
+        Assert.True(agent.Settings.TorrentDebugLogging); // toggled on the log page, the Save button here used to switch it off
+
+        main.Settings.ResetTuningCommand.Execute(null);
+        await main.Settings.SaveCommand.ExecuteAsync(null);
+        Assert.Equal(new TransferTuningDto(), agent.Settings!.Tuning);
+    }
+
+    [Fact]
+    public async Task Advanced_tuning_that_is_not_a_number_is_not_sent()
+    {
+        var agent = new FakeAgent { Settings = new SettingsDto([@"D:\Games"], true, null, null) };
+        var (main, _, _, _) = await StartAsync(agent);
+        await main.Settings.LoadAsync();
+
+        main.Settings.SendBufferText = "hodně";
+        await main.Settings.SaveCommand.ExecuteAsync(null);
+
+        Assert.Contains("celá čísla", main.Settings.Message);
+        Assert.Null(agent.Settings!.Tuning);
+    }
+
+    [Fact]
     public async Task Opening_the_settings_page_reads_the_current_settings_from_the_agent()
     {
         var agent = new FakeAgent { Settings = new SettingsDto([@"D:\Games", @"E:\Games"], false, 80, 120) };

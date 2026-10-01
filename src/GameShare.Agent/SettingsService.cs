@@ -36,6 +36,8 @@ public sealed class SettingsService
     /// <exception cref="ArgumentException">A value is invalid. The message says which and why.</exception>
     public async Task<SettingsDto> UpdateAsync(SettingsDto requested, CancellationToken ct = default)
     {
+        // A client that does not know the tuning sends none: keep what there is rather than clearing it.
+        if (requested.Tuning is null) requested = requested with { Tuning = _current.Tuning };
         var settings = Normalize(requested);
         await _writeLock.WaitAsync(ct).ConfigureAwait(false);
         try
@@ -75,7 +77,25 @@ public sealed class SettingsService
 
         var unignored = (s.AllowedVirtualAdapterIds ?? [])
             .Where(id => !string.IsNullOrWhiteSpace(id)).Distinct(StringComparer.Ordinal).ToList();
-        return new SettingsDto(roots, s.SeedingEnabled, s.MaxUploadMBps, s.MaxDownloadMBps, unignored, s.TorrentDebugLogging);
+        return new SettingsDto(roots, s.SeedingEnabled, s.MaxUploadMBps, s.MaxDownloadMBps, unignored, s.TorrentDebugLogging)
+        {
+            Tuning = CheckTuning(s.Tuning ?? new TransferTuningDto()),
+        };
+    }
+
+    private static TransferTuningDto CheckTuning(TransferTuningDto t)
+    {
+        static void Range(int? value, int min, int max, string what)
+        {
+            if (value is { } v && (v < min || v > max)) throw new ArgumentException($"{what} must be between {min} and {max}, or empty for the default.");
+        }
+        Range(t.OpenFiles, 8, 10_000, "Open files");
+        Range(t.SendBufferKb, 16, 256 * 1024, "Send buffer (KiB)");
+        Range(t.DiskQueueKb, 64, 1024 * 1024, "Disk queue (KiB)");
+        if (t.UploadSlots is { } slots && slots != -1) Range(slots, 1, 1000, "Upload slots");
+        Range(t.RequestQueue, 10, 10_000, "Request queue");
+        Range(t.DiskThreads, 1, 64, "Disk threads");
+        return t;
     }
 
     private static void CheckLimit(int? value, string name)

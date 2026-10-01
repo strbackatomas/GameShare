@@ -80,6 +80,7 @@ public static class AgentHost
             MaxUploadBytesPerSecond = SettingsService.ToBytesPerSecond(settings.Current.MaxUploadMBps),
             MaxDownloadBytesPerSecond = SettingsService.ToBytesPerSecond(settings.Current.MaxDownloadMBps),
             DebugLogging = settings.Current.TorrentDebugLogging,
+            Tuning = settings.Current.Tuning,
         }, sp.GetRequiredService<ILogger<TorrentEngine>>()));
 
         services.AddSingleton<GameLibrary>();

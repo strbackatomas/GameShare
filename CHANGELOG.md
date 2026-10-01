@@ -8,6 +8,15 @@ this is wired into the build and where a peer's version shows up.
 
 ## [Unreleased]
 
+### Added
+- Settings has a folded section "Pokročilé – ladění přenosů" for chasing a slow transfer: open files, how much is read ahead for
+  each connection that sends, how much received data may wait for the disk, to how many PCs is sent at once, blocks asked for at
+  once and disk threads. Empty means the default. Saved values apply at once, also to running transfers, and the log says which
+  were used ("Transfer tuning").
+
+### Fixed
+- Saving on the Settings page switched off debug logging of the transfer engine that was switched on on the Protokol page.
+
 ## [0.6.7] - 2026-10-01
 
 ### Security
