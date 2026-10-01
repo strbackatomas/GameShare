@@ -8,6 +8,8 @@ this is wired into the build and where a peer's version shows up.
 
 ## [Unreleased]
 
+## [0.6.8] - 2026-10-01
+
 ### Added
 - Settings has a folded section "Pokročilé – ladění přenosů" for chasing a slow transfer: open files, how much is read ahead for
   each connection that sends, how much received data may wait for the disk, to how many PCs is sent at once, blocks asked for at
