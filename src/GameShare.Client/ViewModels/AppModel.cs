@@ -18,8 +18,9 @@ public sealed partial class AppModel : ViewModelBase, IAsyncDisposable
     public AppModel(
         IAgentClient client, IEventStream events, IUiDispatcher ui,
         IGameStarter? starter = null, IFolderPicker? folderPicker = null, IClipboard? clipboard = null, ISetupRunner? setupRunner = null,
-        IClientRestarter? restarter = null)
+        IClientRestarter? restarter = null, IRemoteWindows? remoteWindows = null)
     {
+        RemoteWindows = remoteWindows ?? new NoRemoteWindows();
         Restarter = restarter ?? new ProcessClientRestarter();
         Client = client;
         _events = events;
@@ -31,6 +32,15 @@ public sealed partial class AppModel : ViewModelBase, IAsyncDisposable
     }
 
     public IAgentClient Client { get; }
+
+    /// <summary>
+    /// This model shows another PC, managed from here through its agent. What only the person at that PC may do (play, prepare,
+    /// uninstall, settings) is not offered, and this client never restarts itself because of that PC's version.
+    /// </summary>
+    public bool IsRemote { get; init; }
+
+    /// <summary>Opens the window that manages a paired PC.</summary>
+    public IRemoteWindows RemoteWindows { get; }
 
     /// <summary>Starts the client again once an update replaced its files.</summary>
     public IClientRestarter Restarter { get; }
@@ -159,7 +169,7 @@ public sealed partial class AppModel : ViewModelBase, IAsyncDisposable
     /// </summary>
     private void RestartIfUpdated()
     {
-        if (_restarting || AgentVersion.Length == 0 || AgentVersion == ClientVersion) return;
+        if (_restarting || IsRemote || AgentVersion.Length == 0 || AgentVersion == ClientVersion) return;
         if (Restarter.VersionOnDisk() != AgentVersion) return; // a thin client of another build, or a mismatch no restart would fix
         _restarting = true;
         Restarter.Restart();
@@ -212,6 +222,7 @@ public sealed partial class AppModel : ViewModelBase, IAsyncDisposable
             AppUpdate = await Client.GetAppUpdateAsync(ct).ConfigureAwait(true);
             SyncGames(await Client.GetGamesAsync(ct).ConfigureAwait(true));
             SyncDownloads(await Client.GetDownloadsAsync(ct).ConfigureAwait(true));
+            if (IsRemote) RecordDownloadSpeed(); // a managed PC sends no events, its graph is fed by these loads
             SyncPeers(await Client.GetPeersAsync(ct).ConfigureAwait(true));
             IsConnected = true;
             ConnectionText = "Připojeno";

@@ -96,9 +96,10 @@ public sealed partial class GameCardViewModel : ViewModelBase
         }
         var here = IsInstalled || IsDamaged;
         Group(CanPlay ? OtherLaunchOptions.Select(o => new CardMenuEntry(o.Text, o.PlayCommand)) : []);
-        Group(here && HasSetup ? [new CardMenuEntry("Znovu připravit hru…", PrepareAgainCommand)] : []);
+        Group(here && HasSetup && IsLocal ? [new CardMenuEntry("Znovu připravit hru…", PrepareAgainCommand)] : []);
         Group(here ? [new CardMenuEntry("Zkontrolovat soubory", CheckCommand),
-                      .. IsDamaged ? new[] { new CardMenuEntry("Opravit ze sítě", RepairCommand), new CardMenuEntry("Registrovat jako novou verzi", RegisterCommand) } : []]
+                      .. IsDamaged ? new[] { new CardMenuEntry("Opravit ze sítě", RepairCommand) } : [],
+                      .. IsDamaged && IsLocal ? new[] { new CardMenuEntry("Registrovat jako novou verzi", RegisterCommand) } : []]
                    : []);
         Group(ShowUninstallButton ? [new CardMenuEntry("Odinstalovat…", UninstallPromptCommand)] : []);
 
@@ -226,7 +227,10 @@ public sealed partial class GameCardViewModel : ViewModelBase
     public bool ShowInstallButton => CanInstall && !IsChoosingInstallFolder;
 
     /// <summary>Hidden while the player is confirming the uninstall.</summary>
-    public bool ShowUninstallButton => (IsInstalled || IsDamaged) && !IsConfirmingUninstall;
+    public bool ShowUninstallButton => IsLocal && (IsInstalled || IsDamaged) && !IsConfirmingUninstall;
+
+    /// <summary>False on a card of a PC managed from here: playing, preparing, uninstalling and the like are for the person at that PC.</summary>
+    public bool IsLocal => !_app.IsRemote;
 
     /// <summary>Offered by PCs that were used to play it, and the missing parts are not among the PCs that are online.</summary>
     public bool IsWaitingForParts => IsAvailable && !FullyAvailable;
@@ -253,15 +257,15 @@ public sealed partial class GameCardViewModel : ViewModelBase
     };
 
     /// <summary>A damaged game can be played too: playing changes files, which is what marks it. Whether the program itself is intact is the agent's call.</summary>
-    public bool CanPlay => (IsInstalled || IsDamaged) && Launch == LaunchState.Ready && !IsRunning && !IsChoosingExecutable;
-    public bool NeedsExecutable => (IsInstalled || IsDamaged) && Launch == LaunchState.NeedsExecutable && !IsChoosingExecutable;
+    public bool CanPlay => IsLocal && (IsInstalled || IsDamaged) && Launch == LaunchState.Ready && !IsRunning && !IsChoosingExecutable;
+    public bool NeedsExecutable => IsLocal && (IsInstalled || IsDamaged) && Launch == LaunchState.NeedsExecutable && !IsChoosingExecutable;
 
     /// <summary>Repairing, updating and registering rewrite the files, which a running game holds.</summary>
     public bool CanModify => !IsBusy && !IsRunning;
 
     public bool CanAct => !IsBusy;
     public bool HasMessage => !string.IsNullOrEmpty(Message);
-    public bool HasSuggestion => !string.IsNullOrEmpty(Suggestion);
+    public bool HasSuggestion => IsLocal && !string.IsNullOrEmpty(Suggestion);
 
     public string StateText => State switch
     {

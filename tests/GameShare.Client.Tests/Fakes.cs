@@ -143,6 +143,34 @@ internal sealed class FakeAgent : IAgentClient
     public Task<DownloadDto> ResumeAsync(long downloadId, CancellationToken ct = default) => Do($"Resume({downloadId})", () => Downloads.First(d => d.Id == downloadId));
     public Task CancelAsync(long downloadId, bool deleteFiles, CancellationToken ct = default) => Do($"Cancel({downloadId}|{deleteFiles})", () => (object?)null);
 
+    // ---- remote management ----
+
+    public RemoteStatusDto Remote { get; set; } = new(true, false, false, 47703, new string('a', 64), null, [], []);
+
+    public Task<RemoteStatusDto> GetRemoteAsync(CancellationToken ct = default) => Do("GetRemote", () => Remote);
+    public Task<RemoteStatusDto> SetRemoteEnabledAsync(bool enabled, CancellationToken ct = default) =>
+        Do($"SetRemoteEnabled({enabled})", () => Remote = Remote with { Enabled = enabled, Listening = enabled, Pairing = enabled ? Remote.Pairing : null });
+    public Task<RemotePairingDto> StartPairingAsync(CancellationToken ct = default) =>
+        Do("StartPairing", () => (Remote = Remote with { Pairing = new RemotePairingDto("K7QF-M2XP-9HTD", DateTimeOffset.UtcNow.AddMinutes(5)) }).Pairing!);
+    public Task CancelPairingAsync(CancellationToken ct = default) => Do("CancelPairing", () => Remote = Remote with { Pairing = null });
+    public Task RemoveControllerAsync(string machineId, CancellationToken ct = default) =>
+        Do($"RemoveController({machineId})", () => Remote = Remote with { Controllers = Remote.Controllers.Where(c => c.MachineId != machineId).ToList() });
+    public Task<PairedMachineDto> PairAsync(string machineId, string code, CancellationToken ct = default) =>
+        Do($"Pair({machineId}|{code})", () =>
+        {
+            var paired = new PairedMachineDto(machineId, Peers.FirstOrDefault(p => p.MachineId == machineId)?.MachineName ?? machineId,
+                new string('b', 64), DateTimeOffset.UtcNow, null, Online: true);
+            Remote = Remote with { Targets = [.. Remote.Targets, paired] };
+            return paired;
+        });
+    public Task RemoveTargetAsync(string machineId, CancellationToken ct = default) =>
+        Do($"RemoveTarget({machineId})", () => Remote = Remote with { Targets = Remote.Targets.Where(t => t.MachineId != machineId).ToList() });
+
+    /// <summary>The agent of each managed PC, by machine id. One is made on first use.</summary>
+    public Dictionary<string, FakeAgent> TargetAgents { get; } = [];
+    public IAgentClient ForTarget(string machineId) =>
+        TargetAgents.TryGetValue(machineId, out var agent) ? agent : TargetAgents[machineId] = new FakeAgent { MachineName = machineId };
+
     private DownloadDto NewDownload(string hash, string kind)
     {
         var d = Downloads.Count + 1;
@@ -201,6 +229,12 @@ internal sealed class FakeClipboard : IClipboard
         Text = text;
         return Task.CompletedTask;
     }
+}
+
+internal sealed class FakeRemoteWindows : IRemoteWindows
+{
+    public List<(string MachineId, string Name)> Opened { get; } = [];
+    public void Open(string machineId, string machineName) => Opened.Add((machineId, machineName));
 }
 
 internal sealed class FakeEvents : IEventStream

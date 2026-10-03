@@ -94,6 +94,53 @@ public class RenderTests
     }
 
     [AvaloniaFact]
+    public async Task Remote_management_page_shows_the_code_the_paired_pcs_and_what_they_did()
+    {
+        var agent = Populated();
+        var now = DateTimeOffset.UtcNow;
+        agent.Remote = new RemoteStatusDto(true, true, true, 47703, "3f9a0c1b2d4e5f60718293a4b5c6d7e8f90112233445566778899aabbccddeeff",
+            new RemotePairingDto("K7QF-M2XP-9HTD", now.AddMinutes(5)),
+            [new PairedMachineDto("c1", "PC-01", new string('c', 64), now.AddDays(-2), now.AddMinutes(-3))],
+            [new PairedMachineDto("p4", "PC-04", new string('d', 64), now.AddDays(-1), null, Online: true),
+             new PairedMachineDto("p9", "PC-09", new string('e', 64), now.AddDays(-5), null, Online: false)]);
+        var events = new FakeEvents();
+        var app = new AppModel(agent, events, new ImmediateDispatcher());
+        var main = new MainViewModel(app);
+        await app.StartAsync();
+        await main.Remote.LoadAsync();
+        events.Raise(GameShareEvents.RemoteAction, new RemoteActionDto("c1", "PC-01", $"POST games/{D}/install", 202, now));
+
+        var frame = await ShowAsync(main, "Vzdálená správa", "remote.png");
+
+        Assert.True(DistinctColours(frame) > 100, "the remote page rendered as an almost blank image");
+        Assert.Equal("K7QF-M2XP-9HTD", main.Remote.PairingCode);
+        Assert.Equal(2, main.Remote.Targets.Count);
+        Assert.Single(main.Remote.Controllers);
+        Assert.Contains("PC-01: instalace hry Assetto Corsa", Assert.Single(main.Remote.Recent));
+        Assert.Equal(["PC-01", "PC-08", "PC-10"], main.Remote.Choices.Select(c => c.Name)); // PC-04 is paired already
+    }
+
+    [AvaloniaFact]
+    public async Task The_window_of_a_managed_pc_says_so_and_offers_nothing_that_only_its_owner_may_do()
+    {
+        var agent = Populated();
+        var app = new AppModel(agent, new FakeEvents(), new ImmediateDispatcher()) { IsRemote = true };
+        var main = new MainViewModel(app);
+        await app.StartAsync();
+
+        var frame = await ShowAsync(main, "Knihovna", "remote-window.png");
+
+        Assert.True(DistinctColours(frame) > 200);
+        Assert.Equal(["Knihovna", "Přenosy", "Síť"], main.Items.Select(i => i.Title));
+        var installed = main.Library.MyGames.Single(g => g.ContentHash == A);
+        Assert.False(installed.CanPlay);
+        Assert.False(installed.ShowUninstallButton);
+        Assert.DoesNotContain(installed.MenuEntries, e => e.Header is { } h && (h.StartsWith("Odinstalovat") || h.StartsWith("Znovu připravit")));
+        Assert.Contains(installed.MenuEntries, e => e.Header == "Zkontrolovat soubory");
+        Assert.True(main.Library.LanGames.Single(g => g.ContentHash == D).CanInstall);
+    }
+
+    [AvaloniaFact]
     public async Task Library_shows_installed_downloading_damaged_and_available_games()
     {
         var main = await BuildAsync(Populated());

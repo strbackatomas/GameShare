@@ -40,9 +40,11 @@ public partial class App : Application
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             MainWindow? window = null;
-            var app = new AppModel(AgentClient.Create(AgentUrl), new AgentEventStream(AgentUrl), new AvaloniaDispatcher(),
+            var client = AgentClient.Create(AgentUrl);
+            var app = new AppModel(client, new AgentEventStream(AgentUrl), new AvaloniaDispatcher(),
                 folderPicker: new AvaloniaFolderPicker(() => window), // looked up when a folder is picked, the window does not exist yet here
-                clipboard: new AvaloniaClipboard(() => window));
+                clipboard: new AvaloniaClipboard(() => window),
+                remoteWindows: new AvaloniaRemoteWindows(client));
             var main = new MainViewModel(app);
             window = new MainWindow { DataContext = main };
             desktop.MainWindow = window;

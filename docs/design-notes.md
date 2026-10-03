@@ -252,6 +252,11 @@ it turns it on, and then only for PCs that were paired with it there.
   others or reach a third PC through this one.
 - **The controller side** is in the control API too: `/api/remote/targets/{id}/api/<the same paths>` is passed on to the target.
   The client never holds a key.
+- **In the client.** The page "Vzdálená správa" has both sides: the PCs managed from here (pair with one by choosing it and typing
+  its code, open its window, forget it), and this PC (the switch, the code while a pairing is open, who may manage it and what they
+  did). "Spravovat" opens a second window of the same kind as the main one, for that PC: Knihovna, Přenosy and Síť only, with a strip
+  that says whose it is, and without the buttons only the person at that PC may use (play, prepare, uninstall, register). A managed
+  PC pushes no events here, so its window loads everything again every two seconds (`RemoteSession`).
 - **What the person at the target sees.** Each change a paired PC makes is logged with its name and sent to the client as a
   `RemoteAction` event. The PCs that may manage this one are listed with when they last did something, and removing one takes
   effect with its next request. Turning remote management off keeps the pairings for later.

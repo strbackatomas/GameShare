@@ -15,14 +15,23 @@
         <DataTemplate DataType="vm:NetworkViewModel"><views:NetworkView /></DataTemplate>
         <DataTemplate DataType="vm:SettingsViewModel"><views:SettingsView /></DataTemplate>
         <DataTemplate DataType="vm:LogViewModel"><views:LogView /></DataTemplate>
+        <DataTemplate DataType="vm:RemoteViewModel"><views:RemoteView /></DataTemplate>
     </Window.DataTemplates>
 
     <Grid RowDefinitions="Auto,Auto,Auto,*">
 
-        <!-- Shown only while the agent cannot be reached. Everything below keeps its last state. -->
-        <Border Grid.Row="0" IsVisible="{Binding !App.IsConnected}" Background="{StaticResource WarnBrush}" Padding="20,8">
-            <TextBlock Text="{Binding App.ConnectionText}" Foreground="#101216" FontWeight="SemiBold" TextWrapping="Wrap" />
-        </Border>
+        <StackPanel Grid.Row="0">
+            <!-- The window of another PC managed from here. Says so always, so nobody mistakes it for this PC's own. -->
+            <Border IsVisible="{Binding App.IsRemote}" Background="{StaticResource AccentBrush}" Padding="20,8">
+                <TextBlock Foreground="#101216" FontWeight="SemiBold" TextWrapping="Wrap">
+                    <Run Text="Spravuješ na dálku: " /><Run Text="{Binding App.MachineName}" /><Run Text=". Co tu spustíš, stahuje a instaluje ten počítač." />
+                </TextBlock>
+            </Border>
+            <!-- Shown only while the agent cannot be reached. Everything below keeps its last state. -->
+            <Border IsVisible="{Binding !App.IsConnected}" Background="{StaticResource WarnBrush}" Padding="20,8">
+                <TextBlock Text="{Binding App.ConnectionText}" Foreground="#101216" FontWeight="SemiBold" TextWrapping="Wrap" />
+            </Border>
+        </StackPanel>
 
         <Border Grid.Row="1" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,0,1">
             <Grid ColumnDefinitions="Auto,*,Auto" Margin="24,12">

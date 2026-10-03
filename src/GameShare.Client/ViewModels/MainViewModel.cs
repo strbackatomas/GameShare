@@ -27,15 +27,25 @@ public sealed partial class MainViewModel : ViewModelBase
         Network = new NetworkViewModel(app);
         Settings = new SettingsViewModel(app);
         Log = new LogViewModel(app);
+        Remote = new RemoteViewModel(app);
 
-        Items =
-        [
-            new NavItem("Knihovna", Library),
-            new NavItem("Přenosy", Downloads, () => app.ActiveDownloadCount),
-            new NavItem("Síť", Network, () => app.Peers.Count),
-            new NavItem("Nastavení", Settings),
-            new NavItem("Protokol", Log),
-        ];
+        // Another PC managed from here: only what may be done remotely. Its settings, log and remote management are its own.
+        Items = app.IsRemote
+            ?
+            [
+                new NavItem("Knihovna", Library),
+                new NavItem("Přenosy", Downloads, () => app.ActiveDownloadCount),
+                new NavItem("Síť", Network, () => app.Peers.Count),
+            ]
+            :
+            [
+                new NavItem("Knihovna", Library),
+                new NavItem("Přenosy", Downloads, () => app.ActiveDownloadCount),
+                new NavItem("Síť", Network, () => app.Peers.Count),
+                new NavItem("Vzdálená správa", Remote),
+                new NavItem("Nastavení", Settings),
+                new NavItem("Protokol", Log),
+            ];
         SelectedItem = Items[0];
 
         // Badges follow the counts they show.
@@ -51,6 +61,7 @@ public sealed partial class MainViewModel : ViewModelBase
     public NetworkViewModel Network { get; }
     public SettingsViewModel Settings { get; }
     public LogViewModel Log { get; }
+    public RemoteViewModel Remote { get; }
     public ObservableCollection<NavItem> Items { get; }
 
     [ObservableProperty] public partial NavItem SelectedItem { get; set; }
@@ -61,6 +72,7 @@ public sealed partial class MainViewModel : ViewModelBase
         if (value.Page == Settings) _ = Settings.LoadAsync();
         else if (value.Page == Log) _ = Log.LoadAsync();
         else if (value.Page == Downloads) _ = Downloads.LoadUploadsAsync();
+        else if (value.Page == Remote) _ = Remote.LoadAsync();
     }
 
     private void RefreshBadges()

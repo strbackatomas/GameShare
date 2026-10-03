@@ -88,6 +88,34 @@ public interface IAgentClient
     Task<DownloadDto> PauseAsync(long downloadId, CancellationToken ct = default);
     Task<DownloadDto> ResumeAsync(long downloadId, CancellationToken ct = default);
     Task CancelAsync(long downloadId, bool deleteFiles, CancellationToken ct = default);
+
+    // ---- remote management ----
+
+    /// <summary>Whether this PC may be managed, the open pairing code, and the PCs paired either way.</summary>
+    Task<RemoteStatusDto> GetRemoteAsync(CancellationToken ct = default);
+    Task<RemoteStatusDto> SetRemoteEnabledAsync(bool enabled, CancellationToken ct = default);
+
+    /// <summary>A new code for another PC to enter. Valid for a few minutes and for one attempt.</summary>
+    Task<RemotePairingDto> StartPairingAsync(CancellationToken ct = default);
+    Task CancelPairingAsync(CancellationToken ct = default);
+
+    /// <summary>A PC that may manage this one no more.</summary>
+    Task RemoveControllerAsync(string machineId, CancellationToken ct = default);
+
+    /// <summary>Pairs with another PC that shows <paramref name="code"/>, so this one may manage it.</summary>
+    Task<PairedMachineDto> PairAsync(string machineId, string code, CancellationToken ct = default);
+
+    /// <summary>Forgets a PC this one managed.</summary>
+    Task RemoveTargetAsync(string machineId, CancellationToken ct = default);
+
+    /// <summary>The same calls, answered by the paired PC <paramref name="machineId"/> through this PC's agent.</summary>
+    IAgentClient ForTarget(string machineId);
+}
+
+/// <summary>Opens the window that manages another PC. A seam so view models can be tested without a display.</summary>
+public interface IRemoteWindows
+{
+    void Open(string machineId, string machineName);
 }
 
 /// <summary>Lets the player pick a folder from the real Windows dialog, instead of typing a path by hand.</summary>

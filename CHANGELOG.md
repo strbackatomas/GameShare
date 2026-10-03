@@ -13,8 +13,11 @@ this is wired into the build and where a peer's version shows up.
   then shows a pairing code for the managing PC to enter. Paired PCs only talk over TLS with each other's pinned certificate,
   on the new port 47703 (`install-agent.ps1` opens it on the Private and Domain profiles), and may only do what is on a fixed
   list: no settings, no starting games or setup steps, no deleting games. Each action is logged on the managed PC and announced
-  to its client. The portable LAN party build never takes it. See "Remote management" in `docs/design-notes.md`. The client
-  pages come next.
+  to its client. The portable LAN party build never takes it. See "Remote management" in `docs/design-notes.md`.
+- Page "Vzdálená správa" in the client: turn remote management of this PC on, show the pairing code, see and remove who may
+  manage it and what they did; pair with another PC by its code and open its window with "Spravovat". That window shows the
+  other PC's library, transfers and network, without playing, preparing or uninstalling. The tray tooltip says when a paired PC
+  did something here.
 - `install-agent.ps1` puts a GameShare shortcut on the desktop of all users next to the Start menu entry, `-NoDesktopShortcut`
   leaves it out. `uninstall-agent.ps1` removes it.
 

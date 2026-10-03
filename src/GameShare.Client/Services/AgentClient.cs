@@ -12,11 +12,36 @@ public sealed class AgentClient : IAgentClient
     private static readonly TimeSpan Slow = TimeSpan.FromMinutes(30);
 
     private readonly HttpClient _http;
+    private readonly string _prefix;
+    private readonly string _whose;
 
-    public AgentClient(HttpClient http) => _http = http;
+    /// <param name="prefix">Put before every path. Empty for this PC's agent, /api/remote/targets/{id} for a paired PC.</param>
+    /// <param name="whose">Who does not answer, for the message when nothing answers.</param>
+    public AgentClient(HttpClient http, string prefix = "", string whose = "Agent GameShare")
+    {
+        _http = http;
+        _prefix = prefix;
+        _whose = whose;
+    }
 
     public static AgentClient Create(Uri baseAddress) =>
         new(new HttpClient { BaseAddress = baseAddress, Timeout = Timeout.InfiniteTimeSpan }); // limits are per call
+
+    public IAgentClient ForTarget(string machineId) =>
+        new AgentClient(_http, $"/api/remote/targets/{Uri.EscapeDataString(machineId)}", "Agent GameShare na tomto PC");
+
+    public Task<RemoteStatusDto> GetRemoteAsync(CancellationToken ct = default) => SendAsync<RemoteStatusDto>(HttpMethod.Get, "/api/remote", null, Quick, ct);
+    public Task<RemoteStatusDto> SetRemoteEnabledAsync(bool enabled, CancellationToken ct = default) =>
+        SendAsync<RemoteStatusDto>(HttpMethod.Put, "/api/remote/enabled", new RemoteEnableRequest(enabled), Quick, ct);
+    public Task<RemotePairingDto> StartPairingAsync(CancellationToken ct = default) => SendAsync<RemotePairingDto>(HttpMethod.Post, "/api/remote/pairing", null, Quick, ct);
+    public async Task CancelPairingAsync(CancellationToken ct = default) =>
+        await SendAsync<object?>(HttpMethod.Delete, "/api/remote/pairing", null, Quick, ct).ConfigureAwait(false);
+    public async Task RemoveControllerAsync(string machineId, CancellationToken ct = default) =>
+        await SendAsync<object?>(HttpMethod.Delete, $"/api/remote/controllers/{Uri.EscapeDataString(machineId)}", null, Quick, ct).ConfigureAwait(false);
+    public Task<PairedMachineDto> PairAsync(string machineId, string code, CancellationToken ct = default) =>
+        SendAsync<PairedMachineDto>(HttpMethod.Post, "/api/remote/targets", new RemotePairRequest(machineId, code), Quick, ct);
+    public async Task RemoveTargetAsync(string machineId, CancellationToken ct = default) =>
+        await SendAsync<object?>(HttpMethod.Delete, $"/api/remote/targets/{Uri.EscapeDataString(machineId)}", null, Quick, ct).ConfigureAwait(false);
 
     public Task<StatusDto> GetStatusAsync(CancellationToken ct = default) => SendAsync<StatusDto>(HttpMethod.Get, "/api/status", null, Quick, ct);
     public Task<IReadOnlyList<GameDto>> GetGamesAsync(CancellationToken ct = default) => ListAsync<GameDto>("/api/games", ct);
@@ -93,7 +118,7 @@ public sealed class AgentClient : IAgentClient
         limit.CancelAfter(Quick);
         try
         {
-            using var response = await _http.GetAsync($"/api/games/{contentHash}/icon", limit.Token).ConfigureAwait(false);
+            using var response = await _http.GetAsync($"{_prefix}/api/games/{contentHash}/icon", limit.Token).ConfigureAwait(false);
             return response.IsSuccessStatusCode ? await response.Content.ReadAsByteArrayAsync(limit.Token).ConfigureAwait(false) : null;
         }
         catch (HttpRequestException) { return null; } // a picture is not worth an error message
@@ -117,7 +142,7 @@ public sealed class AgentClient : IAgentClient
 
     private async Task<T> SendAsync<T>(HttpMethod method, string path, object? body, TimeSpan timeout, CancellationToken ct)
     {
-        using var request = new HttpRequestMessage(method, path);
+        using var request = new HttpRequestMessage(method, _prefix + path);
         if (body is not null) request.Content = JsonContent.Create(body, body.GetType(), options: GameShareJson.Options);
 
         using var limit = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -131,7 +156,7 @@ public sealed class AgentClient : IAgentClient
         }
         catch (HttpRequestException ex)
         {
-            throw new AgentException("Agent GameShare neodpovídá. Zkontroluj, že služba běží.", inner: ex);
+            throw new AgentException($"{_whose} neodpovídá. Zkontroluj, že služba běží.", inner: ex);
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {

@@ -102,6 +102,7 @@ internal static class TrayController
             { Name: GameShareEvents.DownloadCompleted, Payload: DownloadDto d } => $"Staženo: {d.GameName}",
             { Name: GameShareEvents.GameDiscovered, Payload: GameDto { State: GameState.AvailableOnLan } g } => $"Nová hra na síti: {g.Name}",
             { Name: GameShareEvents.AppUpdateChanged, Payload: AppUpdateStatusDto { State: AppUpdateState.Ready } u } => $"Připravená nová verze {u.Version}",
+            { Name: GameShareEvents.RemoteAction, Payload: RemoteActionDto a } => RemoteViewModel.Describe(a, app),
             _ => null,
         };
         if (message is null) return;
