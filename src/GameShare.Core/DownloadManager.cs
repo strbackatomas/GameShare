@@ -168,9 +168,7 @@ public sealed class DownloadManager
                         $"Target folder {installPath} already exists and is not empty. GameShare will not overwrite a folder it did not create.");
             }
 
-            long? free = (_options.FreeSpaceProvider ?? GetFreeSpace)(targetRoot);
-            if (free is not null && free < manifest.TotalSize)
-                throw new IOException($"Not enough free space on {Path.GetPathRoot(targetRoot)}: {manifest.Name} needs {manifest.TotalSize:N0} bytes, {free:N0} are free.");
+            RequireFreeSpace(targetRoot, manifest.TotalSize, manifest.Name);
 
             return await BeginAsync(manifest, torrentBytes, targetRoot, DownloadKind.Install, installationId: null, ct).ConfigureAwait(false);
         }
@@ -279,12 +277,31 @@ public sealed class DownloadManager
             throw new InvalidOperationException($"{inst.InstallPath} is already being repaired or updated.");
     }
 
+    /// <summary>
+    /// Refuses a download that would fill the drive: what it needs, plus what the downloads already running on that drive still
+    /// have to write, plus the reserve below which a running download pauses itself (<see cref="DownloadManagerOptions.MinFreeBytes"/>).
+    /// So a download that starts can finish, instead of pausing near its end. Caller holds the gate.
+    /// </summary>
     private void RequireFreeSpace(string root, long needed, string gameName)
     {
         long? free = (_options.FreeSpaceProvider ?? GetFreeSpace)(root);
-        if (free is not null && free < needed)
-            throw new IOException($"Not enough free space on {Path.GetPathRoot(root)}: {gameName} needs about {needed:N0} bytes, {free:N0} are free.");
+        if (free is null) return;
+
+        var drive = Path.GetPathRoot(Path.GetFullPath(root));
+        long others = _active.Values
+            .Where(a => string.Equals(Path.GetPathRoot(a.InstallPath), drive, StringComparison.OrdinalIgnoreCase))
+            .Sum(a => Math.Max(0, a.Manifest.TotalSize - (a.Last?.BytesDone ?? a.Row.BytesDone)));
+        long wanted = needed + others + _options.MinFreeBytes;
+        if (free >= wanted) return;
+
+        var parts = new List<string> { $"{gameName} needs {Gb(needed)}" };
+        if (others > 0) parts.Add($"downloads already running there still need {Gb(others)}");
+        parts.Add($"{Gb(_options.MinFreeBytes)} is kept free");
+        throw new IOException($"Not enough free space on {drive}: {string.Join(", ", parts)}, but only {Gb(free.Value)} is free.");
     }
+
+    private static string Gb(long bytes) =>
+        bytes >= 1L << 30 ? $"{bytes / (double)(1L << 30):0.0} GB" : $"{bytes / (1024 * 1024):N0} MB";
 
     /// <summary>Common start of every download: store the manifest, check the torrent belongs to it, begin transferring. Caller holds the gate.</summary>
     private async Task<DownloadStatus> BeginAsync(

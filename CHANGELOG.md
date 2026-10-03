@@ -26,6 +26,9 @@ this is wired into the build and where a peer's version shows up.
 ### Fixed
 - A download whose disk filled up stalled without a word. It now pauses itself when less than 512 MB is left on its drive and
   says so on the download ("the disk is full: only … MB free on D:\"); Pokračovat continues it once there is room.
+- An install, update or repair could start although it would not fit with the downloads already running on that drive, or only
+  just fit and then pause near its end. It is now refused up front unless the drive has room for it, for what the running
+  downloads there still have to write, and for the 512 MB that are kept free; the message says how much of each.
 
 ## [0.7.0] - 2026-10-03
 

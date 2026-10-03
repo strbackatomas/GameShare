@@ -262,6 +262,39 @@ public class InstallWorkflowTests
     }
 
     [Fact]
+    public async Task An_install_is_refused_up_front_when_it_and_the_running_ones_would_not_fit_with_the_reserve()
+    {
+        await using var source = await Pc.StartAsync();
+        source.AddGame();
+        using (var second = new TestGame(seed: 2, largeFileBytes: 5_000_000))
+            TestGame.CopyDirectory(second.GameDir, Path.Combine(source.GamesRoot, "OtherGame"));
+        await source.Library.ScanAsync([source.GamesRoot]);
+        await source.Seeds.StartAllAsync();
+        var games = (await source.Library.ListAsync()).Select(g => g.Stored).ToList();
+        var offer = games.Single(g => g.Manifest.FolderName == "TestGame");
+        var other = games.Single(g => g.Manifest.FolderName == "OtherGame");
+        long size = offer.Manifest.TotalSize, reserve = new DownloadManagerOptions().MinFreeBytes;
+
+        // The game fits, but not with the reserve: it would pause itself near the end, so it does not start.
+        await using (var tight = await Pc.StartAsync(freeSpace: _ => size + reserve - 1))
+        {
+            var ex = await Assert.ThrowsAsync<IOException>(() => tight.Downloads.StartInstallAsync(offer.Manifest, offer.TorrentBytes!, tight.GamesRoot));
+            Assert.StartsWith("Not enough free space on", ex.Message);
+            Assert.Contains("is kept free", ex.Message);
+            Assert.Empty(await tight.Db.ListDownloadsAsync());
+        }
+
+        // Room for it and the reserve: it starts.
+        await using var pc = await Pc.StartAsync(downloadLimit: 1_000_000, freeSpace: _ => size + reserve + 1000);
+        var running = await pc.Downloads.StartInstallAsync(offer.Manifest, offer.TorrentBytes!, pc.GamesRoot);
+
+        // A second game on the same drive must also fit next to what the first one still has to write.
+        var refused = await Assert.ThrowsAsync<IOException>(() => pc.Downloads.StartInstallAsync(other.Manifest, other.TorrentBytes!, pc.GamesRoot));
+        Assert.Contains("downloads already running there still need", refused.Message);
+        await pc.Downloads.CancelAsync(running.Id, deleteFiles: true);
+    }
+
+    [Fact]
     public async Task A_download_whose_disk_fills_up_pauses_itself_says_why_and_finishes_once_there_is_room()
     {
         await using var source = await Pc.StartAsync();
