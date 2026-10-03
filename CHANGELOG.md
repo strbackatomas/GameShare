@@ -19,6 +19,10 @@ this is wired into the build and where a peer's version shows up.
   PCs paired with it its MAC addresses, so this works after it was on once with this version. Wake-on-LAN has to be enabled in
   its BIOS and for its network adapter.
 
+### Fixed
+- A download whose disk filled up stalled without a word. It now pauses itself when less than 512 MB is left on its drive and
+  says so on the download ("the disk is full: only … MB free on D:\"); Pokračovat continues it once there is room.
+
 ## [0.7.0] - 2026-10-03
 
 ### Added

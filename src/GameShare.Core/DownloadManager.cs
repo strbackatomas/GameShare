@@ -16,6 +16,15 @@ public sealed record DownloadManagerOptions
 
     /// <summary>Free bytes on the drive of a path, or null when unknown. Replaceable for tests and network shares.</summary>
     public Func<string, long?>? FreeSpaceProvider { get; init; }
+
+    /// <summary>
+    /// A running download is paused when its drive has less than this free. The transfer engine does not report a full disk, the
+    /// download would only stall; and Windows and the games on that drive need some room too.
+    /// </summary>
+    public long MinFreeBytes { get; init; } = 512L * 1024 * 1024;
+
+    /// <summary>How often a running download looks at the free space of its drive.</summary>
+    public TimeSpan FreeSpaceCheckInterval { get; init; } = TimeSpan.FromSeconds(5);
 }
 
 /// <summary>A download as the UI needs to show it: database state plus live transfer numbers.</summary>
@@ -89,6 +98,9 @@ public sealed class DownloadManager
 
         /// <summary>Notices a transfer that is connected but gets nothing. See <see cref="StallWatch"/>.</summary>
         public StallWatch Stall { get; } = new();
+
+        /// <summary>When the free space of its drive was last looked at.</summary>
+        public DateTimeOffset LastSpaceCheck { get; set; } = DateTimeOffset.MinValue;
 
         /// <summary>The transfer was stopped to drop a dead connection and is started again on the next tick.</summary>
         public bool RestartPending { get; set; }
@@ -556,6 +568,10 @@ public sealed class DownloadManager
                     _log.LogInformation("Download finished, verifying against manifest: {Name}", a.Manifest.Name);
                     a.Verification = Task.Run(() => VerifyAsync(a), CancellationToken.None);
                 }
+                else if (OutOfSpace(a) is { } reason)
+                {
+                    await PauseForSpaceAsync(a, reason, ct).ConfigureAwait(false);
+                }
                 else
                 {
                     UnstickIfStalled(a, s);
@@ -573,6 +589,31 @@ public sealed class DownloadManager
 
         // Outside the gate on purpose. The library can take seconds to answer, and pause, cancel and status must not wait for it.
         foreach (var a in dueForResumeSave) await SaveResumeAsync(a, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>Why the download must stop because its drive is nearly full, or null while there is room. Looks every few seconds.</summary>
+    private string? OutOfSpace(Active a)
+    {
+        var now = DateTimeOffset.UtcNow;
+        if (now - a.LastSpaceCheck < _options.FreeSpaceCheckInterval) return null;
+        a.LastSpaceCheck = now;
+        long? free = (_options.FreeSpaceProvider ?? GetFreeSpace)(a.InstallPath);
+        if (free is null || free >= _options.MinFreeBytes) return null;
+        return $"Paused, the disk is full: only {free.Value / (1024 * 1024):N0} MB free on {Path.GetPathRoot(a.InstallPath)}. "
+            + "Free some space there, then resume.";
+    }
+
+    /// <summary>Like <see cref="PauseAsync"/>, with the reason kept for the user. Resuming clears it. Caller holds the gate.</summary>
+    private async Task PauseForSpaceAsync(Active a, string reason, CancellationToken ct)
+    {
+        a.Transfer.Stop();
+        await SaveResumeAsync(a, ct).ConfigureAwait(false);
+        await RetireAsync(a).ConfigureAwait(false);
+        await _engine.RemoveAsync(a.Transfer, CancellationToken.None).ConfigureAwait(false);
+        _active.Remove(a.Row.Id);
+        await _db.UpdateDownloadAsync(a.Row.Id, DownloadState.Paused, reason, ct: ct).ConfigureAwait(false);
+        _log.LogWarning("Download paused for lack of space: {Name}: {Reason}", a.Manifest.Name, reason);
+        Publish(DownloadEventKind.Paused, await StatusAsync(a.Row.Id, a.Manifest, live: null, ct).ConfigureAwait(false));
     }
 
     /// <summary>Acts on what <see cref="StallWatch"/> says. Caller holds the gate.</summary>

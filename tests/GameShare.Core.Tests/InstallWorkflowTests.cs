@@ -52,6 +52,7 @@ internal sealed class Pc : IAsyncDisposable
             TickInterval = TimeSpan.FromMilliseconds(100),
             ResumeSaveInterval = TimeSpan.FromMilliseconds(500),
             FreeSpaceProvider = freeSpace,
+            FreeSpaceCheckInterval = TimeSpan.FromMilliseconds(100),
         });
         Downloads.DownloadEventRaised += (_, e) => DownloadEvents.Enqueue(e);
         await Downloads.RecoverAsync();
@@ -258,6 +259,35 @@ public class InstallWorkflowTests
 
         await pc.Library.ScanAsync([pc.GamesRoot]);
         Assert.Single(changed); // unchanged the second time
+    }
+
+    [Fact]
+    public async Task A_download_whose_disk_fills_up_pauses_itself_says_why_and_finishes_once_there_is_room()
+    {
+        await using var source = await Pc.StartAsync();
+        source.AddGame();
+        await source.Library.ScanAsync([source.GamesRoot]);
+        await source.Seeds.StartAllAsync();
+        var offer = await source.OnlyKnownGameAsync();
+
+        long free = 100L * 1024 * 1024 * 1024;
+        await using var pc = await Pc.StartAsync(downloadLimit: 2_000_000, freeSpace: _ => Interlocked.Read(ref free));
+        var d = await pc.Downloads.StartInstallAsync(offer.Manifest, offer.TorrentBytes!, pc.GamesRoot);
+        await Poll.UntilAsync(async () => (await pc.Downloads.GetAsync(d.Id))!.Percent >= 10, "10% downloaded");
+
+        Interlocked.Exchange(ref free, 100L * 1024 * 1024); // something else filled the disk
+        await Poll.DownloadStateAsync(pc, d.Id, DownloadState.Paused, timeoutMs: 10_000);
+
+        var paused = (await pc.Downloads.GetAsync(d.Id))!;
+        Assert.StartsWith("Paused, the disk is full: only 100 MB free on", paused.Error);
+        Assert.Empty(pc.Engine.Transfers);
+        Assert.Contains(pc.DownloadEvents, e => e.Kind == DownloadEventKind.Paused && e.Status.Error == paused.Error);
+
+        Interlocked.Exchange(ref free, 100L * 1024 * 1024 * 1024);
+        await pc.Downloads.ResumeAsync(d.Id);
+        Assert.Null((await pc.Downloads.GetAsync(d.Id))!.Error); // resuming clears the reason
+        await Poll.DownloadStateAsync(pc, d.Id, DownloadState.Completed);
+        Assert.NotNull(await pc.Db.FindInstalledAsync(offer.Manifest.ContentHash));
     }
 
     [Fact]

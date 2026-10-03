@@ -149,7 +149,7 @@
                                 </ItemsControl>
 
                                 <TextBlock Grid.Row="5" Grid.ColumnSpan="2" Text="{Binding Error}" Foreground="{StaticResource DangerBrush}"
-                                           IsVisible="{Binding IsFailed}" TextWrapping="Wrap" Margin="0,10,0,0" />
+                                           IsVisible="{Binding ShowError}" TextWrapping="Wrap" Margin="0,10,0,0" />
                                 <TextBlock Grid.Row="6" Grid.ColumnSpan="2" Text="{Binding Message}" IsVisible="{Binding HasMessage}"
                                            Foreground="{StaticResource DangerBrush}" TextWrapping="Wrap" Margin="0,8,0,0" />
                             </Grid>

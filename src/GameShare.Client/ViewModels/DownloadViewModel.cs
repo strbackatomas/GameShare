@@ -35,10 +35,15 @@ public sealed partial class DownloadViewModel : ViewModelBase
     [ObservableProperty] public partial string SpeedText { get; set; } = "";
     [ObservableProperty] public partial string EtaText { get; set; } = "";
     [ObservableProperty] public partial string StatsText { get; set; } = "";
-    [ObservableProperty] public partial string? Error { get; set; }
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowError))]
+    public partial string? Error { get; set; }
+
+    /// <summary>Why it failed, or why the agent paused it by itself (a full disk).</summary>
+    public bool ShowError => !string.IsNullOrEmpty(Error) && (IsFailed || IsPaused);
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(StateText), nameof(IsRunning), nameof(IsVerifying), nameof(IsPaused), nameof(IsFinished), nameof(IsFailed), nameof(HasProgress), nameof(IsWaitingForSource), nameof(IsRunningWithSource))]
+    [NotifyPropertyChangedFor(nameof(StateText), nameof(IsRunning), nameof(IsVerifying), nameof(IsPaused), nameof(IsFinished), nameof(IsFailed), nameof(HasProgress), nameof(IsWaitingForSource), nameof(IsRunningWithSource), nameof(ShowError))]
     public partial string State { get; set; } = "";
 
     /// <summary>What the agent does about a stall: null, "Retrying" or "Reconnecting". See <see cref="DownloadDto.Recovery"/>.</summary>
