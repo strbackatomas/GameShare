@@ -58,6 +58,32 @@ public static class ContentScanner
             .ToList();
     }
 
+    /// <summary>How many threads hash torrent pieces. Pieces are independent, so they spread well; more than four rarely helps.</summary>
+    private static int PieceLanes => Math.Clamp(Environment.ProcessorCount / 2, 1, 4);
+
+    /// <summary>How many threads hash whole files. One file is one hash and cannot be split, so this helps games with many files.</summary>
+    private static int FileLanes => Environment.ProcessorCount >= 4 ? 2 : 1;
+
+    /// <summary>Read buffers in flight. Bounds the memory and how far reading may run ahead of hashing.</summary>
+    private const int BuffersInFlight = 12;
+
+    /// <summary>A read buffer, shared by the piece lane and the file lane that hash it, and reused once both are done.</summary>
+    private sealed class Chunk(int size)
+    {
+        public readonly byte[] Data = new byte[size];
+        public int Length;
+        public int Pending;
+    }
+
+    /// <summary>Data to append, or, with no chunk, the end of piece or file <see cref="Finish"/>.</summary>
+    private readonly record struct Work(Chunk? Chunk, int Finish);
+
+    /// <summary>
+    /// Hashes a game directory. The disk is read once, by one reader, in order, which is what a hard disk wants; the hashing that
+    /// follows runs on several threads, since on a fast disk the CPU is what limits. Each piece goes whole to one of the piece lanes
+    /// and each file whole to one of the file lanes, so every hash sees its bytes in order and the result is exactly that of a plain
+    /// single-threaded pass.
+    /// </summary>
     public static async Task<ScanResult> ScanAsync(
         string directory,
         int? pieceLength = null,
@@ -80,62 +106,121 @@ public static class ContentScanner
 
         int pieceCount = checked((int)((total + pieceLen - 1) / pieceLen));
         var pieceHashes = new byte[pieceCount * 20];
-        var files = new List<ScannedFile>(entries.Count);
-        var buffer = new byte[Math.Min(pieceLen, ReadBufferSize)];
+        var fileHashes = new string[entries.Count];
 
-        using var pieceHasher = IncrementalHash.CreateHash(HashAlgorithmName.SHA1);
-        using var fileHasher = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        using var stop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var free = System.Threading.Channels.Channel.CreateUnbounded<Chunk>();
+        int chunkSize = Math.Min(pieceLen, ReadBufferSize);
+        for (int i = 0; i < BuffersInFlight; i++) free.Writer.TryWrite(new Chunk(chunkSize));
+
+        var pieceLanes = Enumerable.Range(0, PieceLanes).Select(_ => System.Threading.Channels.Channel.CreateUnbounded<Work>(
+            new System.Threading.Channels.UnboundedChannelOptions { SingleReader = true, SingleWriter = true })).ToArray();
+        var fileLanes = Enumerable.Range(0, FileLanes).Select(_ => System.Threading.Channels.Channel.CreateUnbounded<Work>(
+            new System.Threading.Channels.UnboundedChannelOptions { SingleReader = true, SingleWriter = true })).ToArray();
+
+        var workers = pieceLanes.Select(lane => RunLaneAsync(lane.Reader, HashAlgorithmName.SHA1, free.Writer, stop,
+                (index, hash) => hash.CopyTo(pieceHashes.AsSpan(index * 20, 20))))
+            .Concat(fileLanes.Select(lane => RunLaneAsync(lane.Reader, HashAlgorithmName.SHA256, free.Writer, stop,
+                (index, hash) => fileHashes[index] = Convert.ToHexString(hash).ToLowerInvariant())))
+            .ToList();
+
         int pieceIndex = 0;
-        int filled = 0;   // bytes already fed into the current piece
-        long done = 0;
-
-        foreach (var (fullPath, relPath, size) in entries)
+        try
         {
-            await using var fs = new FileStream(fullPath, new FileStreamOptions
+            int filled = 0;   // bytes already sent into the current piece
+            long done = 0;
+            for (int f = 0; f < entries.Count; f++)
             {
-                Mode = FileMode.Open,
-                Access = FileAccess.Read,
-                Share = FileShare.Read,
-                Options = FileOptions.Asynchronous | FileOptions.SequentialScan,
-                BufferSize = 0,
-            });
-
-            long remaining = size;
-            while (remaining > 0)
-            {
-                // Never read across a piece boundary, so a piece is completed exactly when filled == pieceLen.
-                int want = (int)Math.Min(Math.Min(buffer.Length, remaining), pieceLen - filled);
-                int read = await fs.ReadAsync(buffer.AsMemory(0, want), cancellationToken).ConfigureAwait(false);
-                if (read == 0)
-                    throw new IOException($"File shrank while hashing: {fullPath}");
-
-                pieceHasher.AppendData(buffer, 0, read);
-                fileHasher.AppendData(buffer, 0, read);
-                filled += read;
-                remaining -= read;
-                done += read;
-
-                if (filled == pieceLen)
+                var (fullPath, _, size) = entries[f];
+                var fileLane = fileLanes[f % fileLanes.Length].Writer;
+                await using var fs = new FileStream(fullPath, new FileStreamOptions
                 {
-                    pieceHasher.GetHashAndReset(pieceHashes.AsSpan(pieceIndex * 20, 20));
-                    pieceIndex++;
-                    filled = 0;
+                    Mode = FileMode.Open,
+                    Access = FileAccess.Read,
+                    Share = FileShare.Read,
+                    Options = FileOptions.Asynchronous | FileOptions.SequentialScan,
+                    BufferSize = 0,
+                });
+
+                long remaining = size;
+                while (remaining > 0)
+                {
+                    // Never read across a piece boundary, so a piece is completed exactly when filled == pieceLen.
+                    int want = (int)Math.Min(Math.Min(chunkSize, remaining), pieceLen - filled);
+                    var chunk = await free.Reader.ReadAsync(stop.Token).ConfigureAwait(false);
+                    int read = await fs.ReadAsync(chunk.Data.AsMemory(0, want), stop.Token).ConfigureAwait(false);
+                    if (read == 0)
+                        throw new IOException($"File shrank while hashing: {fullPath}");
+
+                    chunk.Length = read;
+                    chunk.Pending = 2;
+                    var pieceLane = pieceLanes[pieceIndex % pieceLanes.Length].Writer;
+                    pieceLane.TryWrite(new Work(chunk, 0));
+                    fileLane.TryWrite(new Work(chunk, 0));
+                    filled += read;
+                    remaining -= read;
+                    done += read;
+
+                    if (filled == pieceLen)
+                    {
+                        pieceLane.TryWrite(new Work(null, pieceIndex));
+                        pieceIndex++;
+                        filled = 0;
+                    }
+                    bytesHashed?.Report(done);
                 }
-                bytesHashed?.Report(done);
+                fileLane.TryWrite(new Work(null, f)); // also for an empty file, whose hash is that of no bytes
             }
 
-            files.Add(new ScannedFile(relPath, size, Convert.ToHexString(fileHasher.GetHashAndReset()).ToLowerInvariant()));
+            if (filled > 0)
+            {
+                pieceLanes[pieceIndex % pieceLanes.Length].Writer.TryWrite(new Work(null, pieceIndex));
+                pieceIndex++;
+            }
         }
-
-        if (filled > 0)
+        catch
         {
-            pieceHasher.GetHashAndReset(pieceHashes.AsSpan(pieceIndex * 20, 20));
-            pieceIndex++;
+            await stop.CancelAsync().ConfigureAwait(false);
+            throw;
+        }
+        finally
+        {
+            foreach (var lane in pieceLanes.Concat(fileLanes)) lane.Writer.TryComplete();
+            // A lane that failed cancelled the reader; its own exception is the one worth seeing, so it is thrown from here.
+            try { await Task.WhenAll(workers).ConfigureAwait(false); }
+            catch (OperationCanceledException) when (stop.IsCancellationRequested) { /* the reader's exception is on its way */ }
         }
 
         if (pieceIndex != pieceCount)
             throw new InvalidOperationException($"Internal error: expected {pieceCount} pieces but hashed {pieceIndex}.");
 
+        var files = entries.Select((e, i) => new ScannedFile(e.RelativePath, e.Size, fileHashes[i])).ToList();
         return new ScanResult(new DirectoryInfo(root).Name, files, total, pieceLen, pieceHashes, volatileFiles?.Patterns ?? []);
     }
+
+    /// <summary>One hashing thread: appends what comes in, stores a hash at each finish, hands buffers back when both lanes are done.</summary>
+    private static Task RunLaneAsync(
+        System.Threading.Channels.ChannelReader<Work> work, HashAlgorithmName algorithm, System.Threading.Channels.ChannelWriter<Chunk> free,
+        CancellationTokenSource stop, Action<int, byte[]> store) =>
+        Task.Run(async () =>
+        {
+            try
+            {
+                using var hasher = IncrementalHash.CreateHash(algorithm);
+                await foreach (var w in work.ReadAllAsync(stop.Token).ConfigureAwait(false))
+                {
+                    if (w.Chunk is { } chunk)
+                    {
+                        hasher.AppendData(chunk.Data, 0, chunk.Length);
+                        if (Interlocked.Decrement(ref chunk.Pending) == 0) free.TryWrite(chunk);
+                    }
+                    else store(w.Finish, hasher.GetHashAndReset());
+                }
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                await stop.CancelAsync().ConfigureAwait(false);
+                throw;
+            }
+        });
 }
