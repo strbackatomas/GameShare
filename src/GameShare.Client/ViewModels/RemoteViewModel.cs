@@ -17,15 +17,88 @@ public sealed class ControllerRow(PairedMachineDto m, IAsyncRelayCommand remove)
     public IAsyncRelayCommand RemoveCommand { get; } = remove;
 }
 
-/// <summary>A PC this one may manage.</summary>
-public sealed class TargetRow(PairedMachineDto m, IRelayCommand manage, IAsyncRelayCommand remove)
+/// <summary>A PC this one may manage, with what it is doing, for the overview.</summary>
+public sealed partial class TargetRow : ObservableObject
 {
-    public string MachineId { get; } = m.MachineId;
-    public string Name { get; } = m.MachineName;
-    public bool Online { get; } = m.Online;
-    public string DetailText { get; } = (m.Online ? "na síti" : "teď není na síti") + $" · spárováno {Format.Date(m.PairedAt)}";
-    public IRelayCommand ManageCommand { get; } = manage;
-    public IAsyncRelayCommand RemoveCommand { get; } = remove;
+    public TargetRow(PairedMachineDto m, IRelayCommand manage, IAsyncRelayCommand remove)
+    {
+        MachineId = m.MachineId;
+        ManageCommand = manage;
+        RemoveCommand = remove;
+        Update(m);
+    }
+
+    public string MachineId { get; }
+    public IRelayCommand ManageCommand { get; }
+    public IAsyncRelayCommand RemoveCommand { get; }
+
+    [ObservableProperty] public partial string Name { get; set; } = "";
+    [ObservableProperty] public partial bool Online { get; set; }
+    [ObservableProperty] public partial string DetailText { get; set; } = "";
+
+    /// <summary>"v0.7.0", empty until it answered.</summary>
+    [ObservableProperty] public partial string VersionText { get; set; } = "";
+    [ObservableProperty] public partial bool IsVersionMismatch { get; set; }
+
+    /// <summary>"2 přenosy · 54 % · 120 MB/s" or "nic nestahuje".</summary>
+    [ObservableProperty] public partial string ActivityText { get; set; } = "";
+    [ObservableProperty] public partial bool IsBusy { get; set; }
+
+    /// <summary>0 to 100 over all its transfers, for the bar.</summary>
+    [ObservableProperty] public partial double Percent { get; set; }
+
+    /// <summary>Free space in its game folders.</summary>
+    [ObservableProperty] public partial string SpaceText { get; set; } = "";
+    [ObservableProperty] public partial bool IsLowOnSpace { get; set; }
+
+    /// <summary>Why it could not be asked, when it could not.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasProblem))]
+    public partial string? Problem { get; set; }
+
+    public bool HasProblem => !string.IsNullOrEmpty(Problem);
+
+    internal void Update(PairedMachineDto m)
+    {
+        Name = m.MachineName;
+        Online = m.Online;
+        DetailText = (m.Online ? "na síti" : "teď není na síti") + $" · spárováno {Format.Date(m.PairedAt)}";
+        if (!m.Online) ShowOffline();
+    }
+
+    internal void ShowOffline()
+    {
+        ActivityText = SpaceText = VersionText = "";
+        IsBusy = IsLowOnSpace = IsVersionMismatch = false;
+        Problem = null;
+    }
+
+    /// <summary>Below this a game folder counts as nearly full. One big game alone is more than that.</summary>
+    internal const long LowSpaceBytes = 20L * 1000 * 1000 * 1000;
+
+    internal void Show(StatusDto status, IReadOnlyList<DownloadDto> downloads, IReadOnlyList<GameRootDto> roots, string localVersion)
+    {
+        Problem = null;
+        VersionText = $"v{status.Version}";
+        IsVersionMismatch = status.Version != localVersion;
+
+        var active = downloads.Where(d => d.State is "Downloading" or "Queued" or "Verifying" or "Paused").ToList();
+        IsBusy = active.Count > 0;
+        long total = active.Sum(d => d.BytesTotal), done = active.Sum(d => d.BytesDone);
+        Percent = total > 0 ? 100.0 * done / total : 0;
+        var speed = Format.Speed(active.Sum(d => d.SpeedBytesPerSecond));
+        ActivityText = active.Count == 0 ? "nic nestahuje"
+            : string.Join(" · ", new[] { Transfers(active.Count), Format.Percent(Percent), speed }.Where(p => p.Length > 0))
+              + (active.Count == 1 ? $" · {active[0].GameName}" : "");
+
+        var known = roots.Where(r => r.FreeBytes is not null).ToList();
+        SpaceText = known.Count == 0 ? "" : "volno " + string.Join(", ", known.Select(r => $"{DriveOf(r.Path)} {Format.Size(r.FreeBytes!.Value)}"));
+        IsLowOnSpace = known.Count > 0 && known.All(r => r.FreeBytes < LowSpaceBytes);
+    }
+
+    private static string Transfers(int n) => n switch { 1 => "1 přenos", >= 2 and <= 4 => $"{n} přenosy", _ => $"{n} přenosů" };
+
+    private static string DriveOf(string path) => Path.GetPathRoot(path) is { Length: > 0 } root ? root.TrimEnd('\\') : path;
 }
 
 /// <summary>A PC on the network this one could pair with.</summary>
@@ -99,6 +172,65 @@ public sealed partial class RemoteViewModel : ViewModelBase
     public partial bool IsBusy { get; set; }
 
     [ObservableProperty] public partial string Message { get; set; } = "";
+
+    // ---- overview of the PCs managed from here ----
+
+    private CancellationTokenSource? _overview;
+
+    /// <summary>How often the overview asks the managed PCs while the page is open.</summary>
+    internal TimeSpan OverviewInterval { get; set; } = TimeSpan.FromSeconds(5);
+
+    /// <summary>Asks every managed PC what it is doing, again and again, until <see cref="StopOverview"/>. Call on the UI thread.</summary>
+    public void StartOverview()
+    {
+        StopOverview();
+        var cts = new CancellationTokenSource();
+        _overview = cts;
+        _ = OverviewLoopAsync(cts.Token);
+    }
+
+    public void StopOverview()
+    {
+        _overview?.Cancel();
+        _overview = null;
+    }
+
+    private async Task OverviewLoopAsync(CancellationToken ct)
+    {
+        while (!ct.IsCancellationRequested)
+        {
+            await RefreshOverviewAsync().ConfigureAwait(true);
+            try { await Task.Delay(OverviewInterval, ct).ConfigureAwait(true); }
+            catch (OperationCanceledException) { return; }
+        }
+    }
+
+    /// <summary>One round: every managed PC that is on the network, all at once.</summary>
+    public async Task RefreshOverviewAsync()
+    {
+        var peers = _app.Peers.Select(p => p.MachineId).ToHashSet(StringComparer.Ordinal);
+        await Task.WhenAll(Targets.ToList().Select(row => AskAsync(row, peers.Contains(row.MachineId)))).ConfigureAwait(true);
+    }
+
+    private async Task AskAsync(TargetRow row, bool online)
+    {
+        row.Online = online;
+        if (!online)
+        {
+            row.ShowOffline();
+            return;
+        }
+        var target = _app.Client.ForTarget(row.MachineId);
+        try
+        {
+            var status = target.GetStatusAsync();
+            var downloads = target.GetDownloadsAsync();
+            var roots = target.GetGameRootsAsync();
+            await Task.WhenAll(status, downloads, roots).ConfigureAwait(true);
+            row.Show(status.Result, downloads.Result, roots.Result, _app.ClientVersion);
+        }
+        catch (AgentException ex) { row.Problem = ex.Message; }
+    }
 
     /// <summary>Reads the state from the agent. Called when the page is opened; later changes arrive as events.</summary>
     [RelayCommand]
@@ -199,13 +331,26 @@ public sealed partial class RemoteViewModel : ViewModelBase
         }
         HasControllers = Controllers.Count > 0;
 
-        Targets.Clear();
-        foreach (var t in s.Targets.OrderBy(t => t.MachineName, StringComparer.OrdinalIgnoreCase))
+        // Rows are kept and updated, so what the overview found out about a PC does not blink away with each change.
+        var wanted = s.Targets.OrderBy(t => t.MachineName, StringComparer.OrdinalIgnoreCase).ToList();
+        foreach (var gone in Targets.Where(r => wanted.All(t => t.MachineId != r.MachineId)).ToList()) Targets.Remove(gone);
+        for (int i = 0; i < wanted.Count; i++)
         {
-            TargetRow? row = null;
-            row = new TargetRow(t, new RelayCommand(() => _app.RemoteWindows.Open(t.MachineId, t.MachineName)),
-                new AsyncRelayCommand(() => RemoveTargetAsync(row!)));
-            Targets.Add(row);
+            var t = wanted[i];
+            var row = Targets.FirstOrDefault(r => r.MachineId == t.MachineId);
+            if (row is null)
+            {
+                TargetRow? created = null;
+                created = new TargetRow(t, new RelayCommand(() => _app.RemoteWindows.Open(t.MachineId, created!.Name)),
+                    new AsyncRelayCommand(() => RemoveTargetAsync(created!)));
+                Targets.Insert(i, created);
+            }
+            else
+            {
+                row.Update(t);
+                int at = Targets.IndexOf(row);
+                if (at != i) Targets.Move(at, i);
+            }
         }
         HasTargets = Targets.Count > 0;
         RefreshChoices();

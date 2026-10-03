@@ -103,14 +103,22 @@ public class RenderTests
             [new PairedMachineDto("c1", "PC-01", new string('c', 64), now.AddDays(-2), now.AddMinutes(-3))],
             [new PairedMachineDto("p4", "PC-04", new string('d', 64), now.AddDays(-1), null, Online: true),
              new PairedMachineDto("p9", "PC-09", new string('e', 64), now.AddDays(-5), null, Online: false)]);
+        agent.TargetAgents["p4"] = new FakeAgent
+        {
+            Version = "0.6.8",
+            Downloads = [Download(7, D, "Assetto Corsa", "Downloading", 38, done: 17_000_000_000, total: 45_000_000_000, speed: 96_000_000)],
+            GameRoots = [new GameRootDto(@"D:\Games", 12_000_000_000)],
+        };
         var events = new FakeEvents();
         var app = new AppModel(agent, events, new ImmediateDispatcher());
         var main = new MainViewModel(app);
         await app.StartAsync();
         await main.Remote.LoadAsync();
+        await main.Remote.RefreshOverviewAsync();
         events.Raise(GameShareEvents.RemoteAction, new RemoteActionDto("c1", "PC-01", $"POST games/{D}/install", 202, now));
 
         var frame = await ShowAsync(main, "Vzdálená správa", "remote.png");
+        main.Remote.StopOverview();
 
         Assert.True(DistinctColours(frame) > 100, "the remote page rendered as an almost blank image");
         Assert.Equal("K7QF-M2XP-9HTD", main.Remote.PairingCode);

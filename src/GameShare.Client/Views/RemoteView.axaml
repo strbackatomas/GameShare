@@ -24,13 +24,26 @@
                                          VerticalAlignment="Center" Margin="0,0,12,0" />
                                 <Ellipse Grid.Column="0" Width="10" Height="10" Fill="{StaticResource LineBrush}" IsVisible="{Binding !Online}"
                                          VerticalAlignment="Center" Margin="0,0,12,0" />
-                                <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
-                                    <TextBlock Text="{Binding Name}" Classes="title" />
+                                <StackPanel Grid.Column="1" Spacing="3" VerticalAlignment="Center">
+                                    <StackPanel Orientation="Horizontal" Spacing="10">
+                                        <TextBlock Text="{Binding Name}" Classes="title" />
+                                        <TextBlock Text="{Binding VersionText}" Classes="muted" FontSize="12" VerticalAlignment="Center"
+                                                   IsVisible="{Binding !IsVersionMismatch}" />
+                                        <Border Classes="chip" Background="{StaticResource WarnBrush}" IsVisible="{Binding IsVersionMismatch}"
+                                                ToolTip.Tip="Tento PC má jinou verzi GameShare než tenhle.">
+                                            <TextBlock Text="{Binding VersionText}" />
+                                        </Border>
+                                    </StackPanel>
                                     <TextBlock Text="{Binding DetailText}" Classes="muted" FontSize="12" />
+                                    <TextBlock Text="{Binding ActivityText}" FontSize="12" IsVisible="{Binding ActivityText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                                    <ProgressBar Value="{Binding Percent}" Maximum="100" IsVisible="{Binding IsBusy}" MaxWidth="360" HorizontalAlignment="Left" Margin="0,2" />
+                                    <TextBlock Text="{Binding SpaceText}" Classes="muted" FontSize="12" IsVisible="{Binding !IsLowOnSpace}" />
+                                    <TextBlock Text="{Binding SpaceText}" Foreground="{StaticResource WarnBrush}" FontSize="12" IsVisible="{Binding IsLowOnSpace}" />
+                                    <TextBlock Text="{Binding Problem}" Foreground="{StaticResource DangerBrush}" FontSize="12" TextWrapping="Wrap" IsVisible="{Binding HasProblem}" />
                                 </StackPanel>
                                 <Button Grid.Column="2" Classes="primary" Content="Spravovat" Command="{Binding ManageCommand}"
-                                        IsEnabled="{Binding Online}" Margin="8,0,0,0" />
-                                <Button Grid.Column="3" Content="Odebrat" Command="{Binding RemoveCommand}" Margin="8,0,0,0" />
+                                        IsEnabled="{Binding Online}" Margin="8,0,0,0" VerticalAlignment="Center" />
+                                <Button Grid.Column="3" Content="Odebrat" Command="{Binding RemoveCommand}" Margin="8,0,0,0" VerticalAlignment="Center" />
                             </Grid>
                         </Border>
                     </DataTemplate>

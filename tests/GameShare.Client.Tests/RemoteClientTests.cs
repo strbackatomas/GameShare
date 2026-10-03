@@ -304,6 +304,52 @@ public class RemoteClientTests
         Assert.All(managed.Games, g => Assert.False(g.CanSpread));
     }
 
+    [Fact]
+    public async Task The_overview_shows_what_each_managed_pc_is_doing_and_where_space_runs_out()
+    {
+        var agent = ManagingFour();
+        agent.Peers = [Peer("pc-02", "PC-02"), Peer("pc-03", "PC-03"), Peer("pc-04", "PC-04"), Peer("pc-05", "PC-05")]; // PC-06 is off
+        agent.Version = "0.7.0";
+        agent.TargetAgents["pc-02"].Version = "0.7.0";
+        agent.TargetAgents["pc-02"].Downloads =
+        [
+            Download(1, A, "BeamNG.drive", "Downloading", 50, done: 500, total: 1000, speed: 120_000_000),
+            Download(2, B, "Factorio", "Paused", 0, done: 0, total: 1000),
+            Download(3, C, "Old", "Completed", 100, done: 10, total: 10),
+        ];
+        agent.TargetAgents["pc-02"].GameRoots = [new GameRootDto(@"D:\Games", 500_000_000_000)];
+        agent.TargetAgents["pc-03"].Version = "0.6.8";
+        agent.TargetAgents["pc-03"].GameRoots = [new GameRootDto(@"D:\Games", 5_000_000_000), new GameRootDto(@"E:\Hry", 1_000_000_000)];
+        agent.TargetAgents["pc-04"].Failure = new AgentException("PC-04 does not take remote management now.", 502);
+        var (_, remote, _, _, _) = await StartAsync(agent);
+
+        await remote.RefreshOverviewAsync();
+
+        TargetRow Row(string id) => remote.Targets.Single(t => t.MachineId == id);
+        Assert.True(Row("pc-02").IsBusy);
+        Assert.Equal($"2 přenosy · 25 % · {Format.Speed(120_000_000)}", Row("pc-02").ActivityText);
+        Assert.Equal(25, Row("pc-02").Percent);
+        Assert.Equal("v0.7.0", Row("pc-02").VersionText);
+        Assert.False(Row("pc-02").IsVersionMismatch);
+        Assert.Equal($"volno D: {Format.Size(500_000_000_000)}", Row("pc-02").SpaceText);
+        Assert.False(Row("pc-02").IsLowOnSpace);
+
+        Assert.Equal("nic nestahuje", Row("pc-03").ActivityText);
+        Assert.True(Row("pc-03").IsVersionMismatch);
+        Assert.True(Row("pc-03").IsLowOnSpace);
+
+        Assert.Equal("PC-04 does not take remote management now.", Row("pc-04").Problem);
+        Assert.False(Row("pc-06").Online);
+        Assert.Equal("", Row("pc-06").ActivityText);
+        Assert.Empty(agent.TargetAgents.GetValueOrDefault("pc-06")?.Calls ?? []); // an offline PC is not asked
+
+        // A change of the pairings keeps what the overview found out.
+        var row = Row("pc-02");
+        await remote.LoadAsync();
+        Assert.Same(row, Row("pc-02"));
+        Assert.StartsWith("2 přenosy · 25 %", row.ActivityText);
+    }
+
     private static async Task<(AppModel App, MainViewModel Main, PumpDispatcher Ui)> ConnectAsync(TestAgent agent)
     {
         var uri = new Uri($"http://127.0.0.1:{agent.LocalPort}");

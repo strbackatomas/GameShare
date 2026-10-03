@@ -69,6 +69,8 @@ public sealed partial class MainViewModel : ViewModelBase
     /// <summary>Settings, the log and uploads are read from the agent when their page is opened, so they are never stale.</summary>
     partial void OnSelectedItemChanged(NavItem value)
     {
+        if (value.Page == Remote) Remote.StartOverview(); // asks the managed PCs only while someone looks
+        else Remote.StopOverview();
         if (value.Page == Settings) _ = Settings.LoadAsync();
         else if (value.Page == Log) _ = Log.LoadAsync();
         else if (value.Page == Downloads) _ = Downloads.LoadUploadsAsync();
