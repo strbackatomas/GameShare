@@ -64,7 +64,8 @@ same apps without the runtime bundled in (about 13 MB and 31 MB), for a PC that 
 installed (https://dotnet.microsoft.com/download/dotnet/10.0, one installer covers both). `install-agent.ps1` uses the
 self-contained folders by default; pass `-SourceDir artifacts\agent-net10 -ClientSourceDir artifacts\client-net10` to use the
 smaller ones instead. The script installs the agent as a Windows service, opens only the ports it needs on the Private and
-Domain profiles, and adds a Start menu entry for the client. It has not been run yet, see the end.
+Domain profiles, and adds a Start menu entry and a desktop shortcut for all users for the client (`-NoDesktopShortcut` leaves
+the desktop alone). It has not been run yet, see the end.
 
 ## Verzování
 

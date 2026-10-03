@@ -8,6 +8,10 @@ this is wired into the build and where a peer's version shows up.
 
 ## [Unreleased]
 
+### Added
+- `install-agent.ps1` puts a GameShare shortcut on the desktop of all users next to the Start menu entry, `-NoDesktopShortcut`
+  leaves it out. `uninstall-agent.ps1` removes it.
+
 ## [0.6.8] - 2026-10-01
 
 ### Added

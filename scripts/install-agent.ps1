@@ -5,7 +5,7 @@
 .DESCRIPTION
   Run from an elevated PowerShell. Publish first with scripts\publish.ps1.
   The published folders are self-contained, so the target PC needs no .NET runtime installed.
-  If artifacts\client exists the desktop client is installed too, with a Start menu entry for all users.
+  If artifacts\client exists the desktop client is installed too, with a Start menu entry and a desktop shortcut for all users.
 
   Firewall rules are added for the Private and Domain profiles only, never Public, and never for the control API.
   The control API on 127.0.0.1 is not reachable from the network by design and needs no rule.
@@ -29,7 +29,9 @@ param(
     # so one being down does not matter. Add the share with -TrustListSource 'https://lanka.seru.cz/trust.json','\\server\share\trust.json'.
     [string[]]$TrustListSource = @('https://lanka.seru.cz/trust.json'),
     # Printed by the admin tools when the keys are made. Left out, trust-public.key next to this script or in -SourceDir is used.
-    [string]$TrustPublicKey = ''
+    [string]$TrustPublicKey = '',
+    # The client gets a Start menu entry always, and a shortcut on the desktop of all users unless this is given.
+    [switch]$NoDesktopShortcut
 )
 
 $ErrorActionPreference = 'Stop'
@@ -93,12 +95,16 @@ if (Test-Path (Join-Path $ClientSourceDir 'GameShare.exe')) {
     New-Item -ItemType Directory -Force -Path $clientDir | Out-Null
     Copy-Item -Path (Join-Path $ClientSourceDir '*') -Destination $clientDir -Recurse -Force
 
-    $shortcut = Join-Path $env:ProgramData 'Microsoft\Windows\Start Menu\Programs\GameShare.lnk'
-    $link = (New-Object -ComObject WScript.Shell).CreateShortcut($shortcut)
-    $link.TargetPath = Join-Path $clientDir 'GameShare.exe'
-    $link.WorkingDirectory = $clientDir
-    $link.Description = 'GameShare'
-    $link.Save()
+    $shortcuts = @(Join-Path $env:ProgramData 'Microsoft\Windows\Start Menu\Programs\GameShare.lnk')
+    if (-not $NoDesktopShortcut) { $shortcuts += Join-Path ([Environment]::GetFolderPath('CommonDesktopDirectory')) 'GameShare.lnk' }
+    $shell = New-Object -ComObject WScript.Shell
+    foreach ($shortcut in $shortcuts) {
+        $link = $shell.CreateShortcut($shortcut)
+        $link.TargetPath = Join-Path $clientDir 'GameShare.exe'
+        $link.WorkingDirectory = $clientDir
+        $link.Description = 'GameShare'
+        $link.Save()
+    }
 }
 else {
     Write-Host "No published client found in '$ClientSourceDir', installing the agent only."

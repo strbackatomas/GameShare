@@ -28,6 +28,8 @@ Write-Host "Firewall rules removed"
 
 $shortcut = Join-Path $env:ProgramData 'Microsoft\Windows\Start Menu\Programs\GameShare.lnk'
 if (Test-Path $shortcut) { Remove-Item -Force $shortcut; Write-Host "Removed the Start menu entry" }
+$desktopShortcut = Join-Path ([Environment]::GetFolderPath('CommonDesktopDirectory')) 'GameShare.lnk'
+if (Test-Path $desktopShortcut) { Remove-Item -Force $desktopShortcut; Write-Host "Removed the desktop shortcut" }
 
 if (Test-Path $InstallDir) { Remove-Item -Recurse -Force $InstallDir; Write-Host "Removed $InstallDir" }
 if ($RemoveData) {
