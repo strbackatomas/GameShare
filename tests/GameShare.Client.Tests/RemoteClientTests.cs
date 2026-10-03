@@ -309,8 +309,8 @@ public class RemoteClientTests
     {
         var agent = ManagingFour();
         agent.Peers = [Peer("pc-02", "PC-02"), Peer("pc-03", "PC-03"), Peer("pc-04", "PC-04"), Peer("pc-05", "PC-05")]; // PC-06 is off
-        agent.Version = "0.7.0";
-        agent.TargetAgents["pc-02"].Version = "0.7.0";
+        agent.Version = AppVersion.Current;
+        agent.TargetAgents["pc-02"].Version = AppVersion.Current; // the same as this client
         agent.TargetAgents["pc-02"].Downloads =
         [
             Download(1, A, "BeamNG.drive", "Downloading", 50, done: 500, total: 1000, speed: 120_000_000),
@@ -318,7 +318,7 @@ public class RemoteClientTests
             Download(3, C, "Old", "Completed", 100, done: 10, total: 10),
         ];
         agent.TargetAgents["pc-02"].GameRoots = [new GameRootDto(@"D:\Games", 500_000_000_000)];
-        agent.TargetAgents["pc-03"].Version = "0.6.8";
+        agent.TargetAgents["pc-03"].Version = "0.0.1"; // an old one
         agent.TargetAgents["pc-03"].GameRoots = [new GameRootDto(@"D:\Games", 5_000_000_000), new GameRootDto(@"E:\Hry", 1_000_000_000)];
         agent.TargetAgents["pc-04"].Failure = new AgentException("PC-04 does not take remote management now.", 502);
         var (_, remote, _, _, _) = await StartAsync(agent);
@@ -329,7 +329,7 @@ public class RemoteClientTests
         Assert.True(Row("pc-02").IsBusy);
         Assert.Equal($"2 přenosy · 25 % · {Format.Speed(120_000_000)}", Row("pc-02").ActivityText);
         Assert.Equal(25, Row("pc-02").Percent);
-        Assert.Equal("v0.7.0", Row("pc-02").VersionText);
+        Assert.Equal($"v{AppVersion.Current}", Row("pc-02").VersionText);
         Assert.False(Row("pc-02").IsVersionMismatch);
         Assert.Equal($"volno D: {Format.Size(500_000_000_000)}", Row("pc-02").SpaceText);
         Assert.False(Row("pc-02").IsLowOnSpace);
