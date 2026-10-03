@@ -216,7 +216,7 @@ gets less than 16 KiB/s. Tests measure real transfer rates, because storing the 
 
 ## Agent
 
-One process, two HTTP listeners with different trust, plus discovery and the transfer port. See the README for the port table.
+One process, two HTTP listeners with different trust (three while remote management is on, see below), plus discovery and the transfer port. See the README for the port table.
 
 - The control API and the event hub are bound to loopback and refuse any request that arrived on another port.
 - The peer API answers only private addresses, offers only games that are installed here and seeding (a damaged one with the pieces that are still intact), and never reveals paths.
@@ -225,6 +225,39 @@ One process, two HTTP listeners with different trust, plus discovery and the tra
 - Events reach the GUI through one ordered queue, so a slow client cannot block downloads or discovery.
 - A game that disappears from the LAN is announced with `GameRemoved` and its last known state.
 - Seeds store resume data every few minutes and at shutdown, so a restart does not re-hash the whole library. Measured: a seed with resume data goes straight to seeding, without checking files.
+
+## Remote management
+
+One PC can drive the downloads of the others, so nobody walks from PC to PC to click Install. Off on every PC until the person at
+it turns it on, and then only for PCs that were paired with it there.
+
+- **Own listener.** Port 47703, TLS, opened when it is turned on and closed when it is turned off, a separate Kestrel server
+  inside the agent (`RemoteAccessService`). The control API on loopback is unchanged: the remote listener passes an allowed
+  request on to it over loopback, so a remote request gets exactly the checks a local one gets (configured folders only, trust,
+  game not running and so on).
+- **Identity.** Each PC makes a self-signed P-256 certificate the first time and keeps it in its database. Both sides show theirs
+  in every TLS handshake. Chains and host names mean nothing here, addresses come from DHCP; what counts is the pinned SHA-256
+  fingerprint, checked on every connection by the controller and on every request by the target.
+- **Pairing.** On the target: turn it on, "pair", it shows a code like `K7QF-M2XP-9HTD` (12 characters of Crockford base32, 60 bits,
+  case, dashes and O/0, I/L/1 do not matter). On the controller: pick the PC, type the code. The controller connects, sees the
+  target's certificate, and sends HMAC-SHA256(code, both machine ids and both fingerprints). The target checks it against the
+  fingerprints it saw and answers with its own HMAC under another label. A PC in the middle shows its own certificate to each
+  side, so neither proof matches; its only way is to guess the code from a proof it caught, against 60 bits, within the five
+  minutes the code lives. A code is good for one attempt: wrong or right, it is gone. No PAKE because .NET has none built in and
+  a short numeric code without one would be guessable offline.
+- **What a paired PC may do** is a fixed list (`RemoteWhitelist`): look at games, downloads, peers, uploads and the free space of
+  the game folders; install, update, repair, check, scan; pause, resume and cancel downloads; look for and apply a GameShare
+  update. Not: settings (so no other folder to write into), starting a game or a setup step (they run programs and are for the
+  person at the PC), deleting a game, logs, restarting the agent, and remote management itself, so a paired PC cannot pair
+  others or reach a third PC through this one.
+- **The controller side** is in the control API too: `/api/remote/targets/{id}/api/<the same paths>` is passed on to the target.
+  The client never holds a key.
+- **What the person at the target sees.** Each change a paired PC makes is logged with its name and sent to the client as a
+  `RemoteAction` event. The PCs that may manage this one are listed with when they last did something, and removing one takes
+  effect with its next request. Turning remote management off keeps the pairings for later.
+- **Not in the portable build.** `GameShare-LanParty.exe` never listens: a guest's PC is nobody else's to manage.
+- The certificate's private key sits in the database under `%ProgramData%\GameShare`, readable by administrators of that PC.
+  Anyone who is administrator of a PC owns it anyway.
 
 ## Client
 

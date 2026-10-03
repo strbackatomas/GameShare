@@ -56,6 +56,7 @@ public static class AgentHost
             await db.SetSettingAsync("machine.id", machineId, ct);
         }
         var settings = await SettingsService.LoadAsync(db, options.InitialGameRoots, ct);
+        var remote = await RemoteAccessService.LoadAsync(db, machineId, ct);
         var identity = new AgentIdentity(machineId, options.ResolveMachineName());
 
         builder.WebHost.ConfigureKestrel(k =>
@@ -69,6 +70,7 @@ public static class AgentHost
         services.AddSingleton(identity);
         services.AddSingleton(db);
         services.AddSingleton(settings);
+        services.AddSingleton(remote);
 
         services.AddSingleton(sp => new TorrentEngine(new TorrentEngineOptions
         {
@@ -139,6 +141,15 @@ public static class AgentHost
             sp.GetRequiredService<TorrentEngine>(), sp.GetRequiredService<DiscoveryService>(), sp.GetRequiredService<SettingsService>(),
             sp.GetRequiredService<IAppUpdateApplier>(), sp.GetRequiredService<ILogger<AppUpdateService>>()));
 
+        // Remote management: its own TLS listener, opened only while turned on, and the client side that passes requests to paired PCs.
+        // Calls this PC's own control API over loopback, like the local client does.
+        services.AddHttpClient("remote-local").ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+        {
+            AllowAutoRedirect = false,
+            UseProxy = false,
+        });
+        services.AddSingleton<RemoteAccessService>();
+
         services.AddExceptionHandler<ApiExceptionHandler>();
         services.AddProblemDetails();
         services.ConfigureHttpJsonOptions(o => o.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
@@ -147,6 +158,7 @@ public static class AgentHost
         // Order matters: the bridge subscribes before the worker starts producing events.
         services.AddHostedService<EventBridge>();
         services.AddHostedService<AgentWorker>();
+        services.AddHostedService(sp => sp.GetRequiredService<RemoteAccessService>());
         configureServices?.Invoke(services);
 
         var app = builder.Build();
@@ -154,6 +166,7 @@ public static class AgentHost
         app.UseMiddleware<AccessGuard>();
         app.MapHub<EventsHub>(Protocol.GameShareEvents.HubPath);
         LocalApi.Map(app);
+        RemoteApi.Map(app);
         PeerApi.Map(app);
         return app;
     }

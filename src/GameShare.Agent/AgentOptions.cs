@@ -21,6 +21,17 @@ public sealed class AgentOptions
 
     public int DiscoveryPort { get; set; } = 47800;
 
+    /// <summary>
+    /// Remote management by paired PCs, over TLS. Only listened on while a user turned it on in the client, see RemoteAccessService.
+    /// </summary>
+    public int RemoteApiPort { get; set; } = 47703;
+
+    /// <summary>False keeps remote management off for good, whatever is saved. The portable LAN party build sets it.</summary>
+    public bool RemoteManagementAllowed { get; set; } = true;
+
+    /// <summary>How long a pairing code shown on this PC can be used.</summary>
+    public TimeSpan RemotePairingLifetime { get; set; } = TimeSpan.FromMinutes(5);
+
     /// <summary>BitTorrent port. Must be allowed through the Windows firewall on the private profile.</summary>
     public int TorrentPort { get; set; } = 6881;
 
@@ -183,12 +194,16 @@ public sealed class AgentOptions
         foreach (var (name, port) in new[]
         {
             (nameof(LocalApiPort), LocalApiPort), (nameof(PeerApiPort), PeerApiPort),
-            (nameof(DiscoveryPort), DiscoveryPort), (nameof(TorrentPort), TorrentPort),
+            (nameof(DiscoveryPort), DiscoveryPort), (nameof(TorrentPort), TorrentPort), (nameof(RemoteApiPort), RemoteApiPort),
         })
             if (port is < 1 or > 65535) throw new InvalidOperationException($"Agent:{name} must be 1-65535 but is {port}.");
 
         if (LocalApiPort == PeerApiPort)
             throw new InvalidOperationException("Agent:LocalApiPort and Agent:PeerApiPort must differ, they are separate listeners with different trust.");
+        if (RemoteApiPort == LocalApiPort || RemoteApiPort == PeerApiPort || RemoteApiPort == TorrentPort)
+            throw new InvalidOperationException("Agent:RemoteApiPort must differ from the other TCP ports, it is a separate listener with its own trust.");
+        if (RemotePairingLifetime < TimeSpan.FromSeconds(1))
+            throw new InvalidOperationException("Agent:RemotePairingLifetime must be at least one second.");
         if (TrustMode != TrustMode.Off)
         {
             if (TrustListSources().Count == 0)

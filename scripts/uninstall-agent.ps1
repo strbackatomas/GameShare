@@ -21,7 +21,7 @@ if ($service) {
     Write-Host "Service removed"
 }
 
-foreach ($name in 'GameShare peer API', 'GameShare discovery', 'GameShare transfer (TCP)', 'GameShare transfer (UDP)') {
+foreach ($name in 'GameShare peer API', 'GameShare remote management', 'GameShare discovery', 'GameShare transfer (TCP)', 'GameShare transfer (UDP)') {
     Get-NetFirewallRule -DisplayName $name -ErrorAction SilentlyContinue | Remove-NetFirewallRule
 }
 Write-Host "Firewall rules removed"

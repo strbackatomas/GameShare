@@ -347,7 +347,8 @@ public sealed record AppUpdateStatusDto(
 /// </summary>
 public sealed record AppUpdateOfferDto(string Flavor, string Version);
 
-public sealed record PeerHelloDto(string MachineId, string MachineName, int ProtocolVersion, string? AppVersion = null);
+/// <param name="RemotePort">Where this PC takes remote management from paired PCs, over TLS. Null while that is off, or for an older PC.</param>
+public sealed record PeerHelloDto(string MachineId, string MachineName, int ProtocolVersion, string? AppVersion = null, int? RemotePort = null);
 
 /// <summary>A game this PC is willing to serve: installed, verified and seeding.</summary>
 public sealed record OfferedGameDto(string ContentHash, string GameId, string Name, string? Version, long TotalSize)
@@ -389,4 +390,45 @@ public static class GameShareEvents
     public const string SeedStopped = nameof(SeedStopped);
     /// <summary>AppUpdateStatusDto. A newer GameShare was found, is downloading, is ready, or looking for one failed.</summary>
     public const string AppUpdateChanged = nameof(AppUpdateChanged);
+    /// <summary>RemoteStatusDto. Remote management was turned on or off, a pairing started or ended, a PC was paired or removed.</summary>
+    public const string RemoteChanged = nameof(RemoteChanged);
+    /// <summary>RemoteActionDto. A paired PC changed something on this one: started an install, paused a download and the like.</summary>
+    public const string RemoteAction = nameof(RemoteAction);
 }
+
+// ---- Remote management: a paired PC drives this one's downloads ----
+
+/// <summary>
+/// Remote management on this PC. <see cref="Enabled"/>: other PCs that were paired may manage this one. <see cref="Targets"/> are the PCs
+/// this one was paired with and may manage, which works whether or not <see cref="Enabled"/> is on.
+/// </summary>
+/// <param name="Allowed">False in a build that never takes remote management, such as the portable LAN party exe.</param>
+/// <param name="Listening">The port is open. False while <see cref="Enabled"/> is on means it could not be opened, the agent's log says why.</param>
+/// <param name="Fingerprint">SHA-256 of this PC's certificate, to compare by eye with what another PC shows.</param>
+/// <param name="Pairing">The code another PC must enter, while a pairing is open. Only ever shown on this PC.</param>
+public sealed record RemoteStatusDto(
+    bool Allowed, bool Enabled, bool Listening, int Port, string Fingerprint, RemotePairingDto? Pairing,
+    IReadOnlyList<PairedMachineDto> Controllers, IReadOnlyList<PairedMachineDto> Targets);
+
+public sealed record RemotePairingDto(string Code, DateTimeOffset ExpiresAt);
+
+/// <param name="Online">For a target: it is on the network now. Always false for a controller, this PC does not look for those.</param>
+public sealed record PairedMachineDto(string MachineId, string MachineName, string Fingerprint, DateTimeOffset PairedAt, DateTimeOffset? LastUsed, bool Online = false);
+
+public sealed record RemoteEnableRequest(bool Enabled);
+
+/// <summary>Pair with <see cref="MachineId"/>, which shows <see cref="Code"/> on its screen.</summary>
+public sealed record RemotePairRequest(string MachineId, string Code);
+
+/// <summary>Something a paired PC did on this one, for the notice the client shows and for the log.</summary>
+/// <param name="Action">What was asked, such as "POST games/{hash}/install".</param>
+public sealed record RemoteActionDto(string ControllerId, string ControllerName, string Action, int Status, DateTimeOffset At);
+
+/// <summary>
+/// Agent to agent, over TLS with both certificates: the controller proves it knows the code, bound to both certificates it saw.
+/// <see cref="Proof"/> is hex HMAC-SHA256 keyed by the code, see RemotePairing in the agent.
+/// </summary>
+public sealed record RemotePairOfferDto(string MachineId, string MachineName, string Proof);
+
+/// <summary>The target's answer: it knew the code too, so the controller is talking to the PC whose screen showed it.</summary>
+public sealed record RemotePairAcceptDto(string MachineId, string MachineName, string Proof);

@@ -102,6 +102,7 @@ internal static class Program
         {
             o.DataDir = dataDir; // never %ProgramData%: this process is not elevated and must not collide with a real install
             o.InitialGameRoots = [gamesRoot];
+            o.RemoteManagementAllowed = false; // a guest's PC is nobody else's to manage
             // No installer sets trust up for a guest: a trust-public.key handed out next to this exe does (publish.ps1 puts it there).
             if (o.UseTrustKeyFileIn(AppContext.BaseDirectory) is { } note) Console.WriteLine($"GameShare: {note}");
         }, configureServices: services =>

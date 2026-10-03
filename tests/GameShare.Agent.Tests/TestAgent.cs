@@ -30,6 +30,7 @@ internal sealed class TestAgent : IAsyncDisposable
     public string GamesRoot { get; }
     public int LocalPort { get; }
     public int PeerPort { get; }
+    public int RemotePort { get; }
     public HttpClient Api { get; }
     public HttpClient PeerApi { get; }
 
@@ -41,6 +42,7 @@ internal sealed class TestAgent : IAsyncDisposable
         Directory.CreateDirectory(GamesRoot);
         LocalPort = FreePort();
         PeerPort = FreePort();
+        RemotePort = FreePort();
         int torrentPort = FreePort();
 
         _configure = o =>
@@ -49,6 +51,7 @@ internal sealed class TestAgent : IAsyncDisposable
             o.MachineName = name;
             o.LocalApiPort = LocalPort;
             o.PeerApiPort = PeerPort;
+            o.RemoteApiPort = RemotePort;
             o.DiscoveryPort = discoveryPort;
             o.TorrentPort = torrentPort;
             o.AllowMultipleConnectionsPerIp = true; // several agents share this machine's IP address
@@ -202,6 +205,9 @@ internal sealed class EventRecorder : IAsyncDisposable
         await connection.StartAsync();
         return recorder;
     }
+
+    /// <summary>An event the recorder does not record, such as RemoteAction.</summary>
+    public void On<T>(string name, Action<T> handler) => _connection.On(name, handler);
 
     public IEnumerable<string> Names => Events.Select(e => e.Name);
     public IEnumerable<T> Of<T>(string name) => Events.Where(e => e.Name == name).Select(e => (T)e.Payload);

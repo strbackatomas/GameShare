@@ -19,6 +19,8 @@ param(
     [string]$InstallDir = (Join-Path $env:ProgramFiles 'GameShare'),
     [string[]]$GameRoots = @(),
     [int]$PeerApiPort = 47702,
+    # Remote management by paired PCs, over TLS. The port is only listened on while it is turned on in the client of that PC.
+    [int]$RemoteApiPort = 47703,
     [int]$DiscoveryPort = 47800,
     [int]$TorrentPort = 6881,
     # The administrator's signed list of verified games.
@@ -62,6 +64,7 @@ Copy-Item -Path (Join-Path $SourceDir '*') -Destination $InstallDir -Recurse -Fo
 $settingsPath = Join-Path $InstallDir 'appsettings.json'
 $settings = Get-Content $settingsPath -Raw | ConvertFrom-Json
 $settings.Agent.PeerApiPort = $PeerApiPort
+$settings.Agent | Add-Member -NotePropertyName RemoteApiPort -NotePropertyValue $RemoteApiPort -Force
 $settings.Agent.DiscoveryPort = $DiscoveryPort
 $settings.Agent.TorrentPort = $TorrentPort
 $settings.Agent.InitialGameRoots = @($GameRoots)
@@ -119,6 +122,7 @@ sc.exe failure $serviceName reset= 86400 actions= restart/5000/restart/30000/res
 Write-Host "Opening firewall ports for the Private and Domain profiles"
 $rules = @(
     @{ Name = 'GameShare peer API';  Protocol = 'TCP'; Port = $PeerApiPort },
+    @{ Name = 'GameShare remote management'; Protocol = 'TCP'; Port = $RemoteApiPort },
     @{ Name = 'GameShare discovery'; Protocol = 'UDP'; Port = $DiscoveryPort },
     @{ Name = 'GameShare transfer (TCP)'; Protocol = 'TCP'; Port = $TorrentPort },
     @{ Name = 'GameShare transfer (UDP)'; Protocol = 'UDP'; Port = $TorrentPort }

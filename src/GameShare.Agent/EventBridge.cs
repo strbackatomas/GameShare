@@ -26,6 +26,7 @@ public sealed class EventBridge : IHostedService
     private readonly TrustService _trust;
     private readonly AppUpdateService _updates;
     private readonly RunningGames _running;
+    private readonly RemoteAccessService _remote;
     private readonly GameView _view;
     private readonly ILogger<EventBridge> _log;
     private readonly Channel<Func<Task<(string Name, object Payload)?>>> _queue =
@@ -38,9 +39,10 @@ public sealed class EventBridge : IHostedService
 
     public EventBridge(
         IHubContext<EventsHub> hub, DiscoveryService discovery, PeerCatalog catalog, GameLibrary library,
-        DownloadManager downloads, SeedManager seeds, GameChangeTracker changes, TrustService trust, AppUpdateService updates, RunningGames running, GameView view, ILogger<EventBridge> log)
+        DownloadManager downloads, SeedManager seeds, GameChangeTracker changes, TrustService trust, AppUpdateService updates, RunningGames running, RemoteAccessService remote, GameView view, ILogger<EventBridge> log)
     {
         _running = running;
+        _remote = remote;
         _changes = changes;
         _trust = trust;
         _updates = updates;
@@ -70,6 +72,8 @@ public sealed class EventBridge : IHostedService
         _trust.Changed += OnTrustChanged;
         _updates.Changed += OnAppUpdateChanged;
         _running.Changed += OnRunningChanged;
+        _remote.Changed += OnRemoteChanged;
+        _remote.ActionPerformed += OnRemoteAction;
         return Task.CompletedTask;
     }
 
@@ -86,6 +90,8 @@ public sealed class EventBridge : IHostedService
         _trust.Changed -= OnTrustChanged;
         _updates.Changed -= OnAppUpdateChanged;
         _running.Changed -= OnRunningChanged;
+        _remote.Changed -= OnRemoteChanged;
+        _remote.ActionPerformed -= OnRemoteAction;
 
         _queue.Writer.TryComplete();
         if (_sender is not null)
@@ -160,6 +166,12 @@ public sealed class EventBridge : IHostedService
     /// <summary>The status is read when the event is sent, so a burst of progress reports sends the newest one.</summary>
     private void OnAppUpdateChanged(object? sender, EventArgs e) =>
         Enqueue(() => Task.FromResult<(string, object)?>((GameShareEvents.AppUpdateChanged, _updates.Status())));
+
+    /// <summary>Read when sent, like the update status. The pairing code is in it, which is fine: the hub only answers this PC.</summary>
+    private void OnRemoteChanged(object? sender, EventArgs e) =>
+        Enqueue(() => Task.FromResult<(string, object)?>((GameShareEvents.RemoteChanged, _remote.Status())));
+
+    private void OnRemoteAction(object? sender, RemoteActionDto action) => Enqueue(GameShareEvents.RemoteAction, action);
 
     private void OnLocalGameDiscovered(object? sender, LibraryGame g) =>
         Enqueue(() => GameChangedAsync(g.Stored.Manifest.ContentHash));

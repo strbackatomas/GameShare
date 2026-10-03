@@ -9,6 +9,12 @@ this is wired into the build and where a peer's version shows up.
 ## [Unreleased]
 
 ### Added
+- Remote management, agent side: one PC can start, pause and cancel downloads on others. Off until turned on at each PC, which
+  then shows a pairing code for the managing PC to enter. Paired PCs only talk over TLS with each other's pinned certificate,
+  on the new port 47703 (`install-agent.ps1` opens it on the Private and Domain profiles), and may only do what is on a fixed
+  list: no settings, no starting games or setup steps, no deleting games. Each action is logged on the managed PC and announced
+  to its client. The portable LAN party build never takes it. See "Remote management" in `docs/design-notes.md`. The client
+  pages come next.
 - `install-agent.ps1` puts a GameShare shortcut on the desktop of all users next to the Start menu entry, `-NoDesktopShortcut`
   leaves it out. `uninstall-agent.ps1` removes it.
 

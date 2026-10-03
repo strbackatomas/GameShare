@@ -126,10 +126,11 @@ example `"TrustListSource": "https://lanka.seru.cz/trust.json;\\\\server\\hry\\t
 |---|---|---|---|
 | 47701 | 127.0.0.1 | Control API and event hub for the client | This machine only |
 | 47702 | all adapters | Read-only API: what this PC offers, manifests, torrents | Private network addresses only |
+| 47703 | all adapters, TLS, only while turned on | Remote management: a paired PC starts and pauses downloads here | Private network addresses, with the certificate of a paired PC |
 | 47800 | UDP, LAN | Discovery | LAN |
 | 6881 | all adapters | Game data | Private network addresses only |
 
-The two HTTP ports are separate listeners. A request is judged by the socket it arrived on, never by its Host header.
+The HTTP ports are separate listeners. A request is judged by the socket it arrived on, never by its Host header.
 Game data and API calls never go to a public address, DHT and port mapping are off, and nothing is forwarded.
 The one request that may leave the LAN is the optional download of the administrator's signed list (below). It sends nothing about the PC.
 
