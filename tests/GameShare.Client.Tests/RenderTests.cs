@@ -141,6 +141,28 @@ public class RenderTests
     }
 
     [AvaloniaFact]
+    public async Task Installing_on_other_pcs_lists_each_one_under_the_card()
+    {
+        var agent = Populated();
+        var at = DateTimeOffset.UtcNow;
+        agent.Remote = agent.Remote with
+        {
+            Targets = [new("p2", "PC-02", "f", at, null, true), new("p3", "PC-03", "f", at, null, true), new("p9", "PC-09", "f", at, null, false)],
+        };
+        agent.TargetAgents["p2"] = new FakeAgent { Games = [Game(D, "Assetto Corsa", GameState.AvailableOnLan)] };
+        agent.TargetAgents["p3"] = new FakeAgent { Games = [Game(D, "Assetto Corsa", GameState.Installed)] };
+        var main = await BuildAsync(agent);
+        var card = main.Library.LanGames.Single(g => g.ContentHash == D);
+        await card.OpenSpreadCommand.ExecuteAsync(null);
+
+        var frame = await ShowAsync(main, "Knihovna", "library-spread.png");
+
+        Assert.True(DistinctColours(frame) > 200);
+        Assert.True(card.CanSpread);
+        Assert.Equal(3, card.Spread!.Targets.Count);
+    }
+
+    [AvaloniaFact]
     public async Task Library_shows_installed_downloading_damaged_and_available_games()
     {
         var main = await BuildAsync(Populated());

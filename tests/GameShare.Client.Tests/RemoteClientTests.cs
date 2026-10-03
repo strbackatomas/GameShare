@@ -100,6 +100,7 @@ public class RemoteClientTests
         var (app, remote, agent, events, _) = await StartAsync(new FakeAgent { Games = [Game(A, "BeamNG.drive", GameState.Installed)] });
 
         var at = DateTimeOffset.UtcNow;
+        int asked = agent.Calls.Count(c => c == "GetRemote");
         events.Raise(GameShareEvents.RemoteChanged, agent.Remote with
         {
             Enabled = true, Listening = true,
@@ -113,7 +114,7 @@ public class RemoteClientTests
         Assert.Equal(2, remote.Recent.Count);
         Assert.EndsWith("PC-01: pozastavení přenosu (nepovedlo se)", remote.Recent[0]);
         Assert.EndsWith("PC-01: aktualizace hry BeamNG.drive", remote.Recent[1]);
-        Assert.Equal(1, agent.Calls.Count(c => c == "GetRemote")); // nothing was asked again
+        Assert.Equal(asked, agent.Calls.Count(c => c == "GetRemote")); // nothing was asked again
 
         await remote.Controllers[0].RemoveCommand.ExecuteAsync(null);
         Assert.Contains("RemoveController(c1)", agent.Calls);
@@ -215,6 +216,92 @@ public class RemoteClientTests
 
         await thereUi.UntilAsync(() => thereRemote.Recent.Count >= 1, "PC-02's client to be told");
         Assert.EndsWith("PC-01: instalace hry TestGame", Assert.Single(thereRemote.Recent));
+    }
+
+    private static FakeAgent ManagingFour()
+    {
+        var at = DateTimeOffset.UtcNow;
+        PairedMachineDto Target(string id, bool online = true) => new(id, id.ToUpperInvariant(), new string('b', 64), at, null, online);
+        var agent = new FakeAgent
+        {
+            Games = [Game(A, "BeamNG.drive", GameState.Installed), Game(B, "Factorio", GameState.AvailableOnLan, peers: ["PC-01"])],
+            Remote = new RemoteStatusDto(true, false, false, 47703, new string('a', 64), null, [],
+                [Target("pc-02"), Target("pc-03"), Target("pc-04"), Target("pc-05"), Target("pc-06", online: false)]),
+        };
+        agent.TargetAgents["pc-02"] = new FakeAgent { Games = [Game(A, "BeamNG.drive", GameState.AvailableOnLan)] };
+        agent.TargetAgents["pc-03"] = new FakeAgent { Games = [Game(A, "BeamNG.drive", GameState.Installed)] };
+        agent.TargetAgents["pc-04"] = new FakeAgent { Games = [Game(A, "BeamNG.drive", GameState.AvailableOnLan, updates: C)] };
+        agent.TargetAgents["pc-05"] = new FakeAgent { Games = [] };
+        return agent;
+    }
+
+    [Fact]
+    public async Task A_game_is_installed_on_every_chosen_pc_that_can_take_it_with_one_click()
+    {
+        var agent = ManagingFour();
+        var (app, _, _, _, _) = await StartAsync(agent);
+        Assert.True(app.HasRemoteTargets);
+        var card = app.Games.Single(g => g.ContentHash == A);
+        Assert.True(card.CanSpread);
+        Assert.Contains(card.MenuEntries, e => e.Header == "Nainstalovat na další PC…");
+
+        await card.OpenSpreadCommand.ExecuteAsync(null);
+        var spread = card.Spread!;
+        string Status(string id) => spread.Targets.Single(t => t.MachineId == id).StatusText;
+        Assert.Equal(["PC-02", "PC-03", "PC-04", "PC-05", "PC-06"], spread.Targets.Select(t => t.Name));
+        Assert.Equal("nainstaluje se", Status("pc-02"));
+        Assert.Equal("už ji má", Status("pc-03"));
+        Assert.Equal("má starší verzi, aktualizuje se", Status("pc-04"));
+        Assert.Equal("hru v síti nevidí", Status("pc-05"));
+        Assert.Equal("teď není na síti", Status("pc-06"));
+        Assert.Equal(["pc-02", "pc-04"], spread.Targets.Where(t => t.IsSelected).Select(t => t.MachineId)); // chosen by default where it can go
+
+        await spread.InstallCommand.ExecuteAsync(null);
+
+        Assert.Contains($"Install({A})", agent.TargetAgents["pc-02"].Calls);
+        Assert.Contains($"Update({A})", agent.TargetAgents["pc-04"].Calls);
+        Assert.DoesNotContain(agent.TargetAgents["pc-03"].Calls, c => c.StartsWith("Install") || c.StartsWith("Update"));
+        Assert.Equal("začala instalace", Status("pc-02"));
+        Assert.Equal("začala aktualizace", Status("pc-04"));
+        Assert.StartsWith("Začalo na 2 PC", spread.Message);
+        Assert.False(spread.InstallCommand.CanExecute(null)); // nothing left to do
+
+        spread.CloseCommand.Execute(null);
+        Assert.False(card.IsSpreading);
+    }
+
+    [Fact]
+    public async Task A_pc_that_refuses_says_why_and_the_others_still_start()
+    {
+        var agent = ManagingFour();
+        agent.TargetAgents["pc-04"].FailNext["Update"] = new AgentException("Factorio is running on this PC.", 409);
+        var (app, _, _, _, _) = await StartAsync(agent);
+        var card = app.Games.Single(g => g.ContentHash == A);
+
+        await card.OpenSpreadCommand.ExecuteAsync(null);
+        await card.Spread!.InstallCommand.ExecuteAsync(null);
+
+        Assert.Equal("začala instalace", card.Spread.Targets.Single(t => t.MachineId == "pc-02").StatusText);
+        Assert.Equal("Factorio is running on this PC.", card.Spread.Targets.Single(t => t.MachineId == "pc-04").StatusText);
+        Assert.StartsWith("Začalo na 1 PC z 2", card.Spread.Message);
+    }
+
+    [Fact]
+    public async Task Without_paired_pcs_or_in_a_managed_pcs_window_nothing_is_offered()
+    {
+        var (app, _, agent, events, _) = await StartAsync(new FakeAgent { Games = [Game(A, "BeamNG.drive", GameState.Installed)] });
+        var card = app.Games.Single();
+        Assert.False(card.CanSpread);
+        Assert.DoesNotContain(card.MenuEntries, e => e.Header == "Nainstalovat na další PC…");
+
+        // Pairing elsewhere on the page reaches the cards through the event.
+        events.Raise(GameShareEvents.RemoteChanged, agent.Remote with { Targets = [new PairedMachineDto("x", "X", "f", DateTimeOffset.UtcNow, null, true)] });
+        Assert.True(card.CanSpread);
+
+        var managed = new AppModel(ManagingFour(), new FakeEvents(), new ImmediateDispatcher()) { IsRemote = true };
+        await managed.StartAsync();
+        Assert.False(managed.HasRemoteTargets);
+        Assert.All(managed.Games, g => Assert.False(g.CanSpread));
     }
 
     private static async Task<(AppModel App, MainViewModel Main, PumpDispatcher Ui)> ConnectAsync(TestAgent agent)

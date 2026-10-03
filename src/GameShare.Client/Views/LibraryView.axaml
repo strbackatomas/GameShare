@@ -5,6 +5,36 @@
              x:Class="GameShare.Client.Views.LibraryView"
              x:DataType="vm:LibraryViewModel">
 
+    <UserControl.DataTemplates>
+        <!-- Installing one game on other PCs managed from here, under its card. -->
+        <DataTemplate DataType="vm:SpreadViewModel">
+            <Border Padding="14" CornerRadius="8" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="1">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="Nainstalovat na další PC" FontWeight="SemiBold" FontSize="15" />
+                    <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap"
+                               Text="Každé zaškrtnuté PC si hru stáhne ze sítě samo, do své první složky s hrami." />
+                    <ItemsControl ItemsSource="{Binding Targets}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:SpreadTargetRow">
+                                <Grid ColumnDefinitions="Auto,*" Margin="0,2">
+                                    <CheckBox Grid.Column="0" IsChecked="{Binding IsSelected}" IsEnabled="{Binding CanSelect}" Content="{Binding Name}" MinWidth="160" />
+                                    <TextBlock Grid.Column="1" Text="{Binding StatusText}" Classes="muted" FontSize="12" VerticalAlignment="Center"
+                                               TextWrapping="Wrap" Margin="12,0,0,0" />
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <TextBlock Text="{Binding Message}" TextWrapping="Wrap"
+                               IsVisible="{Binding Message, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button Classes="primary" Content="Instalovat na vybraná PC" Command="{Binding InstallCommand}" />
+                        <Button Content="Zavřít" Command="{Binding CloseCommand}" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </DataTemplate>
+    </UserControl.DataTemplates>
+
     <ScrollViewer>
         <StackPanel Margin="24,8,24,24" MaxWidth="980" HorizontalAlignment="Stretch">
 
@@ -30,7 +60,7 @@
                 <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="vm:GameCardViewModel">
                         <Border Classes="card">
-                            <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto">
+                            <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto">
 
                                 <StackPanel Grid.Row="0" Grid.Column="0" Spacing="3">
                                     <StackPanel Orientation="Horizontal" Spacing="10">
@@ -138,6 +168,7 @@
                                         </StackPanel>
                                     </StackPanel>
                                 </Border>
+                                <ContentControl Grid.Row="7" Grid.ColumnSpan="2" Content="{Binding Spread}" IsVisible="{Binding IsSpreading}" Margin="0,12,0,0" />
                             </Grid>
                         </Border>
                     </DataTemplate>
@@ -149,7 +180,7 @@
                 <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="vm:GameCardViewModel">
                         <Border Classes="card">
-                            <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto">
+                            <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto,Auto">
                                 <StackPanel Grid.Row="0" Grid.Column="0" Spacing="3">
                                     <StackPanel Orientation="Horizontal" Spacing="10">
                                         <TextBlock Text="{Binding Name}" Classes="title" />
@@ -166,6 +197,8 @@
                                 <StackPanel Grid.Row="0" Grid.Column="1" VerticalAlignment="Center">
                                     <Button Classes="primary" Content="Instalovat" Command="{Binding InstallCommand}" IsVisible="{Binding ShowInstallButton}" MinWidth="120" HorizontalContentAlignment="Center" />
                                     <Button Classes="primary" Content="Aktualizovat" Command="{Binding UpdateCommand}" IsVisible="{Binding CanUpdate}" MinWidth="120" HorizontalContentAlignment="Center" />
+                                    <Button Content="Na další PC…" Command="{Binding OpenSpreadCommand}" IsVisible="{Binding CanSpread}" MinWidth="120"
+                                            HorizontalContentAlignment="Center" Margin="0,6,0,0" />
                                 </StackPanel>
 
                                 <TextBlock Grid.Row="1" Grid.ColumnSpan="2" Text="{Binding Message}" IsVisible="{Binding HasMessage}" Margin="0,10,0,0" TextWrapping="Wrap" />
@@ -176,6 +209,7 @@
                                     <Button Grid.Column="1" Classes="primary" Content="Instalovat sem" Command="{Binding ConfirmInstallCommand}" Margin="8,0,0,0" />
                                     <Button Grid.Column="2" Content="Zrušit" Command="{Binding CancelChoosingInstallFolderCommand}" Margin="8,0,0,0" />
                                 </Grid>
+                                <ContentControl Grid.Row="3" Grid.ColumnSpan="2" Content="{Binding Spread}" IsVisible="{Binding IsSpreading}" Margin="0,12,0,0" />
                             </Grid>
                         </Border>
                     </DataTemplate>

@@ -8,6 +8,11 @@ this is wired into the build and where a peer's version shows up.
 
 ## [Unreleased]
 
+### Added
+- A game can be installed on several managed PCs with one click: "Nainstalovat na další PC…" in its menu, or "Na další PC…" next
+  to Instalovat. Each paired PC says whether it already has the game, is downloading it, has an older version (then it is
+  updated) or does not see it on the network; the ones that can take it are ticked, and each says how it went.
+
 ## [0.7.0] - 2026-10-03
 
 ### Added

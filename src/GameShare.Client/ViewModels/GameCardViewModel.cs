@@ -42,7 +42,7 @@ public sealed partial class GameCardViewModel : ViewModelBase
     private bool _iconRequested;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsInstalled), nameof(IsDamaged), nameof(IsDownloading), nameof(IsAvailable), nameof(CanInstall), nameof(CanUpdate), nameof(ShowInstallButton), nameof(StateText), nameof(CanPlay), nameof(NeedsExecutable), nameof(ShowUninstallButton), nameof(HasOtherLaunchOptions))]
+    [NotifyPropertyChangedFor(nameof(IsInstalled), nameof(IsDamaged), nameof(IsDownloading), nameof(IsAvailable), nameof(CanInstall), nameof(CanUpdate), nameof(ShowInstallButton), nameof(StateText), nameof(CanPlay), nameof(NeedsExecutable), nameof(ShowUninstallButton), nameof(HasOtherLaunchOptions), nameof(CanSpread))]
     public partial GameState State { get; set; }
 
     [ObservableProperty]
@@ -51,7 +51,7 @@ public sealed partial class GameCardViewModel : ViewModelBase
 
     /// <summary>False when the PCs that are online do not have all of the game between them, so installing would stall.</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(CanInstall), nameof(CanUpdate), nameof(ShowInstallButton), nameof(IsWaitingForParts), nameof(StateText))]
+    [NotifyPropertyChangedFor(nameof(CanInstall), nameof(CanUpdate), nameof(ShowInstallButton), nameof(IsWaitingForParts), nameof(StateText), nameof(CanSpread))]
     public partial bool FullyAvailable { get; set; } = true;
 
     [ObservableProperty] public partial string CoverageText { get; set; } = "";
@@ -84,6 +84,36 @@ public sealed partial class GameCardViewModel : ViewModelBase
 
     [ObservableProperty] public partial bool HasMenu { get; set; }
 
+    // ---- installing on other PCs managed from here ----
+
+    /// <summary>This PC manages others, and this game is here or on the network, so they could get it too.</summary>
+    public bool CanSpread => IsLocal && _app.HasRemoteTargets && (IsInstalled || IsDamaged || IsAvailable) && FullyAvailable;
+
+    /// <summary>The panel that installs this game on paired PCs, while it is open.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsSpreading))]
+    public partial SpreadViewModel? Spread { get; set; }
+
+    public bool IsSpreading => Spread is not null;
+
+    [RelayCommand]
+    private async Task OpenSpreadAsync()
+    {
+        var spread = new SpreadViewModel(_app, ContentHash, Name, () => Spread = null);
+        Spread = spread;
+        await spread.LoadAsync().ConfigureAwait(true);
+    }
+
+    [RelayCommand]
+    private void CloseSpread() => Spread = null;
+
+    /// <summary>The PCs this one manages came or went. Called by the model.</summary>
+    internal void OnRemoteTargetsChanged()
+    {
+        OnPropertyChanged(nameof(CanSpread));
+        RebuildMenu();
+    }
+
     private void RebuildMenu()
     {
         var entries = new List<CardMenuEntry>();
@@ -101,6 +131,7 @@ public sealed partial class GameCardViewModel : ViewModelBase
                       .. IsDamaged ? new[] { new CardMenuEntry("Opravit ze sítě", RepairCommand) } : [],
                       .. IsDamaged && IsLocal ? new[] { new CardMenuEntry("Registrovat jako novou verzi", RegisterCommand) } : []]
                    : []);
+        Group(CanSpread ? [new CardMenuEntry("Nainstalovat na další PC…", OpenSpreadCommand)] : []);
         Group(ShowUninstallButton ? [new CardMenuEntry("Odinstalovat…", UninstallPromptCommand)] : []);
 
         if (entries.Select(e => (e.Header, e.Command)).SequenceEqual(MenuEntries.Select(e => (e.Header, e.Command)))) return;

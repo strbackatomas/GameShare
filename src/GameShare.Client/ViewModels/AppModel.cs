@@ -42,6 +42,26 @@ public sealed partial class AppModel : ViewModelBase, IAsyncDisposable
     /// <summary>Opens the window that manages a paired PC.</summary>
     public IRemoteWindows RemoteWindows { get; }
 
+    /// <summary>This PC manages at least one other. Games then offer to be installed there too.</summary>
+    public bool HasRemoteTargets
+    {
+        get;
+        private set
+        {
+            if (field == value) return;
+            field = value;
+            OnPropertyChanged();
+            foreach (var card in Games) card.OnRemoteTargetsChanged();
+        }
+    }
+
+    private async Task RefreshRemoteTargetsAsync(CancellationToken ct)
+    {
+        if (IsRemote) return; // that PC's pairings are its own business
+        try { HasRemoteTargets = (await Client.GetRemoteAsync(ct).ConfigureAwait(true)).Targets.Count > 0; }
+        catch (AgentException) { HasRemoteTargets = false; } // an agent from before remote management
+    }
+
     /// <summary>Starts the client again once an update replaced its files.</summary>
     public IClientRestarter Restarter { get; }
 
@@ -224,6 +244,7 @@ public sealed partial class AppModel : ViewModelBase, IAsyncDisposable
             SyncDownloads(await Client.GetDownloadsAsync(ct).ConfigureAwait(true));
             if (IsRemote) RecordDownloadSpeed(); // a managed PC sends no events, its graph is fed by these loads
             SyncPeers(await Client.GetPeersAsync(ct).ConfigureAwait(true));
+            await RefreshRemoteTargetsAsync(ct).ConfigureAwait(true);
             IsConnected = true;
             ConnectionText = "Připojeno";
         }
@@ -266,6 +287,7 @@ public sealed partial class AppModel : ViewModelBase, IAsyncDisposable
                 break;
 
             case AppUpdateStatusDto u: AppUpdate = u; break;
+            case RemoteStatusDto r: HasRemoteTargets = r.Targets.Count > 0; break;
         }
 
         EventReceived?.Invoke(this, e);
