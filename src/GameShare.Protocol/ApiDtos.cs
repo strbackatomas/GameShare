@@ -398,6 +398,40 @@ public static class GameShareEvents
     public const string RemoteAction = nameof(RemoteAction);
 }
 
+// ---- Network check: is this PC's network set up for GameShare ----
+
+/// <summary>What each of GameShare's ports is for, as <see cref="PortCheckDto.Role"/>.</summary>
+public static class PortRoles
+{
+    public const string Control = nameof(Control);     // the local client, loopback only
+    public const string Peer = nameof(Peer);           // the read-only API other PCs ask
+    public const string Discovery = nameof(Discovery); // finding the other PCs
+    public const string Transfer = nameof(Transfer);   // game data
+    public const string Remote = nameof(Remote);       // remote management
+}
+
+/// <param name="FirewallProblem">Why the firewall or the list of networks could not be read, when it could not. The ports are then
+/// listed without <see cref="PortCheckDto.AllowedOn"/>.</param>
+public sealed record NetworkCheckDto(
+    IReadOnlyList<NetworkProfileDto> Networks, IReadOnlyList<PortCheckDto> Ports, IReadOnlyList<PeerReachDto> Peers, string? FirewallProblem);
+
+/// <param name="Category">Private, Domain or Public, as Windows has the network. GameShare's firewall rules cover Private and Domain.</param>
+/// <param name="Adapters">"Ethernet (192.168.1.20)" for each adapter on that network.</param>
+/// <param name="BlocksAllInbound">The firewall blocks every incoming connection on this kind of network, whatever the rules say.</param>
+/// <param name="IsVirtual">Every adapter on it looks virtual (VirtualBox, Hyper-V, a VPN), so GameShare does not use it anyway.</param>
+public sealed record NetworkProfileDto(
+    string Name, string Category, IReadOnlyList<string> Adapters, bool FirewallOn, bool BlocksAllInbound, bool IsVirtual = false);
+
+/// <param name="Role">One of <see cref="PortRoles"/>.</param>
+/// <param name="Expected">Whether the agent should listen there now. False for remote management while it is off.</param>
+/// <param name="NeedsFirewall">Other PCs connect to it, so the firewall must let it in. False for the loopback control API.</param>
+/// <param name="AllowedOn">The kinds of network (Private, Domain, Public) the firewall lets it in on. Null when that could not be read.</param>
+public sealed record PortCheckDto(
+    string Role, string Protocol, int Port, bool Listening, bool Expected, bool NeedsFirewall, IReadOnlyList<string>? AllowedOn);
+
+/// <param name="Error">Why it could not be reached: Timeout, or the socket error such as ConnectionRefused.</param>
+public sealed record PeerReachDto(string Name, string Address, bool Reachable, double? Milliseconds, string? Error);
+
 // ---- Remote management: a paired PC drives this one's downloads ----
 
 /// <summary>

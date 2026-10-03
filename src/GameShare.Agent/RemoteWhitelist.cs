@@ -28,6 +28,7 @@ public static class RemoteWhitelist
         ("GET", Path("settings/roots")), // where an install may go, with free space; the settings themselves stay local
         ("GET", Path("trust")),
         ("GET", Path("app-update")),
+        ("GET", Path("network/check")), // whether that PC's firewall and network are set up right, read only
 
         ("POST", Path("games/scan")),
         ("POST", Path($"games/{Hash}/(install|check|repair|update)")),

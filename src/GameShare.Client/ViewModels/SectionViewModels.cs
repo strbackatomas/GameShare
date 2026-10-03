@@ -176,6 +176,9 @@ public sealed class NetworkViewModel(AppModel app) : ViewModelBase
 {
     public AppModel App { get; } = app;
     public ObservableCollection<PeerViewModel> Peers => App.Peers;
+
+    /// <summary>Whether this PC's network and firewall let GameShare work. In a managed PC's window, that PC's.</summary>
+    public NetworkCheckViewModel Check { get; } = new(app);
 }
 
 /// <summary>One piece of a log line: plain text, the leading timestamp (dimmed), or a value worth catching the eye

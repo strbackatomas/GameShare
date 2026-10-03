@@ -94,6 +94,9 @@ public static partial class LocalApi
 
         api.MapGet("/peers", (DiscoveryService discovery, GameView view) => discovery.Peers.Select(view.ToDto).ToList());
 
+        // Networks and their category, the firewall for each of GameShare's ports, and whether the other PCs answer. Read only.
+        api.MapGet("/network/check", async (NetworkCheck check, CancellationToken ct) => await check.RunAsync(ct));
+
         // Who is pulling data from this PC right now, and how fast. Only games with at least one active peer.
         api.MapGet("/uploads", async (GameView view, CancellationToken ct) => await view.ListUploadsAsync(ct));
 

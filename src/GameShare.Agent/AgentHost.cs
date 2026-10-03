@@ -150,6 +150,7 @@ public static class AgentHost
         });
         services.AddSingleton<IWakeOnLan, WakeOnLan>();
         services.AddSingleton<RemoteAccessService>();
+        services.AddSingleton<NetworkCheck>();
 
         services.AddExceptionHandler<ApiExceptionHandler>();
         services.AddProblemDetails();

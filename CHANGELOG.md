@@ -8,6 +8,13 @@ this is wired into the build and where a peer's version shows up.
 
 ## [Unreleased]
 
+### Added
+- "Kontrola sítě" on the Síť page: the networks this PC is on and whether Windows has them as private, domain or public (GameShare's
+  firewall rules only cover private and domain); for each of GameShare's ports whether the agent listens there and whether the
+  firewall lets it in on those networks; and whether each other PC answers. What is wrong comes with what to do about it, such as
+  how to make a network private. Runs when the page is first opened, and on "Zkontrolovat". In the window of a managed PC it
+  checks that PC. Reads only, through the firewall's own interface, and needs no administrator.
+
 ## [0.8.0] - 2026-10-03
 
 ### Added

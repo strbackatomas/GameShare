@@ -75,6 +75,7 @@ public sealed partial class MainViewModel : ViewModelBase
         else if (value.Page == Log) _ = Log.LoadAsync();
         else if (value.Page == Downloads) _ = Downloads.LoadUploadsAsync();
         else if (value.Page == Remote) _ = Remote.LoadAsync();
+        else if (value.Page == Network) _ = Network.Check.CheckOnceAsync();
     }
 
     private void RefreshBadges()

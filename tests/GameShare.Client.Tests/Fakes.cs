@@ -46,6 +46,9 @@ internal sealed class FakeAgent : IAgentClient
     public Task<IReadOnlyList<GameDto>> GetGamesAsync(CancellationToken ct = default) => Do<IReadOnlyList<GameDto>>("GetGames", () => [.. Games]);
     public Task<IReadOnlyList<PeerDto>> GetPeersAsync(CancellationToken ct = default) => Do<IReadOnlyList<PeerDto>>("GetPeers", () => [.. Peers]);
 
+    public NetworkCheckDto NetworkCheck { get; set; } = new([], [], [], null);
+    public Task<NetworkCheckDto> CheckNetworkAsync(CancellationToken ct = default) => Do("CheckNetwork", () => NetworkCheck);
+
     /// <summary>What each peer offers, keyed by machine id. A peer with no entry here answers with an empty list.</summary>
     public Dictionary<string, List<OfferedGameDto>> PeerGames { get; set; } = [];
 

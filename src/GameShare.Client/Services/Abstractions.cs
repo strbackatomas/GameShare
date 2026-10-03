@@ -15,6 +15,9 @@ public interface IAgentClient
     Task<IReadOnlyList<GameDto>> GetGamesAsync(CancellationToken ct = default);
     Task<IReadOnlyList<PeerDto>> GetPeersAsync(CancellationToken ct = default);
 
+    /// <summary>Networks and their category, the firewall for each of GameShare's ports, and whether the other PCs answer.</summary>
+    Task<NetworkCheckDto> CheckNetworkAsync(CancellationToken ct = default);
+
     /// <summary>The games one PC on the LAN offers, for the network view's expanded row.</summary>
     Task<IReadOnlyList<OfferedGameDto>> GetPeerGamesAsync(string machineId, CancellationToken ct = default);
     Task<IReadOnlyList<DownloadDto>> GetDownloadsAsync(CancellationToken ct = default);

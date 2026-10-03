@@ -48,6 +48,7 @@ public sealed class AgentClient : IAgentClient
     public Task<StatusDto> GetStatusAsync(CancellationToken ct = default) => SendAsync<StatusDto>(HttpMethod.Get, "/api/status", null, Quick, ct);
     public Task<IReadOnlyList<GameDto>> GetGamesAsync(CancellationToken ct = default) => ListAsync<GameDto>("/api/games", ct);
     public Task<IReadOnlyList<PeerDto>> GetPeersAsync(CancellationToken ct = default) => ListAsync<PeerDto>("/api/peers", ct);
+    public Task<NetworkCheckDto> CheckNetworkAsync(CancellationToken ct = default) => SendAsync<NetworkCheckDto>(HttpMethod.Get, "/api/network/check", null, Quick, ct);
     public Task<IReadOnlyList<OfferedGameDto>> GetPeerGamesAsync(string machineId, CancellationToken ct = default) => ListAsync<OfferedGameDto>($"/api/peers/{machineId}/games", ct);
     public Task<IReadOnlyList<DownloadDto>> GetDownloadsAsync(CancellationToken ct = default) => ListAsync<DownloadDto>("/api/downloads", ct);
     public Task<IReadOnlyList<UploadDto>> GetUploadsAsync(CancellationToken ct = default) => ListAsync<UploadDto>("/api/uploads", ct);

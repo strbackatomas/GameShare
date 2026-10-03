@@ -268,6 +268,21 @@ it turns it on, and then only for PCs that were paired with it there.
 - The certificate's private key sits in the database under `%ProgramData%\GameShare`, readable by administrators of that PC.
   Anyone who is administrator of a PC owns it anyway.
 
+## Network check
+
+`GET /api/network/check` (`NetworkCheck`) answers "why do the other PCs not see this one" without guessing. It reads, never changes:
+
+- **Networks** through Windows' Network List Manager: name, category (private, domain, public) and adapters. A network whose
+  adapters all look virtual is marked, GameShare does not use those anyway.
+- **Firewall** through its COM interface (`HNetCfg.FwPolicy2`), which anyone may read and which names things in English whatever the
+  language of Windows. For each port: the enabled inbound rules that name no program or this one, for the protocol and the port;
+  allow rules per profile, minus block rules. Plus whether the firewall is on and whether it blocks all inbound per profile.
+- **Listening**: whether the agent really has the port, from the system's own list of listeners.
+- **Other PCs**: a TCP connect to each one's peer API, which also tells whether that PC's firewall lets this one in.
+
+The agent returns facts; the client decides what is green, orange or red and says what to do. A paired PC may run it on the PC it
+manages, it is on the remote list.
+
 ## Client
 
 An Avalonia desktop app. It holds no BitTorrent logic, it only calls the agent's local API and listens to its events.

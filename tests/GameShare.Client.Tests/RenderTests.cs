@@ -285,9 +285,16 @@ public class RenderTests
     [AvaloniaFact]
     public async Task Network_page_lists_the_other_pcs()
     {
-        var main = await BuildAsync(Populated());
+        var agent = Populated();
+        agent.NetworkCheck = NetworkCheckClientTests.Typical(
+            NetworkCheckClientTests.Net("Domov", "Private"), NetworkCheckClientTests.Net("Síť 3", "Public"),
+            NetworkCheckClientTests.Net("VirtualBox Host-Only Network", "Public", isVirtual: true));
+        var main = await BuildAsync(agent);
         var frame = await ShowAsync(main, "Síť", "network.png");
         Assert.True(DistinctColours(frame) > 100);
+        Assert.True(main.Network.Check.HasResult);
+        Assert.Equal(CheckLevel.Bad, main.Network.Check.Overall); // a real network is public
+        Assert.Equal(CheckLevel.Warn, main.Network.Check.Ports[1].Level); // fine on Domov, not on Síť 3
     }
 
     [AvaloniaFact]
