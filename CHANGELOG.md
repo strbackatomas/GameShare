@@ -8,6 +8,8 @@ this is wired into the build and where a peer's version shows up.
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-03
+
 ### Added
 - Remote management, agent side: one PC can start, pause and cancel downloads on others. Off until turned on at each PC, which
   then shows a pairing code for the managing PC to enter. Paired PCs only talk over TLS with each other's pinned certificate,
@@ -20,6 +22,11 @@ this is wired into the build and where a peer's version shows up.
   did something here.
 - `install-agent.ps1` puts a GameShare shortcut on the desktop of all users next to the Start menu entry, `-NoDesktopShortcut`
   leaves it out. `uninstall-agent.ps1` removes it.
+
+### Upgrading
+- The remote management port 47703 is opened in the firewall by `install-agent.ps1`. A PC that updates itself from the app keeps
+  its old firewall rules, so on a PC that is to be managed run `install-agent.ps1` again, or allow TCP 47703 for the Private and
+  Domain profiles by hand. A PC that only manages others needs no new rule.
 
 ## [0.6.8] - 2026-10-01
 
