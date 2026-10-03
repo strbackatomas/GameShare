@@ -20,20 +20,33 @@ public sealed class ControllerRow(PairedMachineDto m, IAsyncRelayCommand remove)
 /// <summary>A PC this one may manage, with what it is doing, for the overview.</summary>
 public sealed partial class TargetRow : ObservableObject
 {
-    public TargetRow(PairedMachineDto m, IRelayCommand manage, IAsyncRelayCommand remove)
+    public TargetRow(PairedMachineDto m, IRelayCommand manage, IAsyncRelayCommand remove, IAsyncRelayCommand? wake = null)
     {
         MachineId = m.MachineId;
         ManageCommand = manage;
         RemoveCommand = remove;
+        WakeCommand = wake ?? new AsyncRelayCommand(() => Task.CompletedTask);
         Update(m);
     }
 
     public string MachineId { get; }
     public IRelayCommand ManageCommand { get; }
     public IAsyncRelayCommand RemoveCommand { get; }
+    public IAsyncRelayCommand WakeCommand { get; }
 
     [ObservableProperty] public partial string Name { get; set; } = "";
-    [ObservableProperty] public partial bool Online { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowWake))]
+    public partial bool Online { get; set; }
+
+    /// <summary>Its MAC address is known, so it can be woken.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowWake))]
+    public partial bool CanWake { get; set; }
+
+    /// <summary>"Zapnout" instead of "Spravovat": it is off and can be woken.</summary>
+    public bool ShowWake => !Online && CanWake;
     [ObservableProperty] public partial string DetailText { get; set; } = "";
 
     /// <summary>"v0.7.0", empty until it answered.</summary>
@@ -62,6 +75,7 @@ public sealed partial class TargetRow : ObservableObject
     {
         Name = m.MachineName;
         Online = m.Online;
+        CanWake = m.CanWake;
         DetailText = (m.Online ? "na síti" : "teď není na síti") + $" · spárováno {Format.Date(m.PairedAt)}";
         if (!m.Online) ShowOffline();
     }
@@ -301,6 +315,13 @@ public sealed partial class RemoteViewModel : ViewModelBase
             await LoadAsync().ConfigureAwait(true);
     }
 
+    private async Task WakeAsync(TargetRow row)
+    {
+        Message = "";
+        if (await TryAsync(() => _app.Client.WakeAsync(row.MachineId), m => Message = m).ConfigureAwait(true))
+            row.DetailText = "probouzím… zapnutí může trvat minutu, pak se tu objeví jako na síti";
+    }
+
     private async Task RemoveTargetAsync(TargetRow row)
     {
         Message = "";
@@ -342,7 +363,7 @@ public sealed partial class RemoteViewModel : ViewModelBase
             {
                 TargetRow? created = null;
                 created = new TargetRow(t, new RelayCommand(() => _app.RemoteWindows.Open(t.MachineId, created!.Name)),
-                    new AsyncRelayCommand(() => RemoveTargetAsync(created!)));
+                    new AsyncRelayCommand(() => RemoveTargetAsync(created!)), new AsyncRelayCommand(() => WakeAsync(created!)));
                 Targets.Insert(i, created);
             }
             else

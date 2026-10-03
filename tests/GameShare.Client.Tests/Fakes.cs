@@ -163,6 +163,7 @@ internal sealed class FakeAgent : IAgentClient
             Remote = Remote with { Targets = [.. Remote.Targets, paired] };
             return paired;
         });
+    public Task WakeAsync(string machineId, CancellationToken ct = default) => Do($"Wake({machineId})", () => (object?)null);
     public Task RemoveTargetAsync(string machineId, CancellationToken ct = default) =>
         Do($"RemoveTarget({machineId})", () => Remote = Remote with { Targets = Remote.Targets.Where(t => t.MachineId != machineId).ToList() });
 

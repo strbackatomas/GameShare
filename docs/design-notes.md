@@ -260,6 +260,10 @@ it turns it on, and then only for PCs that were paired with it there.
 - **What the person at the target sees.** Each change a paired PC makes is logged with its name and sent to the client as a
   `RemoteAction` event. The PCs that may manage this one are listed with when they last did something, and removing one takes
   effect with its next request. Turning remote management off keeps the pairings for later.
+- **Waking a PC that is off.** While remote management is on, a PC puts the MAC addresses of its real wired and wireless adapters
+  on a private network into its peer hello. The controller keeps them when pairing and whenever that PC comes onto the network,
+  and "Zapnout" sends the standard magic packet (six 0xFF, the MAC sixteen times) as a UDP broadcast on ports 9 and 7 to every
+  private network it is on. Whether the PC wakes is up to its BIOS and adapter settings; over Wi-Fi it rarely does.
 - **Not in the portable build.** `GameShare-LanParty.exe` never listens: a guest's PC is nobody else's to manage.
 - The certificate's private key sits in the database under `%ProgramData%\GameShare`, readable by administrators of that PC.
   Anyone who is administrator of a PC owns it anyway.

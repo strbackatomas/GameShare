@@ -348,7 +348,9 @@ public sealed record AppUpdateStatusDto(
 public sealed record AppUpdateOfferDto(string Flavor, string Version);
 
 /// <param name="RemotePort">Where this PC takes remote management from paired PCs, over TLS. Null while that is off, or for an older PC.</param>
-public sealed record PeerHelloDto(string MachineId, string MachineName, int ProtocolVersion, string? AppVersion = null, int? RemotePort = null);
+/// <param name="MacAddresses">While remote management is on: the adapters a paired PC can wake this one through, "AA-BB-CC-DD-EE-FF".</param>
+public sealed record PeerHelloDto(
+    string MachineId, string MachineName, int ProtocolVersion, string? AppVersion = null, int? RemotePort = null, IReadOnlyList<string>? MacAddresses = null);
 
 /// <summary>A game this PC is willing to serve: installed, verified and seeding.</summary>
 public sealed record OfferedGameDto(string ContentHash, string GameId, string Name, string? Version, long TotalSize)
@@ -413,7 +415,9 @@ public sealed record RemoteStatusDto(
 public sealed record RemotePairingDto(string Code, DateTimeOffset ExpiresAt);
 
 /// <param name="Online">For a target: it is on the network now. Always false for a controller, this PC does not look for those.</param>
-public sealed record PairedMachineDto(string MachineId, string MachineName, string Fingerprint, DateTimeOffset PairedAt, DateTimeOffset? LastUsed, bool Online = false);
+/// <param name="CanWake">For a target: its MAC address is known, so it can be woken over the network when it is off.</param>
+public sealed record PairedMachineDto(
+    string MachineId, string MachineName, string Fingerprint, DateTimeOffset PairedAt, DateTimeOffset? LastUsed, bool Online = false, bool CanWake = false);
 
 public sealed record RemoteEnableRequest(bool Enabled);
 

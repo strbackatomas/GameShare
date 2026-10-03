@@ -42,7 +42,10 @@
                                     <TextBlock Text="{Binding Problem}" Foreground="{StaticResource DangerBrush}" FontSize="12" TextWrapping="Wrap" IsVisible="{Binding HasProblem}" />
                                 </StackPanel>
                                 <Button Grid.Column="2" Classes="primary" Content="Spravovat" Command="{Binding ManageCommand}"
-                                        IsEnabled="{Binding Online}" Margin="8,0,0,0" VerticalAlignment="Center" />
+                                        IsEnabled="{Binding Online}" IsVisible="{Binding !ShowWake}" Margin="8,0,0,0" VerticalAlignment="Center" />
+                                <Button Grid.Column="2" Content="Zapnout" Command="{Binding WakeCommand}" IsVisible="{Binding ShowWake}"
+                                        ToolTip.Tip="Pošle do sítě Wake-on-LAN. Funguje, jen když ho má PC zapnuté v BIOSu a u síťové karty."
+                                        Margin="8,0,0,0" VerticalAlignment="Center" />
                                 <Button Grid.Column="3" Content="Odebrat" Command="{Binding RemoveCommand}" Margin="8,0,0,0" VerticalAlignment="Center" />
                             </Grid>
                         </Border>

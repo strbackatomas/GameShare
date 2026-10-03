@@ -108,6 +108,9 @@ public interface IAgentClient
     /// <summary>Forgets a PC this one managed.</summary>
     Task RemoveTargetAsync(string machineId, CancellationToken ct = default);
 
+    /// <summary>Sends the Wake-on-LAN packet to a managed PC that is off.</summary>
+    Task WakeAsync(string machineId, CancellationToken ct = default);
+
     /// <summary>The same calls, answered by the paired PC <paramref name="machineId"/> through this PC's agent.</summary>
     IAgentClient ForTarget(string machineId);
 }

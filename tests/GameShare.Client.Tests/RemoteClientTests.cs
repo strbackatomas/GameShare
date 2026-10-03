@@ -350,6 +350,26 @@ public class RemoteClientTests
         Assert.StartsWith("2 přenosy · 25 %", row.ActivityText);
     }
 
+    [Fact]
+    public async Task A_managed_pc_that_is_off_offers_to_be_woken_when_its_address_is_known()
+    {
+        var at = DateTimeOffset.UtcNow;
+        var agent = new FakeAgent
+        {
+            Remote = new RemoteStatusDto(true, false, false, 47703, "f", null, [],
+                [new("off", "PC-OFF", "f", at, null, Online: false, CanWake: true), new("unknown", "PC-NEW", "f", at, null, Online: false, CanWake: false)]),
+        };
+        var (_, remote, _, _, _) = await StartAsync(agent);
+        var off = remote.Targets.Single(t => t.MachineId == "off");
+        Assert.True(off.ShowWake);
+        Assert.False(remote.Targets.Single(t => t.MachineId == "unknown").ShowWake);
+
+        await off.WakeCommand.ExecuteAsync(null);
+
+        Assert.Contains("Wake(off)", agent.Calls);
+        Assert.StartsWith("probouzím", off.DetailText);
+    }
+
     private static async Task<(AppModel App, MainViewModel Main, PumpDispatcher Ui)> ConnectAsync(TestAgent agent)
     {
         var uri = new Uri($"http://127.0.0.1:{agent.LocalPort}");

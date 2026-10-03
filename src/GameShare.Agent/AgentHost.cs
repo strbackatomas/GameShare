@@ -148,6 +148,7 @@ public static class AgentHost
             AllowAutoRedirect = false,
             UseProxy = false,
         });
+        services.AddSingleton<IWakeOnLan, WakeOnLan>();
         services.AddSingleton<RemoteAccessService>();
 
         services.AddExceptionHandler<ApiExceptionHandler>();

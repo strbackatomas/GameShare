@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Security.Cryptography.X509Certificates;
 using GameShare.Protocol;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace GameShare.Agent.Tests;
 
@@ -260,6 +261,73 @@ public class RemoteTests
         Assert.False((await RemoteAsync(agent)).Allowed);
         Assert.Equal(HttpStatusCode.Conflict, (await agent.SendAsync(HttpMethod.Put, "/api/remote/enabled", new RemoteEnableRequest(true))).StatusCode);
         Assert.False((await RemoteAsync(agent)).Listening);
+    }
+
+    private sealed class FakeWake(params string[] own) : IWakeOnLan
+    {
+        public List<IReadOnlyList<string>> Sent { get; } = [];
+        public IReadOnlyList<string> OwnMacAddresses() => own;
+        public Task SendAsync(IReadOnlyList<string> macAddresses, CancellationToken ct = default)
+        {
+            Sent.Add(macAddresses);
+            return Task.CompletedTask;
+        }
+    }
+
+    [Fact]
+    public async Task A_managed_pc_tells_how_to_wake_it_and_the_controller_sends_the_packet_while_it_is_off()
+    {
+        int discovery = TestAgent.DiscoveryPort();
+        var controllerWake = new FakeWake();
+        await using var controller = await TestAgent.StartAsync("PC-01", discovery,
+            services: s => s.AddSingleton<IWakeOnLan>(controllerWake));
+        var target = await TestAgent.StartAsync("PC-02", discovery,
+            services: s => s.AddSingleton<IWakeOnLan>(new FakeWake("AA-BB-CC-DD-EE-FF")));
+        await Poll.UntilAsync(async () => (await controller.PeersAsync()).Count == 1, "PC-01 to see PC-02");
+
+        // Told only while remote management is on.
+        Assert.Null((await target.PeerApi.GetFromJsonAsync<PeerHelloDto>("/peer/hello", TestAgent.Json))!.MacAddresses);
+        await EnableAsync(target);
+        Assert.Equal(["AA-BB-CC-DD-EE-FF"], (await target.PeerApi.GetFromJsonAsync<PeerHelloDto>("/peer/hello", TestAgent.Json))!.MacAddresses);
+
+        var paired = await PairAsync(controller, target, await OpenPairingAsync(target));
+        Assert.True(paired.IsSuccessStatusCode, await paired.Content.ReadAsStringAsync());
+        var targetId = await IdAsync(target);
+        Assert.True(Assert.Single((await RemoteAsync(controller)).Targets).CanWake);
+
+        // PC-02 goes off; PC-01 still knows how to wake it.
+        await target.DisposeAsync();
+        await Poll.UntilAsync(async () => (await controller.PeersAsync()).Count == 0, "PC-02 to leave");
+        Assert.Equal(HttpStatusCode.Accepted, (await controller.SendAsync(HttpMethod.Post, $"/api/remote/targets/{targetId}/wake")).StatusCode);
+        Assert.Equal(["AA-BB-CC-DD-EE-FF"], Assert.Single(controllerWake.Sent));
+    }
+
+    [Fact]
+    public async Task Waking_a_pc_whose_address_is_unknown_says_so()
+    {
+        int discovery = TestAgent.DiscoveryPort();
+        await using var controller = await TestAgent.StartAsync("PC-01", discovery, services: s => s.AddSingleton<IWakeOnLan>(new FakeWake()));
+        await using var target = await TestAgent.StartAsync("PC-02", discovery, services: s => s.AddSingleton<IWakeOnLan>(new FakeWake()));
+        await Poll.UntilAsync(async () => (await controller.PeersAsync()).Count == 1, "PC-01 to see PC-02");
+        await EnableAsync(target);
+        Assert.True((await PairAsync(controller, target, await OpenPairingAsync(target))).IsSuccessStatusCode);
+
+        Assert.False(Assert.Single((await RemoteAsync(controller)).Targets).CanWake);
+        var refused = await controller.SendAsync(HttpMethod.Post, $"/api/remote/targets/{await IdAsync(target)}/wake");
+        Assert.Equal(HttpStatusCode.Conflict, refused.StatusCode);
+        Assert.Contains("is not known yet", await refused.Content.ReadAsStringAsync());
+        Assert.Equal(HttpStatusCode.NotFound, (await controller.SendAsync(HttpMethod.Post, "/api/remote/targets/nobody/wake")).StatusCode);
+    }
+
+    [Fact]
+    public void The_magic_packet_is_six_ff_bytes_and_the_address_sixteen_times()
+    {
+        var packet = WakeOnLan.Packet("aa:bb:cc:dd:ee:ff");
+        Assert.Equal(102, packet.Length);
+        Assert.All(packet[..6], b => Assert.Equal(0xFF, b));
+        for (int i = 0; i < 16; i++) Assert.Equal(new byte[] { 0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF }, packet[(6 + i * 6)..(12 + i * 6)]);
+        Assert.Throws<ArgumentException>(() => WakeOnLan.Packet("AA-BB-CC"));
+        Assert.Throws<ArgumentException>(() => WakeOnLan.Packet("ZZ-BB-CC-DD-EE-FF"));
     }
 
     [Fact]

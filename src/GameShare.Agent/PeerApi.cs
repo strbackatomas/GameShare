@@ -22,7 +22,7 @@ public static partial class PeerApi
         var peer = app.MapGroup("/peer");
 
         peer.MapGet("/hello", (AgentIdentity me, RemoteAccessService remote) =>
-            new PeerHelloDto(me.MachineId, me.MachineName, DiscoveryMessage.CurrentVersion, AppVersion.Current, remote.ListeningPort));
+            new PeerHelloDto(me.MachineId, me.MachineName, DiscoveryMessage.CurrentVersion, AppVersion.Current, remote.ListeningPort, remote.WakeAddresses));
 
         // Update packages of GameShare itself this PC holds whole, and their signed descriptions. The other PCs check the signature
         // themselves; this PC only passes on what it checked for itself.

@@ -30,7 +30,9 @@ public sealed class RemoteAccessService : IHostedService, IAsyncDisposable
     private const int MaxBodyBytes = 64 * 1024; // the API takes small JSON bodies only
     private const int MaxNameLength = 64;
 
-    internal sealed record PairedMachine(string MachineId, string MachineName, string Fingerprint, DateTimeOffset PairedAt, DateTimeOffset? LastUsed, int? RemotePort = null);
+    internal sealed record PairedMachine(
+        string MachineId, string MachineName, string Fingerprint, DateTimeOffset PairedAt, DateTimeOffset? LastUsed, int? RemotePort = null,
+        List<string>? MacAddresses = null);
     internal sealed record StoredState(bool Enabled, List<PairedMachine> Controllers, List<PairedMachine> Targets);
     private sealed record OpenPairing(string Code, DateTimeOffset ExpiresAt);
 
@@ -46,6 +48,7 @@ public sealed class RemoteAccessService : IHostedService, IAsyncDisposable
     private readonly GameShareDb _db;
     private readonly DiscoveryService _discovery;
     private readonly IHttpClientFactory _http;
+    private readonly IWakeOnLan _wake;
     private readonly ILogger<RemoteAccessService> _log;
     private readonly X509Certificate2 _certificate;
     private readonly SemaphoreSlim _gate = new(1, 1);
@@ -57,8 +60,10 @@ public sealed class RemoteAccessService : IHostedService, IAsyncDisposable
     private WebApplication? _server;
 
     public RemoteAccessService(
-        Stored stored, AgentOptions options, AgentIdentity me, GameShareDb db, DiscoveryService discovery, IHttpClientFactory http, ILogger<RemoteAccessService> log)
+        Stored stored, AgentOptions options, AgentIdentity me, GameShareDb db, DiscoveryService discovery, IHttpClientFactory http, IWakeOnLan wake,
+        ILogger<RemoteAccessService> log)
     {
+        _wake = wake;
         _options = options;
         _me = me;
         _db = db;
@@ -107,12 +112,17 @@ public sealed class RemoteAccessService : IHostedService, IAsyncDisposable
             state.Targets.Select(t => ToDto(t, online.Contains(t.MachineId))).ToList());
     }
 
-    private static PairedMachineDto ToDto(PairedMachine m, bool online) => new(m.MachineId, m.MachineName, m.Fingerprint, m.PairedAt, m.LastUsed, online);
+    private static PairedMachineDto ToDto(PairedMachine m, bool online) =>
+        new(m.MachineId, m.MachineName, m.Fingerprint, m.PairedAt, m.LastUsed, online, m.MacAddresses is { Count: > 0 });
+
+    /// <summary>What this PC tells others in its peer hello: how to wake it, only while it may be managed.</summary>
+    public IReadOnlyList<string>? WakeAddresses => _server is null ? null : _wake.OwnMacAddresses();
 
     // ---- lifetime ----
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
+        _discovery.PeerEventRaised += OnPeer;
         if (!_state.Enabled) return;
         if (!_options.RemoteManagementAllowed)
         {
@@ -127,7 +137,25 @@ public sealed class RemoteAccessService : IHostedService, IAsyncDisposable
         }
     }
 
-    public async Task StopAsync(CancellationToken cancellationToken) => await StopServerAsync().ConfigureAwait(false);
+    public async Task StopAsync(CancellationToken cancellationToken)
+    {
+        _discovery.PeerEventRaised -= OnPeer;
+        await StopServerAsync().ConfigureAwait(false);
+    }
+
+    /// <summary>A managed PC came onto the network: learn how to wake it, it may have a new adapter since.</summary>
+    private void OnPeer(object? sender, PeerEvent e)
+    {
+        if (e.Kind == PeerEventKind.Left || _state.Targets.All(t => t.MachineId != e.Peer.MachineId)) return;
+        _ = Task.Run(async () =>
+        {
+            try { await AskRemotePortAsync(e.Peer, CancellationToken.None).ConfigureAwait(false); }
+            catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or System.Text.Json.JsonException)
+            {
+                _log.LogDebug("Could not ask {Name} how to wake it: {Message}", e.Peer.MachineName, ex.Message);
+            }
+        });
+    }
 
     public async ValueTask DisposeAsync()
     {
@@ -455,8 +483,10 @@ public sealed class RemoteAccessService : IHostedService, IAsyncDisposable
         }
         finally { _gate.Release(); }
         _log.LogInformation("Paired: this PC may now manage {Name} ({Id}), certificate {Fingerprint}", paired.MachineName, machineId, targetFingerprint);
+        try { await AskRemotePortAsync(peer, ct).ConfigureAwait(false); } // its MAC addresses, now that there is a record to keep them in
+        catch (HttpRequestException) { /* learnt the next time it comes onto the network */ }
         RaiseChanged();
-        return ToDto(paired, true);
+        return ToDto(_state.Targets.First(t => t.MachineId == machineId), true);
     }
 
     /// <summary>Forgets a PC this one managed. The target keeps its side until the person there removes it, but it can no longer be reached from here.</summary>
@@ -540,7 +570,42 @@ public sealed class RemoteAccessService : IHostedService, IAsyncDisposable
             .GetFromJsonAsync<PeerHelloDto>(new Uri($"http://{peer.Address}:{peer.AgentPort}/peer/hello"), GameShareJson.Options, ct).ConfigureAwait(false);
         if (hello is null || hello.MachineId != peer.MachineId)
             throw new HttpRequestException($"The PC at {peer.Address} is not {peer.MachineName} any more.");
+        await RememberMacsAsync(peer.MachineId, hello.MacAddresses, ct).ConfigureAwait(false);
         return hello.RemotePort is > 0 and <= 65535 ? hello.RemotePort : null;
+    }
+
+    /// <summary>Keeps the MAC addresses a managed PC told, the last that were told: a PC with remote management off tells none.</summary>
+    private async Task RememberMacsAsync(string machineId, IReadOnlyList<string>? told, CancellationToken ct)
+    {
+        var macs = (told ?? []).Where(IsMac).Take(8).ToList();
+        if (macs.Count == 0) return;
+        await _gate.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            var target = _state.Targets.FirstOrDefault(t => t.MachineId == machineId);
+            if (target is null || (target.MacAddresses ?? []).SequenceEqual(macs)) return;
+            await SaveAsync(_state with { Targets = _state.Targets.Select(t => t == target ? t with { MacAddresses = macs } : t).ToList() }, ct)
+                .ConfigureAwait(false);
+        }
+        finally { _gate.Release(); }
+        RaiseChanged();
+    }
+
+    private static bool IsMac(string? mac)
+    {
+        try { return mac is not null && WakeOnLan.Packet(mac).Length > 0; }
+        catch (ArgumentException) { return false; }
+    }
+
+    /// <summary>Wakes a managed PC that is off, with the MAC addresses it told while it was on.</summary>
+    public async Task WakeAsync(string machineId, CancellationToken ct = default)
+    {
+        var target = _state.Targets.FirstOrDefault(t => t.MachineId == machineId)
+            ?? throw new KeyNotFoundException("This PC is not paired with a PC with that id.");
+        if (target.MacAddresses is not { Count: > 0 } macs)
+            throw new InvalidOperationException($"How to wake {target.MachineName} is not known yet. It tells that while it is on with remote management turned on.");
+        await _wake.SendAsync(macs, ct).ConfigureAwait(false);
+        _log.LogInformation("Waking {Name} ({Id})", target.MachineName, machineId);
     }
 
     private PeerInfo? FindPeer(string machineId) => _discovery.Peers.FirstOrDefault(p => p.MachineId == machineId);

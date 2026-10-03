@@ -45,6 +45,13 @@ public static class RemoteApi
             return Results.NoContent();
         });
 
+        // Sends the magic packet to a managed PC that is off. Whether it wakes is up to its BIOS and network adapter.
+        remote.MapPost("/targets/{machineId}/wake", async (string machineId, RemoteAccessService service, CancellationToken ct) =>
+        {
+            await service.WakeAsync(machineId, ct);
+            return Results.Accepted();
+        });
+
         remote.MapMethods("/targets/{machineId}/api/{**rest}", [HttpMethods.Get, HttpMethods.Post, HttpMethods.Put, HttpMethods.Delete],
             (HttpContext context, string machineId, string? rest, RemoteAccessService service) =>
                 service.ForwardToTargetAsync(context, machineId, rest ?? ""));

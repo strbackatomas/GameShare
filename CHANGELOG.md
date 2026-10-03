@@ -15,6 +15,9 @@ this is wired into the build and where a peer's version shows up.
 - The managed PCs on the "Vzdálená správa" page are an overview: for each PC on the network its GameShare version (marked when
   it differs from this one), what it is downloading with the progress and speed, and the free space in its game folders (marked
   when every folder has less than 20 GB). Asked every five seconds while the page is open, not at all otherwise.
+- Wake-on-LAN for managed PCs: one that is off has "Zapnout" instead of "Spravovat". A PC with remote management on tells the
+  PCs paired with it its MAC addresses, so this works after it was on once with this version. Wake-on-LAN has to be enabled in
+  its BIOS and for its network adapter.
 
 ## [0.7.0] - 2026-10-03
 

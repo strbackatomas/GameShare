@@ -40,6 +40,8 @@ public sealed class AgentClient : IAgentClient
         await SendAsync<object?>(HttpMethod.Delete, $"/api/remote/controllers/{Uri.EscapeDataString(machineId)}", null, Quick, ct).ConfigureAwait(false);
     public Task<PairedMachineDto> PairAsync(string machineId, string code, CancellationToken ct = default) =>
         SendAsync<PairedMachineDto>(HttpMethod.Post, "/api/remote/targets", new RemotePairRequest(machineId, code), Quick, ct);
+    public async Task WakeAsync(string machineId, CancellationToken ct = default) =>
+        await SendAsync<object?>(HttpMethod.Post, $"/api/remote/targets/{Uri.EscapeDataString(machineId)}/wake", null, Quick, ct).ConfigureAwait(false);
     public async Task RemoveTargetAsync(string machineId, CancellationToken ct = default) =>
         await SendAsync<object?>(HttpMethod.Delete, $"/api/remote/targets/{Uri.EscapeDataString(machineId)}", null, Quick, ct).ConfigureAwait(false);
 
