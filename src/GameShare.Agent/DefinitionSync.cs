@@ -9,6 +9,8 @@ namespace GameShare.Agent;
 /// fixing it (an installer's arguments, how a game starts) makes no new version to download: the signed list names the definition, and
 /// a PC whose own is not that one fetches it from a PC on the LAN that has it. Done when a new list arrives and when what the PCs on the
 /// LAN offer changes, so the fix reaches every PC by itself, not only one where somebody happens to prepare a game.
+/// A game found by a scan, copied in by hand without its gameshare.json, has no definition at all: how it starts is taken from a PC that
+/// offers the same files, as a download would have brought it. Done when the scan finds it, so it is ready to play without a wait.
 /// </summary>
 public sealed class DefinitionSync
 {
@@ -39,6 +41,8 @@ public sealed class DefinitionSync
     {
         _trust.Changed += OnChanged;
         _catalog.Changed += OnChanged;
+        _library.GameDiscovered += OnDiscovered;
+        _library.InstallationChanged += OnInstallationChanged;
         try
         {
             while (true)
@@ -55,6 +59,8 @@ public sealed class DefinitionSync
         {
             _trust.Changed -= OnChanged;
             _catalog.Changed -= OnChanged;
+            _library.GameDiscovered -= OnDiscovered;
+            _library.InstallationChanged -= OnInstallationChanged;
         }
     }
 
@@ -66,13 +72,30 @@ public sealed class DefinitionSync
 
     private void OnChanged(object? sender, CatalogChange e) => Wake();
 
+    private void OnDiscovered(object? sender, LibraryGame game) => Forget(game.Stored.Manifest.ContentHash);
+
+    private void OnInstallationChanged(object? sender, InstallationChange change)
+    {
+        if (change.Current.State == InstallationState.Installed) Forget(change.Current.ContentHash);
+    }
+
+    /// <summary>A game that is here anew: the PCs that did not have its definition before are asked again, now.</summary>
+    private void Forget(string contentHash)
+    {
+        lock (_asked) _asked.Remove(contentHash);
+        Wake();
+    }
+
     private void Wake()
     {
         try { _wake.Release(); }
         catch (SemaphoreFullException) { /* a round is due already */ }
     }
 
-    /// <summary>Fetches the signed definition of everything installed here whose own is not it, where a PC on the LAN offers it.</summary>
+    /// <summary>
+    /// Fetches the signed definition of everything installed here whose own is not it, and a definition for everything that has none,
+    /// where a PC on the LAN offers it.
+    /// </summary>
     /// <returns>How many were replaced.</returns>
     public async Task<int> SyncAsync(CancellationToken ct = default)
     {
@@ -82,14 +105,18 @@ public sealed class DefinitionSync
         {
             if (installation.State != InstallationState.Installed || !offered.Contains(installation.ContentHash)) continue;
             var stored = await _db.GetManifestAsync(installation.ContentHash, ct).ConfigureAwait(false);
-            if (stored is null || _trust.CheckDefinition(installation.ContentHash, stored.Manifest.Definition) != DefinitionVerdict.Different) continue;
+            if (stored is null) continue;
+            var verdict = _trust.CheckDefinition(installation.ContentHash, stored.Manifest.Definition);
+            var missing = stored.Manifest.Definition is null && verdict is DefinitionVerdict.NotChecked or DefinitionVerdict.NotSigned;
+            if (verdict != DefinitionVerdict.Different && !missing) continue;
 
             // A manifest can be megabytes: the same PCs are not asked again and again for what they did not have a moment ago.
             var peers = _catalog.Offers.Where(o => o.Game.ContentHash == installation.ContentHash).Select(o => o.Peer.MachineId).ToHashSet(StringComparer.Ordinal);
             lock (_asked)
                 if (_asked.TryGetValue(installation.ContentHash, out var asked) && peers.IsSubsetOf(asked.Peers) && DateTimeOffset.UtcNow - asked.At < AskAgainAfter)
                     continue;
-            if (await RefreshAsync(installation.ContentHash, ct).ConfigureAwait(false) is not null) replaced++;
+            var found = missing ? await AdoptAsync(installation.ContentHash, ct).ConfigureAwait(false) : await RefreshAsync(installation.ContentHash, ct).ConfigureAwait(false);
+            if (found is not null) replaced++;
             else lock (_asked) _asked[installation.ContentHash] = (peers, DateTimeOffset.UtcNow);
         }
         return replaced;
@@ -109,6 +136,27 @@ public sealed class DefinitionSync
         catch (Exception ex) when (ex is KeyNotFoundException or HttpRequestException)
         {
             _log.LogInformation("No PC on the LAN has the signed definition of {Hash}: {Reason}", contentHash[..12], ex.Message);
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// A definition for an installed game that has none, from a PC on the LAN with the same files. Nobody signed one to compare with,
+    /// so it is trusted as far as a download's is: setup steps still need what the trust settings ask for. Null when no PC has one.
+    /// </summary>
+    public async Task<GameManifest?> AdoptAsync(string contentHash, CancellationToken ct = default)
+    {
+        try
+        {
+            var (fetched, _) = await _catalog.FetchAsync(contentHash, ct, m => m.Definition is not null).ConfigureAwait(false);
+            if (fetched.Definition is null) return null;
+            var manifest = await _library.ReplaceDefinitionAsync(contentHash, fetched.Definition, ct).ConfigureAwait(false);
+            _log.LogInformation("{Name} had no definition here, it now has the one a PC on the LAN uses for the same files", manifest.Name);
+            return manifest;
+        }
+        catch (Exception ex) when (ex is KeyNotFoundException or HttpRequestException or InvalidDataException)
+        {
+            _log.LogInformation("No PC on the LAN has a definition of {Hash}: {Reason}", contentHash[..12], ex.Message);
             return null;
         }
     }

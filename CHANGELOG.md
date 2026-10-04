@@ -8,6 +8,11 @@ this is wired into the build and where a peer's version shows up.
 
 ## [Unreleased]
 
+### Fixed
+- A game that was already on the PC and was found by a scan, without its gameshare.json, now takes its definition (what starts it,
+  its icon, how it is prepared) from a PC on the LAN with the same files, right after the scan. Before, it stayed without one: no
+  program to start and no icon. When the administrator signed a definition for that version, only the signed one is taken.
+
 ## [0.10.0] - 2026-10-04
 
 ### Added

@@ -251,6 +251,55 @@ public class TrustTests : IDisposable
         Assert.Contains("\"/q:a\"", onDisk); // written into the folder too, so a rescan keeps it
     }
 
+    private const string Definition = """{ "gameId": "testgame", "name": "TestGame", "launch": [ { "executable": "Game.exe" } ] }""";
+
+    /// <summary>The game copied into PC's folder by hand, without its gameshare.json, and a scan run, as a user does with games they already had.</summary>
+    private static async Task<GameDto> CopyInAndScanAsync(TestAgent pc, string contentHash)
+    {
+        await Poll.UntilAsync(async () => (await pc.GamesAsync()).Any(g => g.ContentHash == contentHash && g.PeerNames.Count > 0), $"{pc.Name} to see the game offered");
+        using (var template = new TestGame(largeFileBytes: SmallGame))
+            TestGame.CopyDirectory(template.GameDir, pc.InstalledPath);
+        Assert.False(File.Exists(Path.Combine(pc.InstalledPath, "gameshare.json")));
+        Assert.Equal(HttpStatusCode.OK, (await pc.SendAsync(HttpMethod.Post, "/api/games/scan")).StatusCode);
+        return await pc.WaitForGameAsync(g => g.ContentHash == contentHash && g.State == GameState.Installed && g.Definition is not null,
+            $"{pc.Name} to take the definition from the PC that has it");
+    }
+
+    [Fact]
+    public async Task A_game_found_by_a_scan_without_a_definition_takes_it_from_a_pc_with_the_same_files()
+    {
+        int discovery = TestAgent.DiscoveryPort();
+        await using var source = await TestAgent.StartAsync("PC-01", discovery, preloadGame: true, bigFileBytes: SmallGame,
+            customiseGame: game => File.WriteAllText(Path.Combine(game, "gameshare.json"), Definition));
+        var game = await InstalledAsync(source);
+        await using var pc = await TestAgent.StartAsync("PC-02", discovery);
+
+        var found = await CopyInAndScanAsync(pc, game.ContentHash);
+
+        Assert.Equal("Game.exe", found.Definition!.Launch.Single().Executable);
+        Assert.Equal(LaunchState.Ready, found.Launch);
+        Assert.Contains("Game.exe", await File.ReadAllTextAsync(Path.Combine(pc.InstalledPath, "gameshare.json"))); // a rescan keeps it
+    }
+
+    [Fact]
+    public async Task A_game_found_by_a_scan_without_a_definition_takes_the_signed_one_without_waiting_for_a_new_list()
+    {
+        int discovery = TestAgent.DiscoveryPort();
+        await using var source = await TestAgent.StartAsync("PC-01", discovery, preloadGame: true, bigFileBytes: SmallGame,
+            tweak: Trust(TrustMode.Warn), customiseGame: game => File.WriteAllText(Path.Combine(game, "gameshare.json"), Definition));
+        var game = await InstalledAsync(source);
+        File.WriteAllBytes(ListPath, TrustSigning.Serialize(TrustSigning.Sign(new TrustPayload(1, Now, null,
+            [new TrustedGame(game.ContentHash, "testgame", "TestGame", null) { DefinitionHash = DefinitionHasher.Compute(game.Definition!) }], []), _keys.PrivateKey)));
+        await using var pc = await TestAgent.StartAsync("PC-02", discovery, tweak: Trust(TrustMode.Warn));
+        await RefreshAsync(source);
+        await RefreshAsync(pc);
+
+        var found = await CopyInAndScanAsync(pc, game.ContentHash);
+
+        Assert.Equal(DefinitionVerdict.Verified, found.DefinitionTrust);
+        Assert.Equal(TrustVerdict.Verified, found.Trust);
+    }
+
     [Fact]
     public async Task A_list_that_is_tampered_with_signed_by_someone_else_or_older_is_ignored_and_the_good_one_stays()
     {
