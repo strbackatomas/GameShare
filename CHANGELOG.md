@@ -8,6 +8,8 @@ this is wired into the build and where a peer's version shows up.
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-10-04
+
 ### Added
 - Source folder ("Zdrojová složka" in Nastavení, only with the installed agent): untouched copies of games, for example on a
   second disk. GameShare never plays them and never writes to them, and hands them out to the other PCs in place of the copies
