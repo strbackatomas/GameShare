@@ -455,6 +455,15 @@ public sealed record PairedMachineDto(
 
 public sealed record RemoteEnableRequest(bool Enabled);
 
+/// <summary>Make a backup of this PC's pairings, encrypted with <see cref="Password"/> (at least 8 characters).</summary>
+public sealed record RemoteBackupRequest(string Password);
+
+/// <summary>Put back the pairings of a backup made on this PC before it was reinstalled. <see cref="Data"/> is the file, base64.</summary>
+public sealed record RemoteRestoreRequest(string Password, string Data);
+
+/// <param name="MachineName">The name of the PC the backup was made on.</param>
+public sealed record RemoteRestoreResultDto(string MachineName, int Controllers, int Targets);
+
 /// <summary>Pair with <see cref="MachineId"/>, which shows <see cref="Code"/> on its screen.</summary>
 public sealed record RemotePairRequest(string MachineId, string Code);
 

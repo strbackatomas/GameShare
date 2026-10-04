@@ -30,26 +30,10 @@ public static partial class LocalApi
                 discovery.Peers.Count, games.Count(g => g.Installation is { State: InstallationState.Installed }), active);
         });
 
-        // Restarts the agent so a setting that is only read at startup (e.g. TorrentDebugLogging) takes effect.
-        // Waits for the normal graceful shutdown (hosted services get to stop cleanly, e.g. resume data is saved)
-        // before relaunching. A Windows service is left to its own configured failure/restart action (see
-        // scripts/install-agent.ps1) rather than self-launched, so it stays under the Service Control Manager.
-        api.MapPost("/agent/restart", (IHostApplicationLifetime lifetime) =>
+        // Restarts the agent so a setting that is only read at startup (e.g. TorrentDebugLogging) takes effect. See AgentRestarter.
+        api.MapPost("/agent/restart", (IAgentRestarter restarter) =>
         {
-            lifetime.ApplicationStopped.Register(() =>
-            {
-                if (!WindowsServiceHelpers.IsWindowsService())
-                {
-                    var exe = Environment.ProcessPath;
-                    if (exe is not null)
-                    {
-                        try { Process.Start(exe, Environment.GetCommandLineArgs().Skip(1)); }
-                        catch { /* best effort; this process is exiting anyway */ }
-                    }
-                }
-                Environment.Exit(0);
-            });
-            lifetime.StopApplication();
+            restarter.Restart();
             return Results.Accepted();
         });
 

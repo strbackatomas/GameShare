@@ -187,6 +187,90 @@ public sealed partial class RemoteViewModel : ViewModelBase
 
     [ObservableProperty] public partial string Message { get; set; } = "";
 
+    // ---- backup of the pairings ----
+
+    [ObservableProperty] public partial string BackupPassword { get; set; } = "";
+    [ObservableProperty] public partial string BackupPasswordAgain { get; set; } = "";
+
+    /// <summary>A backup file was picked and waits for its password before it replaces this PC's pairings.</summary>
+    [ObservableProperty] public partial bool IsRestoring { get; set; }
+    [ObservableProperty] public partial string RestoreFileText { get; set; } = "";
+    [ObservableProperty] public partial string RestorePassword { get; set; } = "";
+    private byte[]? _restoreData;
+
+    /// <summary>Asks the agent for the encrypted backup and lets the user save it.</summary>
+    [RelayCommand]
+    private async Task SaveBackupAsync()
+    {
+        Message = "";
+        if (BackupPassword.Length < 8) { Message = "Heslo zálohy musí mít aspoň 8 znaků."; return; }
+        if (BackupPassword != BackupPasswordAgain) { Message = "Hesla se neshodují."; return; }
+        await TryAsync(async () =>
+        {
+            var backup = await _app.Client.ExportPairingAsync(BackupPassword);
+            var name = $"GameShare-sparovani-{SafeName(_app.MachineName)}.gsbackup";
+            if (!await _app.FileDialogs.SaveAsync(name, backup)) return;
+            BackupPassword = BackupPasswordAgain = "";
+            Message = "Záloha je uložená. Kdo ji má i s heslem, může ovládat všechna spárovaná PC: patří na flashku nebo do trezoru, ne do sdílené složky.";
+        }, m => Message = m).ConfigureAwait(true);
+    }
+
+    [RelayCommand]
+    private async Task PickBackupAsync()
+    {
+        Message = "";
+        await TryAsync(async () =>
+        {
+            if (await _app.FileDialogs.OpenAsync() is not { } file) return;
+            _restoreData = file.Content;
+            var from = BackupMachineName(file.Content);
+            RestoreFileText = from is null ? file.Name : $"{file.Name} – záloha PC {from}";
+            RestorePassword = "";
+            IsRestoring = true;
+        }, m => Message = m).ConfigureAwait(true);
+    }
+
+    [RelayCommand]
+    private async Task RestoreAsync()
+    {
+        if (_restoreData is null) return;
+        Message = "";
+        await TryAsync(async () =>
+        {
+            var result = await _app.Client.RestorePairingAsync(_restoreData, RestorePassword);
+            IsRestoring = false;
+            _restoreData = null;
+            RestorePassword = "";
+            Message = $"Spárování PC {result.MachineName} je obnovené: spravovat ho smí {Format.PcCount(result.Controllers)}, "
+                + $"samo spravuje {Format.PcCount(result.Targets)}. Agent se teď restartuje, za chvíli se znovu připojím.";
+        }, m => Message = m).ConfigureAwait(true);
+    }
+
+    [RelayCommand]
+    private void CancelRestore()
+    {
+        IsRestoring = false;
+        _restoreData = null;
+        RestorePassword = "";
+    }
+
+    /// <summary>The PC name in the backup's plain header, to show which PC a file is from before the password is typed.</summary>
+    internal static string? BackupMachineName(byte[] content)
+    {
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(content);
+            return doc.RootElement.TryGetProperty("machineName", out var name) ? name.GetString() : null;
+        }
+        catch (System.Text.Json.JsonException) { return null; }
+    }
+
+    private static string SafeName(string name)
+    {
+        var safe = new string(name.Select(c => Path.GetInvalidFileNameChars().Contains(c) ? '_' : c).ToArray());
+        return safe.Length == 0 ? "PC" : safe;
+    }
+
     // ---- overview of the PCs managed from here ----
 
     private CancellationTokenSource? _overview;

@@ -18,8 +18,9 @@ public sealed partial class AppModel : ViewModelBase, IAsyncDisposable
     public AppModel(
         IAgentClient client, IEventStream events, IUiDispatcher ui,
         IGameStarter? starter = null, IFolderPicker? folderPicker = null, IClipboard? clipboard = null, ISetupRunner? setupRunner = null,
-        IClientRestarter? restarter = null, IRemoteWindows? remoteWindows = null)
+        IClientRestarter? restarter = null, IRemoteWindows? remoteWindows = null, IFileDialogs? fileDialogs = null)
     {
+        FileDialogs = fileDialogs ?? new NoFileDialogs();
         RemoteWindows = remoteWindows ?? new NoRemoteWindows();
         Restarter = restarter ?? new ProcessClientRestarter();
         Client = client;
@@ -41,6 +42,9 @@ public sealed partial class AppModel : ViewModelBase, IAsyncDisposable
 
     /// <summary>Opens the window that manages a paired PC.</summary>
     public IRemoteWindows RemoteWindows { get; }
+
+    /// <summary>Save and open dialogs, for the pairing backup.</summary>
+    public IFileDialogs FileDialogs { get; }
 
     /// <summary>This PC manages at least one other. Games then offer to be installed there too.</summary>
     public bool HasRemoteTargets

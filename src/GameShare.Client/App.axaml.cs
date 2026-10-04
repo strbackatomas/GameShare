@@ -44,7 +44,8 @@ public partial class App : Application
             var app = new AppModel(client, new AgentEventStream(AgentUrl), new AvaloniaDispatcher(),
                 folderPicker: new AvaloniaFolderPicker(() => window), // looked up when a folder is picked, the window does not exist yet here
                 clipboard: new AvaloniaClipboard(() => window),
-                remoteWindows: new AvaloniaRemoteWindows(client));
+                remoteWindows: new AvaloniaRemoteWindows(client),
+                fileDialogs: new AvaloniaFileDialogs(() => window));
             var main = new MainViewModel(app);
             window = new MainWindow { DataContext = main };
             desktop.MainWindow = window;

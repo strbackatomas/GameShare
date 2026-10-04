@@ -167,6 +167,11 @@ internal sealed class FakeAgent : IAgentClient
             return paired;
         });
     public Task WakeAsync(string machineId, CancellationToken ct = default) => Do($"Wake({machineId})", () => (object?)null);
+
+    public byte[] Backup { get; set; } = "{\"format\":\"gameshare-pairing-backup\",\"machineName\":\"PC-07\"}"u8.ToArray();
+    public Task<byte[]> ExportPairingAsync(string password, CancellationToken ct = default) => Do($"ExportPairing({password})", () => Backup);
+    public Task<RemoteRestoreResultDto> RestorePairingAsync(byte[] backup, string password, CancellationToken ct = default) =>
+        Do($"RestorePairing({backup.Length}|{password})", () => new RemoteRestoreResultDto("PC-07", 1, 4));
     public Task RemoveTargetAsync(string machineId, CancellationToken ct = default) =>
         Do($"RemoveTarget({machineId})", () => Remote = Remote with { Targets = Remote.Targets.Where(t => t.MachineId != machineId).ToList() });
 
@@ -233,6 +238,22 @@ internal sealed class FakeClipboard : IClipboard
         Text = text;
         return Task.CompletedTask;
     }
+}
+
+internal sealed class FakeFileDialogs : IFileDialogs
+{
+    public List<(string Name, byte[] Content)> Saved { get; } = [];
+    public PickedFile? ToOpen { get; set; }
+    public bool Cancel { get; set; }
+
+    public Task<bool> SaveAsync(string suggestedName, byte[] content, CancellationToken ct = default)
+    {
+        if (Cancel) return Task.FromResult(false);
+        Saved.Add((suggestedName, content));
+        return Task.FromResult(true);
+    }
+
+    public Task<PickedFile?> OpenAsync(CancellationToken ct = default) => Task.FromResult(Cancel ? null : ToOpen);
 }
 
 internal sealed class FakeRemoteWindows : IRemoteWindows

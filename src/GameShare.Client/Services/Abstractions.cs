@@ -114,8 +114,27 @@ public interface IAgentClient
     /// <summary>Sends the Wake-on-LAN packet to a managed PC that is off.</summary>
     Task WakeAsync(string machineId, CancellationToken ct = default);
 
+    /// <summary>A backup of this PC's pairings, encrypted with the password: the file's content.</summary>
+    Task<byte[]> ExportPairingAsync(string password, CancellationToken ct = default);
+
+    /// <summary>Puts back the pairings of a backup made on this PC before it was reinstalled. The agent restarts afterwards.</summary>
+    Task<RemoteRestoreResultDto> RestorePairingAsync(byte[] backup, string password, CancellationToken ct = default);
+
     /// <summary>The same calls, answered by the paired PC <paramref name="machineId"/> through this PC's agent.</summary>
     IAgentClient ForTarget(string machineId);
+}
+
+/// <summary>A file the user picked, with its name.</summary>
+public sealed record PickedFile(string Name, byte[] Content);
+
+/// <summary>The save and open dialogs, for the pairing backup. A seam so view models can be tested without a display.</summary>
+public interface IFileDialogs
+{
+    /// <returns>False when the user cancelled.</returns>
+    Task<bool> SaveAsync(string suggestedName, byte[] content, CancellationToken ct = default);
+
+    /// <returns>Null when the user cancelled.</returns>
+    Task<PickedFile?> OpenAsync(CancellationToken ct = default);
 }
 
 /// <summary>Opens the window that manages another PC. A seam so view models can be tested without a display.</summary>

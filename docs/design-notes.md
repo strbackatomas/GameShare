@@ -264,6 +264,13 @@ it turns it on, and then only for PCs that were paired with it there.
   on a private network into its peer hello. The controller keeps them when pairing and whenever that PC comes onto the network,
   and "Zapnout" sends the standard magic packet (six 0xFF, the MAC sixteen times) as a UDP broadcast on ports 9 and 7 to every
   private network it is on. Whether the PC wakes is up to its BIOS and adapter settings; over Wi-Fi it rarely does.
+- **Backup of the pairings.** The pairings live in the database, which an update or a reinstall of GameShare keeps, but a
+  reinstall of Windows does not. "Uložit zálohu…" writes the PC's identity (`machine.id`), its certificate with the private key and
+  its pairings to a file, encrypted with a password of at least 8 characters: AES-256-GCM, key from PBKDF2-SHA256 with 600 000
+  rounds and a random salt; the plain header (PC name, date, salt) is the associated data, so it cannot be altered either. Restoring
+  writes the three back and restarts the agent (`IAgentRestarter`), after which the PC is itself again and nobody pairs anew. A
+  restore is refused while a PC with the backup's identity is on the network, so two PCs never share one. Only from the PC's own
+  client: not on the remote list.
 - **Not in the portable build.** `GameShare-LanParty.exe` never listens: a guest's PC is nobody else's to manage.
 - The certificate's private key sits in the database under `%ProgramData%\GameShare`, readable by administrators of that PC.
   Anyone who is administrator of a PC owns it anyway.

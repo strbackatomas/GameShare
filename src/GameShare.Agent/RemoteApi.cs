@@ -34,6 +34,21 @@ public static class RemoteApi
             return Results.NoContent();
         });
 
+        // ---- backup of this PC's pairings: a file only the person at this PC gets, encrypted with their password ----
+
+        remote.MapPost("/backup", async (RemoteBackupRequest request, RemoteAccessService service, CancellationToken ct) =>
+            Results.File(await service.ExportAsync(request.Password ?? "", ct), "application/octet-stream"));
+
+        remote.MapPost("/restore", async (RemoteRestoreRequest request, RemoteAccessService service, IAgentRestarter restarter, CancellationToken ct) =>
+        {
+            byte[] data;
+            try { data = Convert.FromBase64String(request.Data ?? ""); }
+            catch (FormatException) { throw new ArgumentException("This file is not a GameShare pairing backup."); }
+            var result = await service.ImportAsync(data, request.Password ?? "", ct);
+            restarter.Restart(); // identity, certificate and discovery are read at startup
+            return Results.Accepted(value: result);
+        });
+
         // ---- this PC as a controller ----
 
         remote.MapPost("/targets", async (RemotePairRequest request, RemoteAccessService service, CancellationToken ct) =>

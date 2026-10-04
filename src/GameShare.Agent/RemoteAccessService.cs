@@ -56,6 +56,9 @@ public sealed class RemoteAccessService : IHostedService, IAsyncDisposable
     private readonly object _pairingLock = new();
 
     private volatile StoredState _state;
+
+    /// <summary>A backup was put in the database and the agent is about to restart: nothing may write over it until then.</summary>
+    private volatile bool _replaced;
     private OpenPairing? _pairing;
     private WebApplication? _server;
 
@@ -641,8 +644,63 @@ public sealed class RemoteAccessService : IHostedService, IAsyncDisposable
 
     private async Task SaveAsync(StoredState state, CancellationToken ct)
     {
-        await _db.SetSettingAsync(StateKey, GameShareJson.Serialize(state), ct).ConfigureAwait(false);
+        if (!_replaced) await _db.SetSettingAsync(StateKey, GameShareJson.Serialize(state), ct).ConfigureAwait(false);
         _state = state;
+    }
+
+    // ---- backup ----
+
+    /// <summary>This PC's identity, certificate and pairings, encrypted with the password. See <see cref="PairingBackup"/>.</summary>
+    public async Task<byte[]> ExportAsync(string password, CancellationToken ct = default)
+    {
+        var identity = await _db.GetSettingAsync(IdentityKey, ct).ConfigureAwait(false)
+            ?? throw new InvalidOperationException("This PC has no identity to back up yet.");
+        var backup = PairingBackup.Create(new PairingBackupPayload(_me.MachineId, identity, GameShareJson.Serialize(_state)), password, _me.MachineName);
+        _log.LogInformation("Pairing backup made ({Controllers} PCs may manage this one, it manages {Targets})", _state.Controllers.Count, _state.Targets.Count);
+        return backup;
+    }
+
+    /// <summary>
+    /// Puts a backup's identity, certificate and pairings in place of this PC's. Takes effect when the agent restarts, which the
+    /// caller does. Refused while the PC the backup was made on is on the network: two PCs must never share one identity.
+    /// </summary>
+    public async Task<RemoteRestoreResultDto> ImportAsync(byte[] data, string password, CancellationToken ct = default)
+    {
+        if (!_options.RemoteManagementAllowed)
+            throw new InvalidOperationException("This build of GameShare does not take remote management, so it cannot restore pairings either.");
+        var payload = PairingBackup.Open(data, password);
+
+        StoredState state;
+        try
+        {
+            state = GameShareJson.Deserialize<StoredState>(payload.State);
+            using var check = RemotePairing.LoadIdentity(Convert.FromBase64String(payload.Identity));
+            if (!check.HasPrivateKey) throw new System.Security.Cryptography.CryptographicException("no private key");
+        }
+        catch (Exception ex) when (ex is System.Text.Json.JsonException or FormatException or System.Security.Cryptography.CryptographicException)
+        {
+            throw new ArgumentException("This backup is damaged.");
+        }
+
+        var name = PairingBackup.MachineNameOf(data) ?? payload.MachineId;
+        if (payload.MachineId != _me.MachineId && _discovery.Peers.FirstOrDefault(p => p.MachineId == payload.MachineId) is { } original)
+            throw new InvalidOperationException(
+                $"The PC this backup was made on is on the network now as {original.MachineName} ({original.Address}). Restore a backup only on the "
+                + "same PC after it was reinstalled; two PCs with one identity would confuse every other PC.");
+
+        await _gate.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            _replaced = true;
+            await _db.SetSettingAsync("machine.id", payload.MachineId, ct).ConfigureAwait(false);
+            await _db.SetSettingAsync(IdentityKey, payload.Identity, ct).ConfigureAwait(false);
+            await _db.SetSettingAsync(StateKey, payload.State, ct).ConfigureAwait(false);
+        }
+        finally { _gate.Release(); }
+
+        _log.LogWarning("Pairings restored from the backup of {Name}: identity {Id}, {Controllers} PCs may manage this one, it manages {Targets}. Restarting.",
+            name, payload.MachineId, state.Controllers?.Count ?? 0, state.Targets?.Count ?? 0);
+        return new RemoteRestoreResultDto(name, state.Controllers?.Count ?? 0, state.Targets?.Count ?? 0);
     }
 
     private void RaiseChanged() => Changed?.Invoke(this, EventArgs.Empty);

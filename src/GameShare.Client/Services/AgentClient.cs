@@ -40,6 +40,28 @@ public sealed class AgentClient : IAgentClient
         await SendAsync<object?>(HttpMethod.Delete, $"/api/remote/controllers/{Uri.EscapeDataString(machineId)}", null, Quick, ct).ConfigureAwait(false);
     public Task<PairedMachineDto> PairAsync(string machineId, string code, CancellationToken ct = default) =>
         SendAsync<PairedMachineDto>(HttpMethod.Post, "/api/remote/targets", new RemotePairRequest(machineId, code), Quick, ct);
+    public Task<RemoteRestoreResultDto> RestorePairingAsync(byte[] backup, string password, CancellationToken ct = default) =>
+        SendAsync<RemoteRestoreResultDto>(HttpMethod.Post, "/api/remote/restore", new RemoteRestoreRequest(password, Convert.ToBase64String(backup)), Slow, ct);
+
+    /// <summary>The backup comes back as a file, not as JSON.</summary>
+    public async Task<byte[]> ExportPairingAsync(string password, CancellationToken ct = default)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, _prefix + "/api/remote/backup")
+        {
+            Content = JsonContent.Create(new RemoteBackupRequest(password), options: GameShareJson.Options),
+        };
+        using var limit = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        limit.CancelAfter(Quick);
+        try
+        {
+            using var response = await _http.SendAsync(request, limit.Token).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode) throw await ToExceptionAsync(response, limit.Token).ConfigureAwait(false);
+            return await response.Content.ReadAsByteArrayAsync(limit.Token).ConfigureAwait(false);
+        }
+        catch (HttpRequestException ex) { throw new AgentException($"{_whose} neodpovídá. Zkontroluj, že služba běží.", inner: ex); }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested) { throw new AgentException($"Agent neodpověděl do {Quick.TotalSeconds:F0} sekund."); }
+    }
+
     public async Task WakeAsync(string machineId, CancellationToken ct = default) =>
         await SendAsync<object?>(HttpMethod.Post, $"/api/remote/targets/{Uri.EscapeDataString(machineId)}/wake", null, Quick, ct).ConfigureAwait(false);
     public async Task RemoveTargetAsync(string machineId, CancellationToken ct = default) =>
