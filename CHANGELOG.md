@@ -8,6 +8,8 @@ this is wired into the build and where a peer's version shows up.
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-10-04
+
 ### Added
 - Backup of the pairings on the "Vzdálená správa" page: "Uložit zálohu…" saves this PC's identity, certificate and pairings to a
   file encrypted with a password; after Windows is reinstalled, "Obnovit ze zálohy…" puts them back and the agent restarts, so
