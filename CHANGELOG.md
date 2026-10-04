@@ -8,6 +8,8 @@ this is wired into the build and where a peer's version shows up.
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-10-04
+
 ### Added
 - "Kontrola sítě" on the Síť page: the networks this PC is on and whether Windows has them as private, domain or public (GameShare's
   firewall rules only cover private and domain); for each of GameShare's ports whether the agent listens there and whether the
