@@ -9,6 +9,11 @@ this is wired into the build and where a peer's version shows up.
 ## [Unreleased]
 
 ### Added
+- Source folder ("Zdrojová složka" in Nastavení, only with the installed agent): untouched copies of games, for example on a
+  second disk. GameShare never plays them and never writes to them, and hands them out to the other PCs in place of the copies
+  that are played. A game stays complete on the network even when playing has changed it on every PC, and the copy that is
+  played can be played without the seed stepping aside. A game that is only in the source folder is offered too. The library
+  shows each game's source copy, and when its files changed.
 - The Síť page shows what is being played on each PC ("▶ hraje Half-Life 2"). Agents announce it in their discovery hello, at
   once when a game starts or stops; a PC running an older version simply shows nothing.
 

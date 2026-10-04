@@ -313,6 +313,7 @@ public sealed class DownloadManager
         TorrentTransfer transfer;
         try
         {
+            await _seeds.StopAsync(manifest.ContentHash, ct).ConfigureAwait(false); // a seed of the source copy hands the transfer over
             transfer = await _engine.AddAsync(torrentBytes, targetRoot, cancellationToken: ct).ConfigureAwait(false);
             if (!string.Equals(transfer.InfoHash, manifest.TorrentInfoHash, StringComparison.OrdinalIgnoreCase)
                 || transfer.Name != manifest.FolderName || transfer.TotalSize != manifest.TotalSize)
@@ -406,6 +407,8 @@ public sealed class DownloadManager
                 await DeleteFolderAsync(inst.InstallPath, ct).ConfigureAwait(false);
             await _db.DeleteInstallationAsync(inst.Id, ct).ConfigureAwait(false);
             _log.LogInformation("Uninstalled {Path} (files deleted: {Deleted})", inst.InstallPath, deleteFiles);
+            try { await _seeds.ReturnToSourceAsync(inst.ContentHash, ct).ConfigureAwait(false); } // the source copy is not uninstalled
+            catch (Exception ex) when (ex is IOException or InvalidOperationException) { _log.LogWarning(ex, "Could not seed the source copy of {Path}", inst.InstallPath); }
         }
         finally { _gate.Release(); }
     }
@@ -835,6 +838,7 @@ public sealed class DownloadManager
         if (stored.TorrentBytes is null)
             throw new InvalidOperationException($"Torrent metadata for {stored.Manifest.Name} is missing from the database.");
 
+        await _seeds.StopAsync(row.ContentHash, ct).ConfigureAwait(false); // a seed of the source copy hands the transfer over
         var transfer = await _engine.AddAsync(stored.TorrentBytes, row.TargetRoot, row.ResumeData, cancellationToken: ct).ConfigureAwait(false);
         transfer.Start();
         var active = new Active(row, stored.Manifest, transfer);

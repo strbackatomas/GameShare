@@ -17,6 +17,9 @@ public partial class App : Application
     /// standalone build sets it to stop its own embedded agent, which this project knows nothing about.</summary>
     public static Func<Task>? BeforeShutdownAsync { get; set; }
 
+    /// <summary>Set by the portable exe (GameShare.Standalone): settings that only make sense with an installed agent are not shown.</summary>
+    public static bool IsPortable { get; set; }
+
     /// <summary>
     /// Closes the application the way the tray's "Ukončit" does, from any thread. The portable build calls it after it put a new
     /// version of itself in place and started it.

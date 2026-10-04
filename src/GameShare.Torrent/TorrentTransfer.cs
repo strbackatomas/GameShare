@@ -46,9 +46,10 @@ public sealed class TorrentTransfer
 {
     private readonly TorrentManager _manager;
 
-    internal TorrentTransfer(TorrentManager manager, string infoHash, string name, long totalSize)
+    internal TorrentTransfer(TorrentManager manager, string infoHash, string name, long totalSize, string savePath)
     {
         _manager = manager;
+        SavePath = savePath;
         InfoHash = infoHash;
         Name = name;
         TotalSize = totalSize;
@@ -61,6 +62,9 @@ public sealed class TorrentTransfer
     internal bool Releasing;
 
     public string InfoHash { get; }
+
+    /// <summary>The folder the game's own folder is in, as given when the transfer was added.</summary>
+    public string SavePath { get; }
     public string Name { get; }
     public long TotalSize { get; }
 

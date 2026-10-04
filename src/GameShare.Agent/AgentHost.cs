@@ -86,6 +86,7 @@ public static class AgentHost
         }, sp.GetRequiredService<ILogger<TorrentEngine>>()));
 
         services.AddSingleton<GameLibrary>();
+        services.AddSingleton<SourceLibrary>();
         services.AddSingleton<SeedManager>();
         services.AddSingleton(sp => new GameChangeTracker(
             sp.GetRequiredService<GameShareDb>(), sp.GetRequiredService<GameLibrary>(), sp.GetRequiredService<ILogger<GameChangeTracker>>(),

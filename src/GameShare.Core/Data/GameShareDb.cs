@@ -76,6 +76,19 @@ public sealed class GameShareDb
         ALTER TABLE downloads ADD COLUMN completed_at TEXT;
         ALTER TABLE downloads ADD COLUMN peak_download_rate INTEGER;
         """,
+        // 4: untouched copies in the source folder, seeded in place of the copies that are played. Apart from installations on purpose:
+        // everything that plays, repairs or updates a game keeps working with the one copy that is played.
+        """
+        CREATE TABLE source_copies (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            content_hash TEXT NOT NULL REFERENCES manifests(content_hash),
+            path         TEXT NOT NULL UNIQUE COLLATE NOCASE,
+            state        TEXT NOT NULL,
+            verified_at  TEXT,
+            resume_data  BLOB
+        );
+        CREATE INDEX ix_source_copies_content ON source_copies(content_hash);
+        """,
     ];
 
     private readonly string _connectionString;
@@ -290,6 +303,82 @@ public sealed class GameShareDb
                 r.GetInt64(0), r.GetString(1), r.GetString(2), Enum.Parse<InstallationState>(r.GetString(3)),
                 ParseTime(r.GetString(4)), r.IsDBNull(5) ? null : ParseTime(r.GetString(5)), r.GetInt64(6) != 0,
                 r.IsDBNull(7) ? null : (byte[])r[7]));
+        return result;
+    }
+
+    // ---- source copies ----
+
+    public async Task<SourceCopy> AddSourceCopyAsync(string contentHash, string path, InstallationState state, CancellationToken ct = default)
+    {
+        await using var conn = await ConnectAsync(ct).ConfigureAwait(false);
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            INSERT INTO source_copies (content_hash, path, state, verified_at)
+            VALUES ($hash, $path, $state, $verified)
+            RETURNING id;
+            """;
+        cmd.Parameters.AddWithValue("$hash", contentHash);
+        cmd.Parameters.AddWithValue("$path", path);
+        cmd.Parameters.AddWithValue("$state", state.ToString());
+        cmd.Parameters.AddWithValue("$verified", state == InstallationState.Installed ? Now() : DBNull.Value);
+        var id = Convert.ToInt64(await cmd.ExecuteScalarAsync(ct).ConfigureAwait(false), CultureInfo.InvariantCulture);
+        return (await QuerySourceCopiesAsync("WHERE id = $p", id, ct).ConfigureAwait(false)).Single();
+    }
+
+    /// <summary>Records a verification result. <see cref="InstallationState.Installed"/> also stamps the time, Invalid drops the resume data.</summary>
+    public async Task SetSourceCopyStateAsync(long id, InstallationState state, CancellationToken ct = default)
+    {
+        await using var conn = await ConnectAsync(ct).ConfigureAwait(false);
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            UPDATE source_copies
+            SET state = $state,
+                verified_at = CASE WHEN $state = 'Installed' THEN $now ELSE verified_at END,
+                resume_data = CASE WHEN $state = 'Installed' THEN resume_data ELSE NULL END
+            WHERE id = $id;
+            """;
+        cmd.Parameters.AddWithValue("$state", state.ToString());
+        cmd.Parameters.AddWithValue("$now", Now());
+        cmd.Parameters.AddWithValue("$id", id);
+        if (await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false) == 0)
+            throw new KeyNotFoundException($"Source copy {id} does not exist.");
+    }
+
+    public async Task SaveSourceCopyResumeDataAsync(long id, byte[]? resumeData, CancellationToken ct = default)
+    {
+        await using var conn = await ConnectAsync(ct).ConfigureAwait(false);
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = "UPDATE source_copies SET resume_data = $data WHERE id = $id;";
+        cmd.Parameters.AddWithValue("$data", (object?)resumeData ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$id", id);
+        await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+    }
+
+    public async Task DeleteSourceCopyAsync(long id, CancellationToken ct = default)
+    {
+        await using var conn = await ConnectAsync(ct).ConfigureAwait(false);
+        await ExecuteAsync(conn, "DELETE FROM source_copies WHERE id = $id;", ct, parameters: ("$id", id)).ConfigureAwait(false);
+    }
+
+    public Task<IReadOnlyList<SourceCopy>> ListSourceCopiesAsync(CancellationToken ct = default) => QuerySourceCopiesAsync("", null, ct);
+
+    /// <summary>The verified source copy of exactly this version, if any.</summary>
+    public async Task<SourceCopy?> FindSourceCopyAsync(string contentHash, CancellationToken ct = default) =>
+        (await QuerySourceCopiesAsync("WHERE content_hash = $p AND state = 'Installed'", contentHash, ct).ConfigureAwait(false)).FirstOrDefault();
+
+    private async Task<IReadOnlyList<SourceCopy>> QuerySourceCopiesAsync(string where, object? parameter, CancellationToken ct)
+    {
+        await using var conn = await ConnectAsync(ct).ConfigureAwait(false);
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = $"SELECT id, content_hash, path, state, verified_at, resume_data FROM source_copies {where} ORDER BY id;";
+        if (parameter is not null) cmd.Parameters.AddWithValue("$p", parameter);
+
+        var result = new List<SourceCopy>();
+        await using var r = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
+        while (await r.ReadAsync(ct).ConfigureAwait(false))
+            result.Add(new SourceCopy(
+                r.GetInt64(0), r.GetString(1), r.GetString(2), Enum.Parse<InstallationState>(r.GetString(3)),
+                r.IsDBNull(4) ? null : ParseTime(r.GetString(4)), r.IsDBNull(5) ? null : (byte[])r[5]));
         return result;
     }
 

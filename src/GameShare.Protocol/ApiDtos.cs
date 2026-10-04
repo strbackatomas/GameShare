@@ -71,6 +71,12 @@ public sealed record GameDto(
     /// <summary>Share of the game's data that the PCs online have between them, when no single PC has it all.</summary>
     public double? CoveragePercent { get; init; }
 
+    /// <summary>The untouched copy of this version in the source folder, handed out in place of the one that is played. Null when there is none.</summary>
+    public string? SourcePath { get; init; }
+
+    /// <summary>False when the files of the copy in <see cref="SourcePath"/> changed: it is not handed out until the game is copied into it again.</summary>
+    public bool SourceIntact { get; init; }
+
     /// <summary>
     /// Set on a version that is not installed here while another version of the same game is. It is the content hash of that
     /// installed version, so the client can offer "update" instead of "install".
@@ -159,6 +165,12 @@ public sealed record SettingsDto(
     /// the agent then keeps what it has, as for <see cref="AllowedVirtualAdapterIds"/>.
     /// </summary>
     public TransferTuningDto? Tuning { get; init; }
+
+    /// <summary>
+    /// The source folder: untouched copies of games, never played, handed out to the other PCs in place of the copies that are played.
+    /// Typically on a second disk. Empty for none. Null when a client that does not know it saves the settings: the agent keeps what it has.
+    /// </summary>
+    public string? SourceRoot { get; init; }
 }
 
 /// <summary>

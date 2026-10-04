@@ -7,7 +7,8 @@ namespace GameShare.Core;
 
 public enum SeedEventKind { Started, Stopped }
 
-public sealed record SeedEvent(SeedEventKind Kind, Installation Installation, string GameName);
+/// <param name="Path">The folder the game is handed out from: the copy that is played, or the untouched one in the source folder.</param>
+public sealed record SeedEvent(SeedEventKind Kind, string ContentHash, string Path, string GameName);
 
 /// <summary>What this PC can hand out of an installed game right now.</summary>
 /// <param name="IsComplete">Every piece is present and verified.</param>
@@ -18,6 +19,8 @@ public sealed record SeedOffer(bool IsComplete, double PercentIntact);
 /// Offers installed games to other PCs. A complete game is offered whole. A game whose files changed, for example because it
 /// was played, is still offered, but only the pieces that still match their hashes: the transfer is upload-only, so it never
 /// writes, and it never claims a piece it cannot prove. Several damaged copies can therefore complete a third PC together.
+/// When the source folder holds an intact copy of the game, that copy is handed out instead of the one that is played: it never
+/// changes, and the played copy is left to the game. A game that is only in the source folder is handed out too.
 /// </summary>
 public sealed class SeedManager
 {
@@ -49,7 +52,7 @@ public sealed class SeedManager
     {
         lock (_playing) _playing.Add(installation.Id);
         var transfer = FindTransfer(await _db.GetManifestAsync(installation.ContentHash, ct).ConfigureAwait(false));
-        if (transfer is null) return;
+        if (transfer is null || !SeedsFrom(transfer, installation.InstallPath)) return; // from the source copy: the game is not in its way
         transfer.Suspend();
         _log.LogInformation("Seed of {Path} stepped aside, the game is running", installation.InstallPath);
     }
@@ -62,7 +65,7 @@ public sealed class SeedManager
         if (!Enabled) return;
 
         var transfer = FindTransfer(await _db.GetManifestAsync(installation.ContentHash, ct).ConfigureAwait(false));
-        if (transfer is null)
+        if (transfer is null || !SeedsFrom(transfer, installation.InstallPath))
         {
             await StartAsync(installation, ct).ConfigureAwait(false);
             return;
@@ -78,10 +81,13 @@ public sealed class SeedManager
     /// </summary>
     public bool Enabled { get; set; } = true;
 
-    /// <summary>Starts seeding every installation that has seeding enabled, damaged ones too. Call once at agent start.</summary>
+    /// <summary>
+    /// Starts seeding every installation that has seeding enabled, damaged ones too, and every intact source copy. Call once at agent start.
+    /// </summary>
     public async Task StartAllAsync(CancellationToken ct = default)
     {
-        foreach (var inst in await _db.ListInstallationsAsync(ct).ConfigureAwait(false))
+        var installations = await _db.ListInstallationsAsync(ct).ConfigureAwait(false);
+        foreach (var inst in installations)
         {
             if (!inst.Seeding) continue;
             try { await StartAsync(inst, ct).ConfigureAwait(false); }
@@ -91,7 +97,89 @@ public sealed class SeedManager
                 _log.LogWarning(ex, "Cannot seed installation {Path}", inst.InstallPath);
             }
         }
+        foreach (var copy in await _db.ListSourceCopiesAsync(ct).ConfigureAwait(false))
+        {
+            if (copy.State != InstallationState.Installed || installations.Any(i => i.ContentHash == copy.ContentHash && i.Seeding)) continue; // started above
+            try { await StartSourceAsync(copy, ct).ConfigureAwait(false); }
+            catch (Exception ex) when (ex is IOException or InvalidDataException or InvalidOperationException)
+            {
+                _log.LogWarning(ex, "Cannot seed source copy {Path}", copy.Path);
+            }
+        }
     }
+
+    /// <summary>
+    /// Seeds the game from where it should be seeded now: its intact source copy, else the copy that is played, else nowhere.
+    /// Call it when a source copy appeared, changed or went away, and when a download of the game ended without completing.
+    /// </summary>
+    public async Task RefreshAsync(string contentHash, CancellationToken ct = default)
+    {
+        if (await _db.FindSourceCopyAsync(contentHash, ct).ConfigureAwait(false) is { } copy)
+        {
+            await StartSourceAsync(copy, ct).ConfigureAwait(false);
+            return;
+        }
+        var installation = (await _db.ListInstallationsAsync(ct).ConfigureAwait(false)).FirstOrDefault(i => i.ContentHash == contentHash);
+        if (installation is { Seeding: true })
+        {
+            await StartAsync(installation, ct).ConfigureAwait(false);
+            return;
+        }
+        // Nothing to seed from any more, or the copy that is played is not to be seeded: a seed of the source copy stops.
+        var stored = await _db.GetManifestAsync(contentHash, ct).ConfigureAwait(false);
+        if (FindTransfer(stored) is { } transfer && !await HasActiveDownloadAsync(contentHash, ct).ConfigureAwait(false)
+            && (installation is null || !SeedsFrom(transfer, installation.InstallPath)))
+            await RemoveAsync(transfer, contentHash, Path.Combine(transfer.SavePath, transfer.Name), stored!.Manifest.Name, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>A download of the game ended without completing: its intact source copy, if there is one, is handed out again.</summary>
+    public async Task ReturnToSourceAsync(string contentHash, CancellationToken ct = default)
+    {
+        if (await _db.FindSourceCopyAsync(contentHash, ct).ConfigureAwait(false) is { } copy)
+            await StartSourceAsync(copy, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>Seeds the untouched copy in the source folder, in place of the copy that is played if that one was being seeded.</summary>
+    /// <returns>False when nothing was started: seeding is off, or a download is working on the game.</returns>
+    public async Task<bool> StartSourceAsync(SourceCopy copy, CancellationToken ct = default)
+    {
+        if (!Enabled) return false;
+        // A download, repair or update owns the transfer of that game, and it must be allowed to write. It hands over when it is done.
+        if (await HasActiveDownloadAsync(copy.ContentHash, ct).ConfigureAwait(false)) return false;
+
+        var stored = await _db.GetManifestAsync(copy.ContentHash, ct).ConfigureAwait(false)
+            ?? throw new InvalidOperationException($"No manifest stored for {copy.ContentHash}.");
+        if (stored.TorrentBytes is null)
+            throw new InvalidOperationException($"No torrent metadata stored for {stored.Manifest.Name}.");
+        var folder = Path.GetFileName(copy.Path.TrimEnd('\\', '/'));
+        if (!string.Equals(folder, stored.Manifest.FolderName, StringComparison.Ordinal))
+            throw new InvalidOperationException($"Source folder {copy.Path} must be named '{stored.Manifest.FolderName}', as the game is.");
+
+        var transfer = FindTransfer(stored);
+        if (transfer is not null && !SeedsFrom(transfer, copy.Path))
+        {
+            await _engine.RemoveAsync(transfer, ct).ConfigureAwait(false); // it was the copy that is played: the source copy takes over
+            transfer = null;
+        }
+        if (transfer is null)
+        {
+            var parent = Path.GetDirectoryName(copy.Path.TrimEnd('\\', '/'))!;
+            transfer = await _engine.AddAsync(stored.TorrentBytes, parent, copy.ResumeData, uploadOnly: true, cancellationToken: ct).ConfigureAwait(false);
+        }
+        transfer.UploadOnly = true;
+        if (transfer.IsStopped) transfer.Start();
+
+        _log.LogInformation("Seed started: {Name} from the source copy {Path}", stored.Manifest.Name, copy.Path);
+        SeedEventRaised?.Invoke(this, new SeedEvent(SeedEventKind.Started, copy.ContentHash, copy.Path, stored.Manifest.Name));
+        return true;
+    }
+
+    /// <summary>Whether the transfer reads the game from <paramref name="gamePath"/>.</summary>
+    private static bool SeedsFrom(TorrentTransfer transfer, string gamePath) =>
+        string.Equals(
+            Path.GetFullPath(Path.Combine(transfer.SavePath, transfer.Name)).TrimEnd('\\', '/'),
+            Path.GetFullPath(gamePath).TrimEnd('\\', '/'),
+            StringComparison.OrdinalIgnoreCase);
 
     /// <summary>Starts, or confirms, seeding of one installation. Data is read from where the game is installed.</summary>
     /// <returns>False when nothing was started: seeding is off, or a repair or update is working on the game.</returns>
@@ -104,6 +192,8 @@ public sealed class SeedManager
         }
         // A repair or update owns the transfer of that game and must be allowed to write. Never make it upload-only.
         if (await HasActiveDownloadAsync(installation, ct).ConfigureAwait(false)) return false;
+        if (await _db.FindSourceCopyAsync(installation.ContentHash, ct).ConfigureAwait(false) is { } copy)
+            return await StartSourceAsync(copy, ct).ConfigureAwait(false); // handed out from there, the copy that is played is left alone
         if (IsPlaying(installation)) return false; // it starts when the game is closed
 
         var stored = await _db.GetManifestAsync(installation.ContentHash, ct).ConfigureAwait(false)
@@ -117,6 +207,11 @@ public sealed class SeedManager
                 $"Folder {installation.InstallPath} is named '{folder}' but the game was recorded as '{stored.Manifest.FolderName}'. Rescan to register it again.");
 
         var transfer = _engine.Transfers.FirstOrDefault(t => string.Equals(t.InfoHash, stored.Manifest.TorrentInfoHash, StringComparison.OrdinalIgnoreCase));
+        if (transfer is not null && !SeedsFrom(transfer, installation.InstallPath))
+        {
+            await _engine.RemoveAsync(transfer, ct).ConfigureAwait(false); // a source copy that is no longer intact: the copy that is played takes over
+            transfer = null;
+        }
         if (transfer is null)
         {
             var parent = Path.GetDirectoryName(installation.InstallPath.TrimEnd('\\', '/'))!;
@@ -126,7 +221,7 @@ public sealed class SeedManager
         if (transfer.IsStopped) transfer.Start();
 
         _log.LogInformation("Seed started: {Name} from {Path}", stored.Manifest.Name, installation.InstallPath);
-        SeedEventRaised?.Invoke(this, new SeedEvent(SeedEventKind.Started, installation, stored.Manifest.Name));
+        SeedEventRaised?.Invoke(this, new SeedEvent(SeedEventKind.Started, installation.ContentHash, installation.InstallPath, stored.Manifest.Name));
         return true;
     }
 
@@ -150,6 +245,7 @@ public sealed class SeedManager
             await StartAsync(installation, ct).ConfigureAwait(false); // adding it checks the files
             return;
         }
+        if (!SeedsFrom(transfer, installation.InstallPath)) return; // handed out from the source copy, which did not change
         transfer.UploadOnly = true;
         transfer.ForceRecheck();
         _log.LogInformation("Seed re-checked after the files of {Name} changed", stored!.Manifest.Name);
@@ -176,6 +272,9 @@ public sealed class SeedManager
     private async Task<bool> HasActiveDownloadAsync(Installation installation, CancellationToken ct) =>
         (await _db.ListDownloadsAsync(ct).ConfigureAwait(false)).Any(d => d.IsActive && d.InstallationId == installation.Id);
 
+    private async Task<bool> HasActiveDownloadAsync(string contentHash, CancellationToken ct) =>
+        (await _db.ListDownloadsAsync(ct).ConfigureAwait(false)).Any(d => d.IsActive && d.ContentHash == contentHash);
+
     /// <summary>
     /// Stores resume data of every complete seed, so the next start does not have to re-hash the whole library.
     /// Call it now and then and on shutdown. A seed that cannot produce it in time is skipped and simply re-checked later.
@@ -187,8 +286,8 @@ public sealed class SeedManager
             if (inst.State != InstallationState.Installed) continue;
             var stored = await _db.GetManifestAsync(inst.ContentHash, ct).ConfigureAwait(false);
             var transfer = _engine.Transfers.FirstOrDefault(t => string.Equals(t.InfoHash, stored?.Manifest.TorrentInfoHash, StringComparison.OrdinalIgnoreCase));
-            // Only a complete seed has anything worth remembering. A partial one is re-checked anyway.
-            if (transfer is null || !transfer.GetStatus().IsComplete) continue;
+            // Only a complete seed has anything worth remembering. A partial one is re-checked anyway. One of the source copy is its own.
+            if (transfer is null || !SeedsFrom(transfer, inst.InstallPath) || !transfer.GetStatus().IsComplete) continue;
 
             try
             {
@@ -200,6 +299,18 @@ public sealed class SeedManager
                 _log.LogDebug("No resume data for seed {Name}: {Reason}", stored!.Manifest.Name, ex.Message);
             }
         }
+        foreach (var copy in await _db.ListSourceCopiesAsync(ct).ConfigureAwait(false))
+        {
+            if (copy.State != InstallationState.Installed) continue;
+            var stored = await _db.GetManifestAsync(copy.ContentHash, ct).ConfigureAwait(false);
+            var transfer = FindTransfer(stored);
+            if (transfer is null || !SeedsFrom(transfer, copy.Path) || !transfer.GetStatus().IsComplete) continue;
+            try { await _db.SaveSourceCopyResumeDataAsync(copy.Id, await transfer.SaveResumeDataAsync(ct).ConfigureAwait(false), ct).ConfigureAwait(false); }
+            catch (Exception ex) when (ex is TimeoutException or InvalidOperationException)
+            {
+                _log.LogDebug("No resume data for the source copy of {Name}: {Reason}", stored!.Manifest.Name, ex.Message);
+            }
+        }
     }
 
     /// <summary>Stops offering every game, for example when the user turns seeding off. Downloads keep running.</summary>
@@ -207,17 +318,29 @@ public sealed class SeedManager
     {
         foreach (var inst in await _db.ListInstallationsAsync(ct).ConfigureAwait(false))
             if (!await HasActiveDownloadAsync(inst, ct).ConfigureAwait(false)) await StopAsync(inst, ct).ConfigureAwait(false);
+        foreach (var copy in await _db.ListSourceCopiesAsync(ct).ConfigureAwait(false))
+            if (!await HasActiveDownloadAsync(copy.ContentHash, ct).ConfigureAwait(false)) await StopAsync(copy.ContentHash, ct).ConfigureAwait(false);
     }
 
-    /// <summary>Stops offering the game. Files are never touched.</summary>
-    public async Task StopAsync(Installation installation, CancellationToken ct = default)
-    {
-        var stored = await _db.GetManifestAsync(installation.ContentHash, ct).ConfigureAwait(false);
-        var transfer = _engine.Transfers.FirstOrDefault(t => string.Equals(t.InfoHash, stored?.Manifest.TorrentInfoHash, StringComparison.OrdinalIgnoreCase));
-        if (transfer is null) return;
+    /// <summary>Stops offering the game, from whichever copy it was offered. Files are never touched.</summary>
+    public Task StopAsync(Installation installation, CancellationToken ct = default) => StopAsync(installation.ContentHash, ct);
 
+    /// <summary>
+    /// Stops offering the game, from whichever copy it was offered, for example because a download of it is about to start and needs
+    /// the transfer. Files are never touched. <see cref="RefreshAsync"/> puts the seed back.
+    /// </summary>
+    public async Task StopAsync(string contentHash, CancellationToken ct = default)
+    {
+        var stored = await _db.GetManifestAsync(contentHash, ct).ConfigureAwait(false);
+        var transfer = FindTransfer(stored);
+        if (transfer is null) return;
+        await RemoveAsync(transfer, contentHash, Path.Combine(transfer.SavePath, transfer.Name), stored!.Manifest.Name, ct).ConfigureAwait(false);
+    }
+
+    private async Task RemoveAsync(TorrentTransfer transfer, string contentHash, string path, string name, CancellationToken ct)
+    {
         await _engine.RemoveAsync(transfer, ct).ConfigureAwait(false);
-        _log.LogInformation("Seed stopped: {Name}", stored!.Manifest.Name);
-        SeedEventRaised?.Invoke(this, new SeedEvent(SeedEventKind.Stopped, installation, stored.Manifest.Name));
+        _log.LogInformation("Seed stopped: {Name}", name);
+        SeedEventRaised?.Invoke(this, new SeedEvent(SeedEventKind.Stopped, contentHash, path, name));
     }
 }

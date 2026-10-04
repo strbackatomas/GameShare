@@ -16,6 +16,7 @@ public sealed class AgentWorker : BackgroundService
     private readonly DefinitionSync _definitions;
     private readonly RunningGames _running;
     private readonly GameLibrary _library;
+    private readonly SourceLibrary _sources;
     private readonly ScanService _scan;
     private readonly DiscoveryService _discovery;
     private readonly PeerCatalog _catalog;
@@ -25,7 +26,7 @@ public sealed class AgentWorker : BackgroundService
     private readonly ILogger<AgentWorker> _log;
 
     public AgentWorker(
-        DownloadManager downloads, SeedManager seeds, GameChangeTracker changes, TrustService trust, AppUpdateService updates, DefinitionSync definitions, RunningGames running, GameLibrary library, ScanService scan, DiscoveryService discovery,
+        DownloadManager downloads, SeedManager seeds, GameChangeTracker changes, TrustService trust, AppUpdateService updates, DefinitionSync definitions, RunningGames running, GameLibrary library, SourceLibrary sources, ScanService scan, DiscoveryService discovery,
         PeerCatalog catalog, SettingsService settings, TorrentEngine engine, AgentOptions options, ILogger<AgentWorker> log)
     {
         _downloads = downloads;
@@ -36,6 +37,7 @@ public sealed class AgentWorker : BackgroundService
         _definitions = definitions;
         _running = running;
         _library = library;
+        _sources = sources;
         _scan = scan;
         _discovery = discovery;
         _catalog = catalog;
@@ -55,6 +57,7 @@ public sealed class AgentWorker : BackgroundService
         _downloads.DownloadEventRaised += OnDownloadEvent;
         _running.Changed += OnRunningChanged;
         _running.Changed += OnPlayingChanged;
+        _sources.Changed += OnSourceChanged;
         try
         {
             await _downloads.RecoverAsync(ct).ConfigureAwait(false);
@@ -86,6 +89,7 @@ public sealed class AgentWorker : BackgroundService
             _downloads.DownloadEventRaised -= OnDownloadEvent;
             _running.Changed -= OnRunningChanged;
             _running.Changed -= OnPlayingChanged;
+            _sources.Changed -= OnSourceChanged;
 
             // So the next start can skip re-hashing the library. Bounded, shutdown must not hang on it.
             using var limit = new CancellationTokenSource(TimeSpan.FromSeconds(15));
@@ -139,11 +143,27 @@ public sealed class AgentWorker : BackgroundService
         finally { _announcing.Release(); }
     });
 
-    /// <summary>A finished install, repair or update is a game folder to watch, or one that changed under the watcher.</summary>
+    /// <summary>
+    /// A finished install, repair or update is a game folder to watch, or one that changed under the watcher. One that ended
+    /// without completing gives the transfer back to the source copy, if the game has one.
+    /// </summary>
     private void OnDownloadEvent(object? sender, DownloadEvent e)
     {
         if (e.Kind == DownloadEventKind.Completed) _changes.RequestSync();
+        if (e.Kind is DownloadEventKind.Failed or DownloadEventKind.Cancelled or DownloadEventKind.Paused)
+            _ = Task.Run(async () =>
+            {
+                try { await _seeds.ReturnToSourceAsync(e.Status.ContentHash).ConfigureAwait(false); }
+                catch (Exception ex) { _log.LogWarning(ex, "Could not hand out the source copy of {Name} again", e.Status.GameName); }
+            });
     }
+
+    /// <summary>A source copy appeared, changed or went away: the game is handed out from wherever it should be now.</summary>
+    private void OnSourceChanged(object? sender, string contentHash) => _ = Task.Run(async () =>
+    {
+        try { await _seeds.RefreshAsync(contentHash).ConfigureAwait(false); }
+        catch (Exception ex) { _log.LogWarning(ex, "Could not update seeding after the source copy of {Hash} changed", contentHash[..12]); }
+    });
 
     // Damaged games that changed further since their seed was last checked. The seed still claims pieces that no longer match.
     private readonly Dictionary<long, Installation> _seedStale = [];
@@ -186,7 +206,8 @@ public sealed class AgentWorker : BackgroundService
             {
                 if (change.Kind == InstallationChangeKind.Replaced)
                 {
-                    if (change.Previous is not null) await _seeds.StopAsync(change.Previous).ConfigureAwait(false); // its torrent no longer matches the files
+                    // Its torrent no longer matches the files. A source copy of that version goes on being handed out.
+                    if (change.Previous is not null) await _seeds.RefreshAsync(change.Previous.ContentHash).ConfigureAwait(false);
                     await _seeds.StartAsync(change.Current).ConfigureAwait(false);
                 }
                 else

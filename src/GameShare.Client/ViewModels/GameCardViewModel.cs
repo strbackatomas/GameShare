@@ -33,6 +33,15 @@ public sealed partial class GameCardViewModel : ViewModelBase
     [ObservableProperty] public partial string PeersText { get; set; } = "";
     [ObservableProperty] public partial string? InstallPath { get; set; }
 
+    /// <summary>Where the untouched copy in the source folder is and whether it is handed out, empty when there is none.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasSource))]
+    public partial string SourceText { get; set; } = "";
+
+    [ObservableProperty] public partial bool IsSourceIntact { get; set; }
+
+    public bool HasSource => SourceText.Length > 0;
+
     /// <summary>The game's picture as the agent serves it (.ico or .png), turned into an image by the view. Null until loaded, or when there is none.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasIconImage))]
@@ -313,6 +322,10 @@ public sealed partial class GameCardViewModel : ViewModelBase
         Name = g.Name;
         State = g.State;
         InstallPath = g.InstallPath;
+        IsSourceIntact = g.SourceIntact;
+        SourceText = g.SourcePath is null ? ""
+            : g.SourceIntact ? $"Zdroj: {g.SourcePath}"
+            : $"Zdroj: {g.SourcePath} · soubory se změnily, neposílá se. Nakopíruj do něj hru znovu.";
         UpdatesContentHash = g.UpdatesContentHash;
         Details = string.IsNullOrEmpty(g.Version) ? Format.Size(g.TotalSize) : $"{g.Version} · {Format.Size(g.TotalSize)}";
         PeersText = g.State == GameState.AvailableOnLan && g.PeerNames.Count > 0 ? DescribePeers(g) : "";

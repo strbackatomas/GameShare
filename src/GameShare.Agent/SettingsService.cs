@@ -38,6 +38,7 @@ public sealed class SettingsService
     {
         // A client that does not know the tuning sends none: keep what there is rather than clearing it.
         if (requested.Tuning is null) requested = requested with { Tuning = _current.Tuning };
+        if (requested.SourceRoot is null) requested = requested with { SourceRoot = _current.SourceRoot ?? "" };
         var settings = Normalize(requested);
         await _writeLock.WaitAsync(ct).ConfigureAwait(false);
         try
@@ -80,8 +81,25 @@ public sealed class SettingsService
         return new SettingsDto(roots, s.SeedingEnabled, s.MaxUploadMBps, s.MaxDownloadMBps, unignored, s.TorrentDebugLogging)
         {
             Tuning = CheckTuning(s.Tuning ?? new TransferTuningDto()),
+            SourceRoot = CheckSourceRoot(s.SourceRoot, roots),
         };
     }
+
+    /// <summary>"" when there is none. Never inside a game folder or around one: a copy there would be played, and that is what it must not be.</summary>
+    private static string CheckSourceRoot(string? raw, IReadOnlyList<string> gameRoots)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return "";
+        if (!Path.IsPathFullyQualified(raw)) throw new ArgumentException($"Source folder '{raw}' must be a full path such as E:\\GameShare-zdroj.");
+        var full = TrimRoot(Path.GetFullPath(raw));
+        foreach (var root in gameRoots)
+            if (Contains(root, full) || Contains(full, root))
+                throw new ArgumentException($"Source folder '{full}' must be apart from the game folder '{root}': neither may be inside the other.");
+        return full;
+    }
+
+    private static bool Contains(string outer, string inner) =>
+        string.Equals(outer, inner, StringComparison.OrdinalIgnoreCase)
+        || inner.StartsWith(outer.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
 
     private static TransferTuningDto CheckTuning(TransferTuningDto t)
     {

@@ -45,6 +45,19 @@
                 <Button Grid.Column="2" Content="Přidat" Command="{Binding AddRootCommand}" />
             </Grid>
 
+            <StackPanel Spacing="6" IsVisible="{Binding ShowSourceRoot}">
+                <TextBlock Classes="section" Text="ZDROJOVÁ SLOŽKA" />
+                <TextBlock Classes="muted" TextWrapping="Wrap"
+                           Text="Netknuté kopie her, třeba na druhém disku. Nikdy se z nich nehraje a GameShare je posílá ostatním PC místo kopie, ze které se hraje. Hra tak zůstane v síti celá, i když ji hraní všude změní. Podsložka se musí jmenovat stejně jako hra." />
+                <Border Classes="card" Padding="12,8" IsVisible="{Binding HasSourceRoot}">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Grid.Column="0" Text="{Binding SourceRoot}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                        <Button Grid.Column="1" Classes="danger" Content="Odebrat" Command="{Binding ClearSourceRootCommand}" />
+                    </Grid>
+                </Border>
+                <Button Content="Vybrat zdrojovou složku…" Command="{Binding BrowseSourceRootCommand}" IsVisible="{Binding !HasSourceRoot}" />
+            </StackPanel>
+
             <TextBlock Classes="section" Text="SDÍLENÍ" />
             <ToggleSwitch IsChecked="{Binding SeedingEnabled}" OnContent="Sdílet hry ostatním PC v síti" OffContent="Nesdílet hry ostatním PC v síti" />
             <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap"

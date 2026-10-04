@@ -18,11 +18,13 @@ public sealed class GameView
     private readonly SeedManager _seeds;
     private readonly IconService _icons;
     private readonly SetupService _setup;
+    private readonly SourceLibrary _sources;
 
     public GameView(
         GameLibrary library, DownloadManager downloads, PeerCatalog catalog, DiscoveryService discovery, GameChangeTracker changes, TrustService trust,
-        LaunchService launch, RunningGames running, SeedManager seeds, IconService icons, SetupService setup)
+        LaunchService launch, RunningGames running, SeedManager seeds, IconService icons, SetupService setup, SourceLibrary sources)
     {
+        _sources = sources;
         _launch = launch;
         _icons = icons;
         _setup = setup;
@@ -41,6 +43,7 @@ public sealed class GameView
         var local = await _library.ListAsync(ct).ConfigureAwait(false);
         var downloads = await _downloads.ListAsync(ct).ConfigureAwait(false);
         var offers = _catalog.Offers.ToLookup(o => o.Game.ContentHash);
+        var sources = (await _sources.ListAsync(ct).ConfigureAwait(false)).ToLookup(c => c.ContentHash);
 
         var result = new Dictionary<string, GameDto>(StringComparer.Ordinal);
 
@@ -87,6 +90,8 @@ public sealed class GameView
                 PartialPeerNames = PartialNames(offers[m.ContentHash]),
                 FullyAvailable = fully,
                 CoveragePercent = coverage,
+                SourcePath = sources[m.ContentHash].FirstOrDefault()?.Path,
+                SourceIntact = sources[m.ContentHash].Any(c => c.State == InstallationState.Installed),
             };
         }
 
@@ -144,7 +149,7 @@ public sealed class GameView
         };
     }
 
-    public static SeedDto ToDto(SeedEvent e, string contentHash) => new(contentHash, e.GameName, e.Installation.InstallPath);
+    public static SeedDto ToDto(SeedEvent e) => new(e.ContentHash, e.GameName, e.Path);
 
     /// <summary>Every installed game with at least one PC actively pulling it right now, fastest overall first.</summary>
     public async Task<IReadOnlyList<UploadDto>> ListUploadsAsync(CancellationToken ct = default)

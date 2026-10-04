@@ -160,7 +160,7 @@ public sealed class TorrentEngine : IDisposable
             throw new InvalidOperationException($"Torrent {meta.Name} ({infoHash}) is already added to this engine.");
 
         var manager = _client.AttachTorrent(info, savePath, resumeData);
-        var transfer = new TorrentTransfer(manager, infoHash, meta.Name!, meta.TotalSize) { UploadOnly = uploadOnly };
+        var transfer = new TorrentTransfer(manager, infoHash, meta.Name!, meta.TotalSize, savePath) { UploadOnly = uploadOnly };
         _transfers[infoHash] = transfer;
 
         _log.LogInformation("Torrent added: {Name} {InfoHash} into {SavePath} (resume data: {HasResume})",

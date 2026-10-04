@@ -8,6 +8,15 @@ public enum InstallationState
     Invalid,
 }
 
+/// <summary>
+/// An untouched copy of a game version in the source folder, typically on a second disk. It is never played and never written to:
+/// it is what this PC hands out to the others instead of the copy that is played, so the game stays complete on the network even
+/// when every played copy has changed. Kept apart from <see cref="Installation"/>, which is the copy that is played.
+/// </summary>
+/// <param name="State">Installed while its files match the manifest, Invalid when they changed or went missing.</param>
+/// <param name="ResumeData">Lets seeding start without re-hashing the whole copy. Optional, never required for correctness.</param>
+public sealed record SourceCopy(long Id, string ContentHash, string Path, InstallationState State, DateTimeOffset? VerifiedAt, byte[]? ResumeData = null);
+
 /// <summary>A game version present on this PC. Rows exist only for complete games, an unfinished one is a <see cref="Download"/>.</summary>
 /// <param name="ContentHash">Which version. Joins to the stored manifest.</param>
 /// <param name="Seeding">Whether this PC offers the game to others.</param>

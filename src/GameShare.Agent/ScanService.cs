@@ -7,13 +7,15 @@ namespace GameShare.Agent;
 public sealed class ScanService
 {
     private readonly GameLibrary _library;
+    private readonly SourceLibrary _sources;
     private readonly SettingsService _settings;
     private readonly SemaphoreSlim _running = new(1, 1);
     private readonly ILogger<ScanService> _log;
 
-    public ScanService(GameLibrary library, SettingsService settings, ILogger<ScanService> log)
+    public ScanService(GameLibrary library, SourceLibrary sources, SettingsService settings, ILogger<ScanService> log)
     {
         _library = library;
+        _sources = sources;
         _settings = settings;
         _log = log;
     }
@@ -33,16 +35,21 @@ public sealed class ScanService
         try
         {
             var roots = _settings.Current.GameRoots;
-            if (roots.Count == 0)
-            {
-                _log.LogInformation("Scan skipped: no game folders are configured");
-                return new ScanResultDto(0, 0, 0, [], [], []);
-            }
+            var source = string.IsNullOrEmpty(_settings.Current.SourceRoot) ? null : _settings.Current.SourceRoot;
             _progress = new ScanProgressDto(0, 0, "", 0, 0);
             // Written from the hashing thread for every block, read by whoever asks. Only the latest matters.
             var progress = new Reporter(p => _progress = new ScanProgressDto(p.Folder, p.Folders, p.Name, p.Bytes, p.TotalBytes));
-            var s = await _library.ScanAsync(roots, ct, progress).ConfigureAwait(false);
-            return new ScanResultDto(s.Added, s.Unchanged, s.Skipped, s.Errors, s.MissingRoots, s.Damaged);
+            var s = roots.Count == 0 ? null : await _library.ScanAsync(roots, ct, progress).ConfigureAwait(false);
+            if (s is null) _log.LogInformation("Scan of game folders skipped: none are configured");
+
+            // After the game folders, so a copy of a game played here is recognised by the version the scan just found.
+            // Always, also without a source folder: copies of one that was removed from the settings are forgotten.
+            var errors = new List<string>(s?.Errors ?? []);
+            var missing = new List<string>(s?.MissingRoots ?? []);
+            if (source is not null && !Directory.Exists(source)) missing.Add(source); // its copies are forgotten until it is back
+            var sources = await _sources.ScanAsync(source, ct, progress).ConfigureAwait(false);
+            errors.AddRange(sources.Problems.Select(p => $"Zdrojová složka: {p}"));
+            return new ScanResultDto(s?.Added ?? 0, s?.Unchanged ?? 0, s?.Skipped ?? 0, errors, missing, s?.Damaged ?? []);
         }
         finally
         {

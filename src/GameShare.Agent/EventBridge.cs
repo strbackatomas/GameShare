@@ -214,5 +214,5 @@ public sealed class EventBridge : IHostedService
 
     private void OnSeed(object? sender, SeedEvent e) =>
         Enqueue(e.Kind == SeedEventKind.Started ? GameShareEvents.SeedStarted : GameShareEvents.SeedStopped,
-            GameView.ToDto(e, e.Installation.ContentHash));
+            GameView.ToDto(e));
 }

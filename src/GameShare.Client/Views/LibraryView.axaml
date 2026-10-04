@@ -74,6 +74,8 @@
                                     </StackPanel>
                                     <TextBlock Text="{Binding Details}" Classes="muted" />
                                     <TextBlock Text="{Binding InstallPath}" Classes="muted" FontSize="11" TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Text="{Binding SourceText}" IsVisible="{Binding HasSource}" Classes="muted" FontSize="11" TextWrapping="Wrap"
+                                               ToolTip.Tip="Netknutá kopie ve zdrojové složce. Ostatním PC se posílá ona, ne kopie, ze které se hraje." />
                                     <TextBlock IsVisible="{Binding IsDamaged}" Classes="muted" FontSize="12" TextWrapping="Wrap"
                                                Text="Nezměněné části hry se dál nabízejí ostatním PC." />
                                     <TextBlock IsVisible="{Binding IsTrustRevoked}" Foreground="{StaticResource DangerBrush}" FontSize="12" TextWrapping="Wrap" Text="{Binding TrustNote}" />
@@ -190,6 +192,7 @@
                                     </StackPanel>
                                     <TextBlock Text="{Binding Details}" Classes="muted" />
                                     <TextBlock Text="{Binding PeersText}" Classes="muted" FontSize="12" TextWrapping="Wrap" />
+                                    <TextBlock Text="{Binding SourceText}" IsVisible="{Binding HasSource}" Classes="muted" FontSize="11" TextWrapping="Wrap" />
                                     <TextBlock IsVisible="{Binding IsTrustRevoked}" Foreground="{StaticResource DangerBrush}" FontSize="12" TextWrapping="Wrap" Text="{Binding TrustNote}" />
                                     <TextBlock Text="{Binding CoverageText}" IsVisible="{Binding IsWaitingForParts}" Foreground="{StaticResource WarnBrush}" FontSize="12" TextWrapping="Wrap" />
                                 </StackPanel>

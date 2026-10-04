@@ -74,20 +74,22 @@ public static partial class PeerApi
     }
 
     /// <summary>
-    /// One entry per game version. A verified installation is offered whole. If every copy on this PC is damaged, the game is offered
-    /// only when the transfer actually holds some verified pieces, and it says how much.
+    /// One entry per game version. A verified installation or an intact copy in the source folder is offered whole. If every copy on
+    /// this PC is damaged, the game is offered only when the transfer actually holds some verified pieces, and it says how much.
     /// </summary>
     private static async Task<List<Offer>> OfferedAsync(GameShareDb db, SettingsService settings, SeedManager seeds, CancellationToken ct)
     {
         var offers = new List<Offer>();
         if (!settings.Current.SeedingEnabled) return offers;
 
-        foreach (var group in (await db.ListInstallationsAsync(ct)).Where(i => i.Seeding).GroupBy(i => i.ContentHash))
+        var sources = (await db.ListSourceCopiesAsync(ct)).Where(c => c.State == InstallationState.Installed).Select(c => c.ContentHash).ToHashSet(StringComparer.Ordinal);
+        var played = (await db.ListInstallationsAsync(ct)).Where(i => i.Seeding).ToLookup(i => i.ContentHash);
+        foreach (var hash in played.Select(g => g.Key).Union(sources))
         {
-            var stored = await db.GetManifestAsync(group.Key, ct);
+            var stored = await db.GetManifestAsync(hash, ct);
             if (stored?.TorrentBytes is null) continue;
 
-            if (group.Any(i => i.State == InstallationState.Installed))
+            if (sources.Contains(hash) || played[hash].Any(i => i.State == InstallationState.Installed))
             {
                 offers.Add(new Offer(stored, IsComplete: true, PercentIntact: 100));
                 continue;

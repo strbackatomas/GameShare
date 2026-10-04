@@ -415,6 +415,16 @@ public sealed partial class SettingsViewModel : ViewModelBase
     [ObservableProperty] public partial bool IsLoaded { get; set; }
     [ObservableProperty] public partial bool HasIgnoredAdapters { get; set; }
 
+    /// <summary>The source folder, empty for none. See <see cref="SettingsDto.SourceRoot"/>.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasSourceRoot))]
+    public partial string SourceRoot { get; set; } = "";
+
+    public bool HasSourceRoot => SourceRoot.Length > 0;
+
+    /// <summary>Only on a PC with the agent installed as a service. A portable copy at a LAN party has no second disk to keep a source on.</summary>
+    public bool ShowSourceRoot => !GameShare.Client.App.IsPortable;
+
     // Advanced tuning of the transfer engine. Empty means the default, which each field shows as its placeholder.
     [ObservableProperty] public partial string OpenFilesText { get; set; } = "";
     [ObservableProperty] public partial string SendBufferText { get; set; } = "";
@@ -496,6 +506,7 @@ public sealed partial class SettingsViewModel : ViewModelBase
             var s = await _app.Client.GetSettingsAsync();
             _saved = s;
             SetRoots(s.GameRoots);
+            SourceRoot = s.SourceRoot ?? "";
             SeedingEnabled = s.SeedingEnabled;
             MaxUploadText = s.MaxUploadMBps?.ToString() ?? "";
             MaxDownloadText = s.MaxDownloadMBps?.ToString() ?? "";
@@ -579,6 +590,36 @@ public sealed partial class SettingsViewModel : ViewModelBase
         Message = added ? "Složka uložena. Hry v ní se teď hledají, průběh je vidět v Knihovně." : "Složka odebrána.";
         if (added) _app.RequestScan();
         else await _app.RefreshGamesAsync().ConfigureAwait(true);
+    }
+
+    /// <summary>Picks the source folder and saves it straight away, like a game folder. Its copies are looked for at once.</summary>
+    [RelayCommand]
+    private async Task BrowseSourceRootAsync()
+    {
+        if (await _app.FolderPicker.PickFolderAsync().ConfigureAwait(true) is { } path) await SaveSourceRootAsync(path).ConfigureAwait(true);
+    }
+
+    [RelayCommand]
+    private Task ClearSourceRootAsync() => SaveSourceRootAsync("");
+
+    private async Task SaveSourceRootAsync(string path)
+    {
+        if (_saved is null) return;
+        Message = "";
+        bool ok;
+        await _saving.WaitAsync().ConfigureAwait(true);
+        try
+        {
+            ok = await TryAsync(async () =>
+            {
+                _saved = await _app.Client.SaveSettingsAsync(_saved with { SourceRoot = path });
+                SourceRoot = _saved.SourceRoot ?? "";
+            }, m => Message = m).ConfigureAwait(true);
+        }
+        finally { _saving.Release(); }
+        if (!ok) return;
+        Message = path.Length > 0 ? "Zdrojová složka uložena. Kopie her v ní se teď ověřují, průběh je vidět v Knihovně." : "Zdrojová složka odebrána.";
+        _app.RequestScan(); // also when removed: the scan forgets its copies and the games are handed out from where they are played
     }
 
     private void SetIgnoredAdapters(IEnumerable<NetworkAdapterDto> adapters)

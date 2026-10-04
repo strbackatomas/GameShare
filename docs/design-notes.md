@@ -113,6 +113,27 @@ Many games write into their folder: settings, saves, shader caches, logs. Those 
   fall back to one full check. A damaged game that keeps changing has its seed re-checked every 5 minutes at most.
 - A file that must ship with initial values and is rewritten later is a separate case, left for later. The game can normally create its own defaults.
 
+### Source folder
+
+Volatile patterns only cover what is known to change. If every PC plays a game and the game rewrites a file nobody listed, no PC has
+the original any more and nobody can install or repair it. A PC with a second disk can keep an untouched copy there.
+
+- One folder per PC, `SourceRoot` in the settings, apart from the game folders (neither inside the other). Only shown in the client
+  of an installed agent, the portable exe does not show it. A game is a subfolder named exactly like the game, as in a game folder.
+- Its copies are `source_copies` rows, deliberately not `installations`: everything that plays, repairs, updates, watches or
+  starts a game keeps working with the one copy that is played and never sees them. `SourceLibrary` scans the folder after the game
+  folders: a new copy is first checked against the versions known under that folder name (sizes, then hashes), so it gets exactly
+  that identity and torrent, otherwise it is hashed as a new version. Later scans check sizes; a copy marked changed needs a full
+  check to count again. A changed copy is never re-registered as a new version, it should be copied in again.
+- `SeedManager` seeds a game from its intact source copy when there is one, else from the copy that is played, as before. One
+  transfer per game: the source copy takes it over. Then playing does not make the seed step aside, and a played copy that changed
+  does not matter, the network gets the source copy whole. A game that is only in the source folder is seeded and offered too.
+- A download of the same version (an install, a repair, an update to it) needs the transfer: it stops the seed first, and when it ends
+  without completing, the source copy takes the transfer back. A completed one hands it back through `StartAsync`.
+- GameShare only reads the source folder. Removing it from the settings forgets its copies and deletes nothing.
+- Not yet: repairing the copy that is played straight from the source copy on the same PC, and putting a game into the source folder
+  from the client. Today a repair still comes over the network (which the source copy of another PC serves), and a copy is put in by hand.
+
 ## Verified games
 
 Identity is the content hash. A manifest is validated and its hash is recomputed from its file list, the torrent must match the manifest, and a finished

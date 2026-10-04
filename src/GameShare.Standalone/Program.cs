@@ -60,6 +60,7 @@ internal static class Program
         }
 
         App.AgentUrl = LocalAgentUrl;
+        App.IsPortable = true;
         // The tray icon and close-to-tray behavior are the client's own (GameShare.Client\TrayController.cs); this is
         // the one extra step its "Ukončit" must do that the plain client never needs: stop the agent hosted right here.
         App.BeforeShutdownAsync = async () =>

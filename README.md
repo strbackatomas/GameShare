@@ -75,7 +75,7 @@ build picks it up automatically (assembly version, file version, the `.exe` prop
 
 - `GET /api/status` and the client's Settings page show the agent's and the client's own version, so a PC where
   only one of the two was updated is easy to notice.
-- Each agent puts its version in its discovery hellos. It is informational only, shown next to a PC in the
+- Each agent puts its version in its discovery hellos (and the game it is playing, if any). It is informational only, shown next to a PC in the
   Network view (with a small warning badge on a mismatch) — it plays no part in deciding whether a peer is
   understood, that is still the separate discovery protocol version (`DiscoveryMessage.Version`), which is
   checked strictly and always has (see "Mixed versions" in `docs/design-notes.md`).
@@ -160,6 +160,26 @@ with suggested patterns and a button that marks them. **Zkontrolovat** does the 
 A game whose files changed is shown as damaged until it is repaired or registered again. It still offers the parts that are unchanged,
 so other PCs can use it as a source, and PCs that were played on differently can complete each other.
 
+A game that was already on a PC before GameShare, found by **Prohledat**, often has no `gameshare.json`. Right after the scan the agent
+takes the definition (how it starts, its icon, how it is prepared) from a PC on the LAN that has the same files, and writes it into the
+folder. When the administrator signed a definition for that version, only the signed one is taken.
+
+### Source folder ("Zdrojová složka")
+
+Patterns only cover files somebody knows about. If every PC plays a game and the game rewrites a file nobody listed, no PC has the
+original any more, and nobody can install or repair that game. A PC with a second disk can keep an untouched copy of its games there:
+
+- **Nastavení → Zdrojová složka**, for example `E:\GameShare-zdroj`. Only in the client of an installed agent, the portable exe does not
+  show it. It must be apart from the game folders, neither inside the other.
+- Copy a game into it as a subfolder named exactly like the game, ideally right after a clean install. The scan recognises it by its files.
+- GameShare never plays it and never writes to it. It hands it out to the other PCs **instead of** the copy that is played: the network
+  always gets the game whole, and the copy that is played can be played without the seed stepping aside.
+- A game that is only in the source folder is offered too. The library shows each game's source copy, and says when its files changed:
+  such a copy is no longer handed out until the game is copied into it again.
+- Removing the source folder from the settings forgets its copies and deletes nothing.
+- Not yet: repairing the copy that is played straight from the source copy on the same PC (a repair still comes over the network),
+  and putting a game into the source folder from the client.
+
 ## Playing
 
 A game that says which program starts it (`launch` in `gameshare.json`, or the older single `executable`) has a **Hrát** button.
@@ -185,6 +205,9 @@ The card shows the icon of the first program, read from this PC's copy of it (or
   somewhere else, such as a store client, is not recognised.
 - While a game runs, a repair, an update and registering wait, and its seed stops sending. Files the seed holds open would keep the game from saving,
   and the disk and network are the game's. Other PCs cannot install that game from this PC until it is closed (`Agent:PauseSeedWhilePlaying`).
+  A game with a copy in the source folder is the exception: that copy is what is sent, so it goes on being sent.
+- The other PCs see what is being played: the **Síť** page shows "▶ hraje …" under each PC that runs a game. The agent puts the game's
+  name in its discovery hello as soon as it starts or stops.
 
 ## Preparing a PC for a game ("Příprava hry")
 
