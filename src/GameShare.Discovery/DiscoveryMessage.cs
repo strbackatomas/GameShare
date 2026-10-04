@@ -12,7 +12,9 @@ namespace GameShare.Discovery;
 /// Informational only: it plays no part in deciding whether a peer is understood, unlike <see cref="Version"/>.
 /// Optional so an older sender that predates this field still parses.
 /// </param>
-public sealed record DiscoveryMessage(string Type, int Version, string MachineId, string MachineName, int AgentPort, string? AppVersion = null)
+/// <param name="Playing">The name of the game being played on the sender right now, null when none. Informational only, like <paramref name="AppVersion"/>.</param>
+public sealed record DiscoveryMessage(
+    string Type, int Version, string MachineId, string MachineName, int AgentPort, string? AppVersion = null, string? Playing = null)
 {
     public const string Hello = "hello";
     public const string Goodbye = "bye";
@@ -20,6 +22,9 @@ public sealed record DiscoveryMessage(string Type, int Version, string MachineId
 
     /// <summary>Datagrams larger than this are dropped unread.</summary>
     public const int MaxSize = 1024;
+
+    /// <summary>Longest <see cref="Playing"/> accepted, so a hello with a long name still fits in <see cref="MaxSize"/>.</summary>
+    public const int MaxPlayingLength = 120;
 
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
@@ -41,6 +46,7 @@ public sealed record DiscoveryMessage(string Type, int Version, string MachineId
         if (string.IsNullOrWhiteSpace(m.MachineName) || m.MachineName.Length > 64) { error = "bad machineName"; return false; }
         if (m.AgentPort is < 1 or > 65535) { error = $"bad agentPort {m.AgentPort}"; return false; }
         if (m.AppVersion is { Length: > 32 }) { error = "bad appVersion"; return false; }
+        if (m.Playing is { Length: > MaxPlayingLength }) { error = "bad playing"; return false; }
 
         message = m;
         error = "";

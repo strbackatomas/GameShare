@@ -47,6 +47,11 @@ public class NetworkCheckClientTests
         Assert.Equal("firewall pouští: Soukromá, Doménová", check.Ports[1].Detail);
         Assert.Equal(CheckLevel.Off, check.Ports.Single(p => p.Title.StartsWith("Vzdálená")).Level); // remote management is off
         Assert.Equal("192.168.1.12:47702 · odpovídá (2 ms)", check.Peers.Single().Detail);
+        Assert.False(check.IsExpanded); // nothing to see, so the card stays folded
+
+        check.ToggleExpandCommand.Execute(null);
+        Assert.True(check.IsExpanded);
+        Assert.Equal("▾", check.Chevron);
     }
 
     [Fact]
@@ -56,6 +61,7 @@ public class NetworkCheckClientTests
 
         Assert.Equal(CheckLevel.Bad, check.Overall);
         Assert.Equal(CheckLevel.Bad, check.Networks.Single().Level);
+        Assert.True(check.IsExpanded); // a problem unfolds the card by itself
         Assert.Equal("firewall ho nepouští na síti „Síť 3“ (veřejná)", check.Ports[1].Detail);
         Assert.Contains(check.Advice, a => a.StartsWith("Síť „Síť 3“ je ve Windows nastavená jako veřejná") && a.Contains("Soukromá síť"));
     }

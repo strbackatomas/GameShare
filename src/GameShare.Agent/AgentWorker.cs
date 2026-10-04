@@ -54,6 +54,7 @@ public sealed class AgentWorker : BackgroundService
         _changes.Changed += OnTrackedChange;
         _downloads.DownloadEventRaised += OnDownloadEvent;
         _running.Changed += OnRunningChanged;
+        _running.Changed += OnPlayingChanged;
         try
         {
             await _downloads.RecoverAsync(ct).ConfigureAwait(false);
@@ -84,6 +85,7 @@ public sealed class AgentWorker : BackgroundService
             _changes.Changed -= OnTrackedChange;
             _downloads.DownloadEventRaised -= OnDownloadEvent;
             _running.Changed -= OnRunningChanged;
+            _running.Changed -= OnPlayingChanged;
 
             // So the next start can skip re-hashing the library. Bounded, shutdown must not hang on it.
             using var limit = new CancellationTokenSource(TimeSpan.FromSeconds(15));
@@ -117,6 +119,25 @@ public sealed class AgentWorker : BackgroundService
             catch (Exception ex) { _log.LogWarning(ex, "Could not change the seed of {Path} for a game that started or stopped", change.Installation.InstallPath); }
         });
     }
+
+    private readonly SemaphoreSlim _announcing = new(1, 1);
+
+    /// <summary>The other PCs show what is being played here: discovery announces the names of the games that run now.</summary>
+    private void OnPlayingChanged(object? sender, RunningChange change) => _ = Task.Run(async () =>
+    {
+        await _announcing.WaitAsync().ConfigureAwait(false); // one at a time, so an older picture never overwrites a newer one
+        try
+        {
+            var names = (await _library.ListAsync().ConfigureAwait(false))
+                .Where(g => g.Installation is { } i && _running.IsRunning(i) && g.Stored.Manifest.Definition?.Kind != GameKind.Redist)
+                .Select(g => g.Stored.Manifest.Name)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            _discovery.Playing = names.Count == 0 ? null : string.Join(", ", names);
+        }
+        catch (Exception ex) { _log.LogWarning(ex, "Could not tell the other PCs what is being played"); }
+        finally { _announcing.Release(); }
+    });
 
     /// <summary>A finished install, repair or update is a game folder to watch, or one that changed under the watcher.</summary>
     private void OnDownloadEvent(object? sender, DownloadEvent e)

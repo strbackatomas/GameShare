@@ -32,6 +32,13 @@ public sealed partial class PeerViewModel : ViewModelBase
     [ObservableProperty] public partial string Address { get; set; } = "";
     [ObservableProperty] public partial string GamesText { get; set; } = "";
 
+    /// <summary>"hraje Half-Life 2" while a game runs on that PC, empty otherwise or for a peer too old to say.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsPlaying))]
+    public partial string PlayingText { get; set; } = "";
+
+    public bool IsPlaying => PlayingText.Length > 0;
+
     /// <summary>"v0.1.0", or empty for a peer old enough not to send its version.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowVersionPlain))]
@@ -69,6 +76,7 @@ public sealed partial class PeerViewModel : ViewModelBase
         Address = p.Address;
         GamesText = p.GameCount switch { 0 => "nenabízí žádnou hru", 1 => "nabízí 1 hru", >= 2 and <= 4 => $"nabízí {p.GameCount} hry", _ => $"nabízí {p.GameCount} her" };
         VersionText = string.IsNullOrEmpty(p.AppVersion) ? "" : $"v{p.AppVersion}";
+        PlayingText = string.IsNullOrWhiteSpace(p.Playing) ? "" : $"hraje {p.Playing}";
         IsVersionMismatch = !string.IsNullOrEmpty(p.AppVersion) && !string.IsNullOrEmpty(_localVersion) && p.AppVersion != _localVersion;
     }
 

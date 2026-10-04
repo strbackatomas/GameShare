@@ -119,7 +119,7 @@ public sealed class GameView
         (await ListGamesAsync(ct).ConfigureAwait(false)).FirstOrDefault(g => g.ContentHash == contentHash);
 
     public PeerDto ToDto(PeerInfo p) =>
-        new(p.MachineId, p.MachineName, p.Address.ToString(), p.AgentPort, _catalog.OfferCount(p.MachineId), p.LastSeen, p.AppVersion);
+        new(p.MachineId, p.MachineName, p.Address.ToString(), p.AgentPort, _catalog.OfferCount(p.MachineId), p.LastSeen, p.AppVersion, p.Playing);
 
     public DownloadDto ToDto(DownloadStatus d)
     {

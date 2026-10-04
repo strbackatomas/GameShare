@@ -290,8 +290,8 @@ internal static class Data
         new(id, hash, name, state, done, total, percent, speed, sources?.Length ?? 0, eta, error,
             (sources ?? []).Select(s => new DownloadPeerDto(s.Name, "10.0.0.1", s.Rate, 0, IsSeed: false)).ToList()) { Kind = kind };
 
-    public static PeerDto Peer(string id, string name, int games = 1, string? appVersion = null) =>
-        new(id, name, "192.168.30.10", 47702, games, DateTimeOffset.UtcNow, appVersion);
+    public static PeerDto Peer(string id, string name, int games = 1, string? appVersion = null, string? playing = null) =>
+        new(id, name, "192.168.30.10", 47702, games, DateTimeOffset.UtcNow, appVersion, playing);
 
     public static OfferedGameDto OfferedGame(string hash, string name, bool isComplete = true, double percentIntact = 100, string gameId = "game") =>
         new(hash, gameId, name, "0.38", 70_000_000_000) { IsComplete = isComplete, PercentIntact = percentIntact };

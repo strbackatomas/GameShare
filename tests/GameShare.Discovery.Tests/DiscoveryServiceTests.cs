@@ -158,6 +158,23 @@ public class DiscoveryServiceTests
     }
 
     [Fact]
+    public async Task A_game_started_is_announced_at_once_not_with_the_next_hello()
+    {
+        var bus = new InMemoryBus();
+        // Hellos far apart, so only the immediate announcement can explain the others knowing within the test.
+        await using var a = new Node("PC-01", bus.Join("192.168.30.101"), TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(5));
+        await using var b = new Node("PC-04", bus.Join("192.168.30.104"), TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(5));
+        a.Start(); b.Start();
+        await Wait.UntilAsync(() => a.Service.Peers.Count == 1 && b.Service.Peers.Count == 1, "a and b see each other");
+
+        a.Service.Playing = "Half-Life 2";
+        await Wait.UntilAsync(() => b.Service.Peers.Single().Playing == "Half-Life 2", "b to learn what a plays");
+
+        a.Service.Playing = null;
+        await Wait.UntilAsync(() => b.Service.Peers.Single().Playing is null, "b to learn a stopped");
+    }
+
+    [Fact]
     public void Timeout_shorter_than_two_hellos_is_rejected_because_peers_would_flap()
     {
         var options = new DiscoveryOptions

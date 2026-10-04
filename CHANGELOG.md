@@ -8,6 +8,14 @@ this is wired into the build and where a peer's version shows up.
 
 ## [Unreleased]
 
+### Added
+- The Síť page shows what is being played on each PC ("▶ hraje Half-Life 2"). Agents announce it in their discovery hello, at
+  once when a game starts or stops; a PC running an older version simply shows nothing.
+
+### Changed
+- "Kontrola sítě" folds to its one-line summary when everything is fine, and unfolds by itself when something is wrong.
+  A click on the summary opens or folds it.
+
 ### Fixed
 - A game that was already on the PC and was found by a scan, without its gameshare.json, now takes its definition (what starts it,
   its icon, how it is prepared) from a PC on the LAN with the same files, right after the scan. Before, it stayed without one: no

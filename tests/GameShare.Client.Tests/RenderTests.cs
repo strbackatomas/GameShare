@@ -55,7 +55,7 @@ public class RenderTests
                 PartialPeerNames = ["PC-01", "PC-04"], FullyAvailable = false, CoveragePercent = 96.5,
             },
         ],
-        Peers = [Peer("p1", "PC-01", 3), Peer("p4", "PC-04", 4), Peer("p8", "PC-08", 1), Peer("p10", "PC-10", 0)],
+        Peers = [Peer("p1", "PC-01", 3), Peer("p4", "PC-04", 4, playing: "Half-Life 2"), Peer("p8", "PC-08", 1), Peer("p10", "PC-10", 0)],
         Downloads =
         [
             Download(3, B, "Grand Theft Auto V", "Downloading", 54.2, done: 64_000_000_000, total: 118_111_600_640, speed: 301_000_000, eta: 130,
@@ -295,6 +295,20 @@ public class RenderTests
         Assert.True(main.Network.Check.HasResult);
         Assert.Equal(CheckLevel.Bad, main.Network.Check.Overall); // a real network is public
         Assert.Equal(CheckLevel.Warn, main.Network.Check.Ports[1].Level); // fine on Domov, not on Síť 3
+        Assert.Equal("hraje Half-Life 2", main.Network.Peers.Single(p => p.Name == "PC-04").PlayingText);
+        Assert.False(main.Network.Peers.Single(p => p.Name == "PC-01").IsPlaying);
+    }
+
+    [AvaloniaFact]
+    public async Task Network_page_folds_the_check_when_all_is_well()
+    {
+        var agent = Populated();
+        agent.NetworkCheck = NetworkCheckClientTests.Typical(NetworkCheckClientTests.Net("Domov", "Private"));
+        var main = await BuildAsync(agent);
+        var frame = await ShowAsync(main, "Síť", "network-ok.png");
+        Assert.True(DistinctColours(frame) > 50);
+        Assert.Equal(CheckLevel.Ok, main.Network.Check.Overall);
+        Assert.False(main.Network.Check.IsExpanded);
     }
 
     [AvaloniaFact]

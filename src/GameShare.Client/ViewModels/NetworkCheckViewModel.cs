@@ -45,6 +45,16 @@ public sealed partial class NetworkCheckViewModel(AppModel app) : ViewModelBase
     [ObservableProperty] public partial bool HasPeers { get; set; }
     [ObservableProperty] public partial string Message { get; set; } = "";
 
+    /// <summary>Whether the rows and advice are shown. Folded when all is well, so the card stays small; open as soon as something is wrong.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(Chevron))]
+    public partial bool IsExpanded { get; set; }
+
+    public string Chevron => IsExpanded ? "▾" : "▸";
+
+    [RelayCommand]
+    private void ToggleExpand() => IsExpanded = !IsExpanded;
+
     public bool IsOverallOk => Overall == CheckLevel.Ok;
     public bool IsOverallWarn => Overall == CheckLevel.Warn;
     public bool IsOverallBad => Overall == CheckLevel.Bad;
@@ -132,6 +142,7 @@ public sealed partial class NetworkCheckViewModel(AppModel app) : ViewModelBase
             CheckLevel.Warn => "Funguje, ale něco stojí za pozornost.",
             _ => "Něco brání ostatním PC se sem dostat. Co s tím je napsané níž.",
         };
+        IsExpanded = Overall != CheckLevel.Ok;
         HasResult = true;
     }
 

@@ -56,6 +56,25 @@ public sealed class DiscoveryService
 
     public IReadOnlyList<PeerInfo> Peers => _registry.Snapshot();
 
+    private volatile string? _playing;
+
+    /// <summary>
+    /// What this PC announces it is playing, null for nothing. A change is announced at once, not with the next regular hello,
+    /// so the other PCs see a game start within a second.
+    /// </summary>
+    public string? Playing
+    {
+        get => _playing;
+        set
+        {
+            if (value is { Length: > DiscoveryMessage.MaxPlayingLength }) value = value[..(DiscoveryMessage.MaxPlayingLength - 1)] + "…";
+            if (string.IsNullOrWhiteSpace(value)) value = null;
+            if (value == _playing) return;
+            _playing = value;
+            _replyRequests.Writer.TryWrite(true);
+        }
+    }
+
     /// <summary>Runs until cancelled. Sends a goodbye on the way out so peers notice immediately.</summary>
     public async Task RunAsync(CancellationToken cancellationToken)
     {
@@ -79,7 +98,8 @@ public sealed class DiscoveryService
     private Task SendAsync(string type, CancellationToken ct, TimeSpan? timeout = null) =>
         SafeAsync(async () =>
         {
-            var message = new DiscoveryMessage(type, DiscoveryMessage.CurrentVersion, _options.MachineId, _options.MachineName, _options.AgentPort, _options.AppVersion);
+            var message = new DiscoveryMessage(type, DiscoveryMessage.CurrentVersion, _options.MachineId, _options.MachineName, _options.AgentPort, _options.AppVersion,
+                type == DiscoveryMessage.Hello ? _playing : null);
             using var cts = timeout is null ? null : new CancellationTokenSource(timeout.Value);
             using var linked = cts is null ? null : CancellationTokenSource.CreateLinkedTokenSource(ct, cts.Token);
             await _transport.SendAsync(message.Serialize(), linked?.Token ?? ct).ConfigureAwait(false);

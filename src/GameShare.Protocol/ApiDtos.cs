@@ -79,7 +79,9 @@ public sealed record GameDto(
 }
 
 /// <param name="AppVersion">The peer's GameShare version, for example "0.1.0". Null for a peer that predates this field.</param>
-public sealed record PeerDto(string MachineId, string MachineName, string Address, int Port, int GameCount, DateTimeOffset LastSeen, string? AppVersion = null);
+/// <param name="Playing">The game being played on that PC now, null when none or when it runs a version that does not say.</param>
+public sealed record PeerDto(
+    string MachineId, string MachineName, string Address, int Port, int GameCount, DateTimeOffset LastSeen, string? AppVersion = null, string? Playing = null);
 
 public sealed record DownloadPeerDto(string Name, string Address, long DownloadRate, long UploadRate, bool IsSeed);
 

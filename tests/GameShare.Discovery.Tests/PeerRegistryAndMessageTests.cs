@@ -54,6 +54,22 @@ public class PeerRegistryTests
     }
 
     [Fact]
+    public void Starting_or_stopping_a_game_is_reported_so_the_other_pcs_show_what_is_played()
+    {
+        var r = new PeerRegistry();
+        r.OnHello(Hello(), Ip("192.168.30.101"), T0);
+
+        var started = r.OnHello(Hello() with { Playing = "Half-Life 2" }, Ip("192.168.30.101"), T0.AddSeconds(1));
+        var still = r.OnHello(Hello() with { Playing = "Half-Life 2" }, Ip("192.168.30.101"), T0.AddSeconds(11));
+        var stopped = r.OnHello(Hello(), Ip("192.168.30.101"), T0.AddSeconds(21));
+
+        Assert.Equal("Half-Life 2", started!.Peer.Playing);
+        Assert.Null(still);
+        Assert.Null(stopped!.Peer.Playing);
+        Assert.Equal("Half-Life 2", stopped.Previous!.Playing);
+    }
+
+    [Fact]
     public void Goodbye_removes_the_peer_and_an_unknown_goodbye_is_ignored()
     {
         var r = new PeerRegistry();
@@ -114,6 +130,7 @@ public class DiscoveryMessageTests
 
         Assert.True(DiscoveryMessage.TryParse(Encoding.UTF8.GetBytes(json), out var m, out var error), error);
         Assert.Null(m.AppVersion);
+        Assert.Null(m.Playing);
     }
 
     [Theory]
