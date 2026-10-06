@@ -125,6 +125,14 @@ public sealed class DefinitionSync
     /// <summary>The signed definition of an installed game or package, from a PC on the LAN, put in place of this PC's. Null when none has it.</summary>
     public async Task<GameManifest?> RefreshAsync(string contentHash, CancellationToken ct = default)
     {
+        // Signed, only for the version the folder is about to become (a file added to a package, not registered yet): putting the
+        // old version's definition back would undo the administrator's change before the folder can be registered as the new one.
+        var stored = await _db.GetManifestAsync(contentHash, ct).ConfigureAwait(false);
+        if (_trust.IsSignedForAnotherVersion(contentHash, stored?.Manifest.Definition))
+        {
+            _log.LogInformation("The definition of {Name} is the one signed for another version of it, it is kept", stored!.Manifest.Name);
+            return null;
+        }
         try
         {
             var (fetched, _) = await _catalog.FetchAsync(contentHash, ct, m => _trust.CheckDefinition(contentHash, m.Definition) == DefinitionVerdict.Verified).ConfigureAwait(false);

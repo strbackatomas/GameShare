@@ -8,6 +8,14 @@ this is wired into the build and where a peer's version shows up.
 
 ## [Unreleased]
 
+### Added
+- The shield next to a game also says whether how it starts and is prepared (its gameshare.json) is the one the administrator
+  signed, and a game whose files are verified but whose definition is not shows it on its card until the signed one arrives.
+
+### Fixed
+- A definition the administrator signed for the next version of a game or package (an installer added to the shared libraries, say)
+  is no longer replaced by the old version's signed one, fetched from another PC, before the folder is registered as the new version.
+
 ## [0.12.0] - 2026-10-06
 
 ### Added

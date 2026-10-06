@@ -62,6 +62,19 @@ public sealed class TrustService
     }
 
     /// <summary>
+    /// The administrator signed this definition for another version of the same game: the folder is being turned into that version
+    /// (a file added to a package, say) and its files are not registered as it yet. Its definition is then not a stray one to replace.
+    /// </summary>
+    public bool IsSignedForAnotherVersion(string contentHash, GameDefinition? definition)
+    {
+        var list = Usable();
+        if (Mode == TrustMode.Off || list is null || definition is null) return false;
+        var hash = DefinitionHasher.Compute(definition);
+        return list.Games.Values.Any(g => g.ContentHash != contentHash && g.DefinitionHash == hash
+            && string.Equals(g.GameId, definition.GameId, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
     /// Refuses to install a version the settings do not allow: a revoked one always, an unlisted one when verification is required,
     /// and every one when it is required and there is no usable list, because "cannot check" must not mean "allowed".
     /// </summary>

@@ -251,6 +251,42 @@ public class TrustTests : IDisposable
         Assert.Contains("\"/q:a\"", onDisk); // written into the folder too, so a rescan keeps it
     }
 
+    [Fact]
+    public async Task A_definition_signed_for_the_next_version_of_a_package_is_not_put_back_to_the_old_versions_before_the_folder_is_registered()
+    {
+        // The administrator adds an installer to the package: a new gameshare.json and a new file, signed as a new version. Until the
+        // folder is registered as that version, it is the old one here, and another PC offers the old one with its signed definition.
+        int discovery = TestAgent.DiscoveryPort();
+        WriteList(1, []);
+        await using var otherPc = await TestAgent.StartAsync("PC-01", discovery, preloadGame: true, bigFileBytes: SmallGame,
+            tweak: Trust(TrustMode.Warn), customiseGame: WithPackage("/q:a"));
+        await using var adminPc = await TestAgent.StartAsync("PC-02", discovery, preloadGame: true, bigFileBytes: SmallGame,
+            tweak: Trust(TrustMode.Warn), customiseGame: WithPackage("/q:a"));
+        var package = await otherPc.WaitForGameAsync(g => g.Name == "Redist" && g.State == GameState.Installed, "PC-01 to scan the package");
+        await adminPc.WaitForGameAsync(g => g.ContentHash == package.ContentHash && g.PeerNames.Count > 0, "PC-02 to see PC-01 offer the package");
+
+        var folder = Path.Combine(adminPc.GamesRoot, "_Redist");
+        var file = Path.Combine(folder, "gameshare.json");
+        await File.WriteAllTextAsync(file, (await File.ReadAllTextAsync(file)).Replace("\"/q:a\"", "\"/q:a /new\""));
+        var next = (await GameDefinitionFile.TryLoadAsync(folder))!;
+        void Sign(long sequence) => File.WriteAllBytes(ListPath, TrustSigning.Serialize(TrustSigning.Sign(new TrustPayload(sequence, Now, null,
+        [
+            new TrustedGame(package.ContentHash, "redist", "Redist", null) { DefinitionHash = DefinitionHasher.Compute(package.Definition!) },
+            new TrustedGame(new string('f', 64), "redist", "Redist", null) { DefinitionHash = DefinitionHasher.Compute(next) }, // the new version
+        ], []), _keys.PrivateKey)));
+        Sign(2);
+        await RefreshAsync(adminPc);
+        Assert.Equal(HttpStatusCode.OK, (await adminPc.SendAsync(HttpMethod.Post, "/api/games/scan")).StatusCode);
+        await adminPc.WaitForGameAsync(g => g.ContentHash == package.ContentHash && g.DefinitionTrust == DefinitionVerdict.Different, "PC-02 to read the new definition");
+        Sign(3);
+        await RefreshAsync(adminPc); // a new list: every installed game is checked against the signed definitions again
+
+        await Task.Delay(TimeSpan.FromSeconds(8)); // past a round of fetching the signed definitions
+
+        Assert.Contains("\"/q:a /new\"", await File.ReadAllTextAsync(file));
+        Assert.Equal("/q:a /new", (await adminPc.WaitForGameAsync(g => g.ContentHash == package.ContentHash, "the package")).Definition!.Provides["vc2005"].Args);
+    }
+
     private const string Definition = """{ "gameId": "testgame", "name": "TestGame", "launch": [ { "executable": "Game.exe" } ] }""";
 
     /// <summary>The game copied into PC's folder by hand, without its gameshare.json, and a scan run, as a user does with games they already had.</summary>

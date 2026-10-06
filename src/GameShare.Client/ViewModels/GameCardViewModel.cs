@@ -236,6 +236,11 @@ public sealed partial class GameCardViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(HasTrust), nameof(TrustText), nameof(TrustTip), nameof(IsTrustVerified), nameof(IsTrustUnknown), nameof(IsTrustRevoked))]
     public partial TrustVerdict Trust { get; set; }
 
+    /// <summary>Whether this PC's gameshare.json (how the game starts and is prepared) is the one the administrator signed.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(TrustTip), nameof(IsDefinitionDifferent))]
+    public partial DefinitionVerdict DefinitionTrust { get; set; }
+
     /// <summary>For a revoked version, the administrator's reason.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(TrustTip))]
@@ -291,14 +296,31 @@ public sealed partial class GameCardViewModel : ViewModelBase
     public bool IsTrustUnknown => Trust == TrustVerdict.Unknown;
     public bool IsTrustRevoked => Trust == TrustVerdict.Revoked;
 
-    /// <summary>What the shield means, in a sentence, for its tooltip.</summary>
+    /// <summary>What the shield means, in a sentence or two, for its tooltip: the files, and then how the game starts and is prepared.</summary>
     public string TrustTip => Trust switch
     {
-        TrustVerdict.Verified => "Ověřeno správcem: přesně tahle verze je na jeho podepsaném seznamu. Soubory jsou takové, jaké schválil.",
+        TrustVerdict.Verified => "Ověřeno správcem: přesně tahle verze je na jeho podepsaném seznamu. Soubory jsou takové, jaké schválil." + DefinitionTip,
         TrustVerdict.Unknown => "Neověřeno: tahle verze není na seznamu správce. Může být v pořádku, ale nikdo za ni neručí.",
         TrustVerdict.Revoked => "Zrušeno správcem: tuhle verzi stáhl" + (string.IsNullOrEmpty(TrustNote) ? "." : $" ({TrustNote}).") + " Neinstaluj ji.",
         _ => "",
     };
+
+    private string DefinitionTip => DefinitionTrust switch
+    {
+        DefinitionVerdict.Verified => " Nastavení spouštění a přípravy hry je také to, které podepsal.",
+        DefinitionVerdict.NotSigned => " Nastavení spouštění a přípravy hry nepodepsal.",
+        DefinitionVerdict.Different => " " + DefinitionDifferentText,
+        _ => "",
+    };
+
+    /// <summary>
+    /// The files are the administrator's, how the game starts and is prepared is not: it came from some PC, or the administrator changed
+    /// it since. The agent fetches the signed one from the LAN by itself, this says it is still waiting for it.
+    /// </summary>
+    public bool IsDefinitionDifferent => DefinitionTrust == DefinitionVerdict.Different && Trust == TrustVerdict.Verified;
+
+    public static string DefinitionDifferentText =>
+        "Nastavení spouštění a přípravy hry není to, které podepsal správce. Podepsané si GameShare stáhne sám od PC v síti, které ho má.";
 
     public string TrustText => Trust switch
     {
@@ -354,6 +376,7 @@ public sealed partial class GameCardViewModel : ViewModelBase
         IsRunning = g.IsRunning;
         Trust = g.Trust;
         TrustNote = g.TrustNote;
+        DefinitionTrust = g.DefinitionTrust;
         FullyAvailable = g.FullyAvailable;
         CoverageText = g.State == GameState.AvailableOnLan && !g.FullyAvailable
             ? $"Dohromady je k dispozici jen {Format.Percent(g.CoveragePercent ?? 0)} dat hry. Instalace půjde, až se objeví PC s chybějícími částmi."

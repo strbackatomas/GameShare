@@ -79,6 +79,8 @@
                                     <TextBlock IsVisible="{Binding IsDamaged}" Classes="muted" FontSize="12" TextWrapping="Wrap"
                                                Text="Nezměněné části hry se dál nabízejí ostatním PC." />
                                     <TextBlock IsVisible="{Binding IsTrustRevoked}" Foreground="{StaticResource DangerBrush}" FontSize="12" TextWrapping="Wrap" Text="{Binding TrustNote}" />
+                                    <TextBlock IsVisible="{Binding IsDefinitionDifferent}" Foreground="{StaticResource WarnBrush}" FontSize="12" TextWrapping="Wrap"
+                                               Text="{x:Static vm:GameCardViewModel.DefinitionDifferentText}" />
                                 </StackPanel>
 
                                 <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Top">

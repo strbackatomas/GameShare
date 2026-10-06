@@ -491,6 +491,20 @@ public class LibraryTests
         Assert.Equal(2, StarterOf(app).Started.Count);
     }
 
+    [Theory]
+    [InlineData(DefinitionVerdict.Verified, false, "také to, které podepsal")]
+    [InlineData(DefinitionVerdict.Different, true, "není to, které podepsal správce")]
+    [InlineData(DefinitionVerdict.NotSigned, false, "nepodepsal")]
+    public async Task The_shield_says_whether_how_the_game_starts_is_signed_too_and_a_different_one_shows_on_the_card(
+        DefinitionVerdict definition, bool shown, string tip)
+    {
+        var (main, _, _, _) = await StartAsync(Installed() with { Trust = TrustVerdict.Verified, DefinitionTrust = definition });
+        var card = main.Library.MyGames.Single();
+
+        Assert.Equal(shown, card.IsDefinitionDifferent);
+        Assert.Contains(tip, card.TrustTip);
+    }
+
     [Fact]
     public async Task A_game_that_does_not_need_a_microphone_never_asks_for_one()
     {
