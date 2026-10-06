@@ -18,7 +18,7 @@ public sealed partial class AppModel : ViewModelBase, IAsyncDisposable
     public AppModel(
         IAgentClient client, IEventStream events, IUiDispatcher ui,
         IGameStarter? starter = null, IFolderPicker? folderPicker = null, IClipboard? clipboard = null, ISetupRunner? setupRunner = null,
-        IClientRestarter? restarter = null, IRemoteWindows? remoteWindows = null, IFileDialogs? fileDialogs = null)
+        IClientRestarter? restarter = null, IRemoteWindows? remoteWindows = null, IFileDialogs? fileDialogs = null, IDeviceCheck? devices = null)
     {
         FileDialogs = fileDialogs ?? new NoFileDialogs();
         RemoteWindows = remoteWindows ?? new NoRemoteWindows();
@@ -27,6 +27,7 @@ public sealed partial class AppModel : ViewModelBase, IAsyncDisposable
         _events = events;
         _ui = ui;
         Starter = starter ?? new ProcessGameStarter();
+        Devices = devices ?? new WindowsDeviceCheck();
         SetupRunner = setupRunner ?? new Setup.ProcessSetupRunner();
         FolderPicker = folderPicker ?? new NoFolderPicker();
         Clipboard = clipboard ?? new NoClipboard();
@@ -71,6 +72,9 @@ public sealed partial class AppModel : ViewModelBase, IAsyncDisposable
 
     /// <summary>What starts a game once the agent has said it may be started.</summary>
     public IGameStarter Starter { get; }
+
+    /// <summary>What is plugged in, for a game that crashes without it.</summary>
+    public IDeviceCheck Devices { get; }
 
     /// <summary>Something changed where games are looked for (a folder was added), so the library should scan and show it.</summary>
     public event EventHandler? ScanRequested;

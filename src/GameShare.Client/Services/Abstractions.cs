@@ -167,6 +167,13 @@ public interface IGameStarter
     void Start(LaunchInfoDto info);
 }
 
+/// <summary>What is plugged into this PC, for games that do not start without it.</summary>
+public interface IDeviceCheck
+{
+    /// <summary>Windows has a recording device the game can open.</summary>
+    bool HasMicrophone();
+}
+
 /// <summary>
 /// Runs a preparation the player confirmed: the machine's steps in one elevated process (one UAC prompt), the player's own
 /// steps in the client. The agent cannot do either, it is a service without the player's profile and without their consent.

@@ -193,6 +193,10 @@ For a game that does not say, the client lists the programs of the game and the 
 ]
 ```
 
+A game that does not start without something plugged in says so in `needs`. The only one known so far is `"microphone"`: Call of Duty 2
+opens the microphone for voice chat as it starts and crashes when Windows has none, whatever its settings say. **Hrát** then checks for a
+recording device first and, without one, asks the player to plug a headset in, with **Přesto spustit** for one who knows better.
+
 The first entry is the play button, the others are in the **▾** menu next to it. `runAsAdmin` starts that program through the UAC prompt,
 for old games that write to `HKEY_LOCAL_MACHINE` while they run (a shield on the button says so). Most do not need it: Windows quietly
 redirects such writes of an old 32-bit program into the player's own VirtualStore. Every entry is checked like `executable`.
@@ -234,6 +238,17 @@ settings in Documents. `setup` in `gameshare.json` says what, and **Hrát** does
   key first.
 - `compatibility` sets a Windows compatibility mode for the player, `profile` copies a folder of the game into the player's profile
   unless it is there already (it may hold saves).
+- `defaults` is for settings a game rewrites while it is played, such as Quake 3's `baseq3/q3config.cfg`: the file is volatile, so it
+  is not shared and playing does not damage the game, and the game ships a copy of it (keys, a name, the LAN party's settings) that is
+  put in place on a PC that has none yet. A player's own file is never replaced. `{ "from": "_gameshare/q3config.cfg", "to":
+  "baseq3/q3config.cfg" }`; the target has to match a volatile pattern and must not be a file of the game.
+- Every program in `launch` is let through Windows Firewall, so a game that hosts or joins a LAN game does not stop on Windows'
+  question the first time (and is not left blocked when a player cancels it). The rule lets in the local network only, on private
+  and domain networks, never on public ones, and is named `GameShare – <game> – <program>`. Rules that block that program are
+  switched off. A program the firewall lets in already is skipped, so a game whose programs all are needs no UAC prompt. This is
+  done for a game without a `setup` section too, and for one whose definition nobody signed: it lets in no more than starting the
+  program would. `"firewall": { "launch": false }` leaves it out (a game that never uses the network), `"programs": [...]` adds
+  other programs of the game, such as a dedicated server the game starts itself.
 
 The agent plans and checks, and runs nothing: every file must be a file of the game with the hash the manifest says. The client shows
 each step, with the keys and values a `.reg` writes, and the player confirms. The machine's steps run in one elevated copy of the

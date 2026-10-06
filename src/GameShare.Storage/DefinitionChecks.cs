@@ -65,6 +65,9 @@ public static class DefinitionChecks
             if (LaunchRules.Plan(manifest, null, i, out var problem) is null)
                 problems.Add($"Spouštěč {i + 1} ({entries[i].Name ?? entries[i].Executable}): {problem ?? "nemá program."}");
 
+        foreach (var need in (definition.Needs ?? []).Where(n => !GameNeeds.All.Contains(n, StringComparer.OrdinalIgnoreCase)))
+            problems.Add($"Hra potřebuje '{need}', tomu GameShare nerozumí. Zná jen: {string.Join(", ", GameNeeds.All)}.");
+
         var setup = definition.Setup ?? new GameSetup();
         foreach (var r in setup.Redist)
             if (LaunchRules.GameFile(manifest, r.File, out var problem) is null) problems.Add($"Instalátor: {problem}");
@@ -92,6 +95,20 @@ public static class DefinitionChecks
         {
             if (!Directory.Exists(Path.Combine(folder, p.From))) problems.Add($"Profil: složka {p.From} ve hře není.");
             if (!SetupPlanner.IsProfileTarget(p.To)) problems.Add($"Profil: cíl {p.To} musí začínat {string.Join(", ", SetupPlanner.ProfileTokens)}.");
+        }
+
+        var volatileFiles = VolatileRules.Resolve(definition);
+        foreach (var copy in setup.Defaults ?? [])
+        {
+            if (LaunchRules.GameFile(manifest, copy.From, out var problem) is null) problems.Add($"Výchozí soubor: {problem}");
+            if (!volatileFiles.IsMatch(copy.To.Trim().Replace('\\', '/').Trim('/')))
+                problems.Add($"Výchozí soubor: {copy.To} musí být mezi proměnnými soubory (volatile), jinak by kopie poškodila hru.");
+        }
+
+        foreach (var program in setup.Firewall?.Programs ?? [])
+        {
+            if (!program.Trim().EndsWith(".exe", StringComparison.OrdinalIgnoreCase)) problems.Add($"Firewall: {program} není program (.exe).");
+            else if (LaunchRules.GameFile(manifest, program, out var problem) is null) problems.Add($"Firewall: {problem}");
         }
         return problems;
     }

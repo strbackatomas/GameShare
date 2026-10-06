@@ -55,6 +55,30 @@ public class SetupStepsTests : IDisposable
     }
 
     [Fact]
+    public async Task A_default_file_is_put_in_place_only_where_the_game_has_none_and_only_as_it_was_verified()
+    {
+        var shipped = Path.Combine(_dir, "_gameshare", "q3config.cfg");
+        Directory.CreateDirectory(Path.GetDirectoryName(shipped)!);
+        File.WriteAllText(shipped, "bind w \"+forward\"");
+        var target = Path.Combine(_dir, "baseq3", "q3config.cfg");
+        SetupStepDto Step() => new(SetupStepKind.DefaultFile, "q3config", false) { File = shipped, FileHash = Sha(shipped), Target = target };
+
+        var first = await SetupSteps.RunAsync([Step()]);
+        Assert.True(Assert.Single(first).Ok, first[0].Message);
+        Assert.Equal("bind w \"+forward\"", File.ReadAllText(target));             // the folder is created too
+
+        File.WriteAllText(target, "bind e \"+forward\"");                          // the player's own since
+        var again = await SetupSteps.RunAsync([Step()]);
+        Assert.True(again[0].Ok);
+        Assert.Equal("bind e \"+forward\"", File.ReadAllText(target));             // never replaced
+
+        File.Delete(target);
+        var changed = await SetupSteps.RunAsync([Step() with { FileHash = new string('0', 64) }]);
+        Assert.False(changed[0].Ok);
+        Assert.False(File.Exists(target));
+    }
+
+    [Fact]
     public async Task A_compatibility_mode_is_set_for_the_player_the_way_windows_writes_it()
     {
         var exe = Path.Combine(_dir, "Game.exe");

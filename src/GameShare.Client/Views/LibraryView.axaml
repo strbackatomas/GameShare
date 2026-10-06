@@ -122,6 +122,12 @@
                                     <Button Grid.Column="1" Content="Označit jako proměnné" Command="{Binding MarkVolatileCommand}" Margin="12,0,0,0" />
                                 </Grid>
 
+                                <Grid Grid.Row="5" Grid.ColumnSpan="2" ColumnDefinitions="*,Auto,Auto" Margin="0,8,0,0" IsVisible="{Binding IsAskingForMicrophone}">
+                                    <TextBlock Grid.Column="0" Text="{Binding MicrophoneText}" Foreground="{StaticResource WarnBrush}" TextWrapping="Wrap" VerticalAlignment="Center" />
+                                    <Button Grid.Column="1" Content="Přesto spustit" Command="{Binding StartWithoutMicrophoneCommand}" Margin="8,0,0,0" />
+                                    <Button Grid.Column="2" Content="Zrušit" Command="{Binding CancelMicrophoneCommand}" Margin="8,0,0,0" />
+                                </Grid>
+
                                 <Grid Grid.Row="5" Grid.ColumnSpan="2" ColumnDefinitions="*,Auto,Auto" Margin="0,8,0,0" IsVisible="{Binding IsConfirmingUninstall}">
                                     <TextBlock Grid.Column="0" Text="Opravdu odinstalovat? Smažou se i soubory hry na disku." Classes="muted" TextWrapping="Wrap" VerticalAlignment="Center" />
                                     <Button Grid.Column="1" Classes="danger" Content="Ano, odinstalovat" Command="{Binding ConfirmUninstallCommand}" Margin="8,0,0,0" />

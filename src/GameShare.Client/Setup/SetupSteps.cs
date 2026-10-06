@@ -36,6 +36,8 @@ public static class SetupSteps
                     SetupStepKind.RegistryImport => await ImportAsync(step, ct).ConfigureAwait(false),
                     SetupStepKind.Compatibility => SetLayers(step),
                     SetupStepKind.Profile => CopyProfile(step),
+                    SetupStepKind.Firewall => AllowThroughFirewall(step),
+                    SetupStepKind.DefaultFile => await CopyDefaultAsync(step, ct).ConfigureAwait(false),
                     _ => throw new InvalidOperationException($"Neznámý krok {step.Kind}."),
                 };
                 results.Add(new SetupStepResultDto(step.Title, true, note));
@@ -127,6 +129,68 @@ public static class SetupSteps
         }
         Directory.CreateDirectory(target);
         return null;
+    }
+
+    /// <summary>
+    /// The shipped copy of the game's settings, put where the game reads them, unless the game has its own there by now: those are
+    /// the player's. Hashed as read, so what lands there is the copy that was verified.
+    /// </summary>
+    private static async Task<string?> CopyDefaultAsync(SetupStepDto step, CancellationToken ct)
+    {
+        var source = step.File ?? throw new InvalidOperationException("Krok neříká, odkud kopírovat.");
+        var target = step.Target ?? throw new InvalidOperationException("Krok neříká, kam kopírovat.");
+        if (File.Exists(target)) return "Hra už má vlastní, nechávám ho být.";
+        var bytes = await File.ReadAllBytesAsync(source, ct).ConfigureAwait(false);
+        if (!string.Equals(Convert.ToHexStringLower(SHA256.HashData(bytes)), step.FileHash, StringComparison.Ordinal))
+            throw new InvalidOperationException($"{Path.GetFileName(source)} se od kontroly změnil, nekopíruji ho.");
+        Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+        await using var file = new FileStream(target, FileMode.CreateNew, FileAccess.Write); // never over one that appeared meanwhile
+        await file.WriteAsync(bytes, ct).ConfigureAwait(false);
+        return null;
+    }
+
+    private const int Inbound = 1, Allow = 1, ProfileDomain = 1, ProfilePrivate = 2;
+
+    /// <summary>
+    /// One inbound rule for the program, any protocol, from the local subnet, on private and domain networks: what the agent's own
+    /// ports get. The rule of the same name is replaced, and rules that block this exact program are switched off, since a block wins
+    /// over an allow and Windows leaves one behind when its question was cancelled. Through the firewall's COM interface, as the
+    /// agent reads it, so it works the same in every language of Windows.
+    /// </summary>
+    private static string? AllowThroughFirewall(SetupStepDto step)
+    {
+        var program = Path.GetFullPath(step.File ?? throw new InvalidOperationException("Krok neříká, pro který program."));
+        var name = step.Target is { Length: > 0 } t ? t : throw new InvalidOperationException("Krok neříká, jak pravidlo pojmenovat.");
+        if (!File.Exists(program)) throw new InvalidOperationException($"{Path.GetFileName(program)} ve složce hry není.");
+
+        dynamic policy = Activator.CreateInstance(Type.GetTypeFromProgID("HNetCfg.FwPolicy2", throwOnError: true)!)!;
+        int ours = 0, blocked = 0;
+        foreach (dynamic r in policy.Rules)
+        {
+            string ruleName = r.Name;
+            if (string.Equals(ruleName, name, StringComparison.Ordinal)) { ours++; continue; }
+            string? app = r.ApplicationName;
+            if ((bool)r.Enabled && (int)r.Direction == Inbound && (int)r.Action != Allow && !string.IsNullOrEmpty(app)
+                && string.Equals(Path.GetFullPath(Environment.ExpandEnvironmentVariables(app)), program, StringComparison.OrdinalIgnoreCase))
+            {
+                r.Enabled = false; // switched off, not deleted: another rule may share its name, and an administrator can turn it back on
+                blocked++;
+            }
+        }
+        for (int i = 0; i < ours; i++) policy.Rules.Remove(name); // by name, one rule per call; the name is GameShare's own
+
+        dynamic rule = Activator.CreateInstance(Type.GetTypeFromProgID("HNetCfg.FWRule", throwOnError: true)!)!;
+        rule.Name = name;
+        rule.Description = "Hra z GameShare, povolená při přípravě hry. Hra se může spojit s ostatními v místní síti.";
+        rule.Grouping = "GameShare";
+        rule.ApplicationName = program;
+        rule.Direction = Inbound;
+        rule.Action = Allow;
+        rule.Profiles = ProfileDomain | ProfilePrivate;
+        rule.RemoteAddresses = "LocalSubnet";
+        rule.Enabled = true;
+        policy.Rules.Add(rule);
+        return blocked > 0 ? $"Vypnuto pravidel, která program blokovala: {blocked}." : null;
     }
 
     /// <summary>{Documents}\Battlefield 2 for the player running this, never anywhere outside their profile folders.</summary>

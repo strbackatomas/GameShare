@@ -39,6 +39,8 @@ public sealed partial class DefinitionEditorViewModel : ObservableObject
         foreach (var r in setup.Registry) Registry.Add(new RegistryRow(this) { File = r.File, Cleanup = r.Cleanup ?? "", OriginalPath = r.OriginalPath ?? "" });
         foreach (var c in setup.Compatibility) Compatibility.Add(new CompatibilityRow(this) { Executable = c.Executable, Layers = c.Layers });
         foreach (var p in setup.Profile) Profile.Add(new ProfileRow(this) { From = p.From, To = p.To });
+        FirewallLaunch = setup.Firewall?.Launch ?? true;
+        NeedsMicrophone = original.NeedsMicrophone();
     }
 
     /// <summary>Opens the folder's gameshare.json, or starts a new one named after the folder.</summary>
@@ -65,6 +67,12 @@ public sealed partial class DefinitionEditorViewModel : ObservableObject
     [ObservableProperty] public partial string GameId { get; set; } = "";
     [ObservableProperty] public partial string Name { get; set; } = "";
     [ObservableProperty] public partial string GameVersion { get; set; } = "";
+
+    /// <summary>Preparing lets the programs in the list through Windows Firewall. Off for a game that never uses the network.</summary>
+    [ObservableProperty] public partial bool FirewallLaunch { get; set; } = true;
+
+    /// <summary>The game crashes without a recording device, so the client asks for one before starting it.</summary>
+    [ObservableProperty] public partial bool NeedsMicrophone { get; set; }
 
     public ObservableCollection<LaunchRow> Launch { get; } = [];
     public ObservableCollection<RequireRow> Requires { get; } = [];
@@ -119,6 +127,10 @@ public sealed partial class DefinitionEditorViewModel : ObservableObject
             Compatibility = Compatibility.Where(c => Blank(c.Executable) is not null)
                 .Select(c => new CompatibilityStep { Executable = c.Executable.Trim(), Layers = c.Layers.Trim() }).ToList(),
             Profile = Profile.Where(p => Blank(p.From) is not null).Select(p => new ProfileStep { From = p.From.Trim(), To = p.To.Trim() }).ToList(),
+            // Null is the default, the programs in the list; other programs the file names are kept, the form does not show them.
+            Defaults = _original.Setup?.Defaults, // not in the form, kept as the file has it
+            Firewall = _original.Setup?.Firewall is { Programs.Count: > 0 } kept ? kept with { Launch = FirewallLaunch }
+                : FirewallLaunch ? null : new FirewallSetup { Launch = false },
         };
         return _original with
         {
@@ -133,7 +145,16 @@ public sealed partial class DefinitionEditorViewModel : ObservableObject
                 WorkingDirectory = Blank(l.WorkingDirectory) ?? ".", RunAsAdmin = l.RunAsAdmin,
             }).ToList(),
             Setup = setup.IsEmpty ? null : setup,
+            Needs = Needs(),
         };
+    }
+
+    /// <summary>Whatever else the file needs is kept, the form only shows the microphone. Null when nothing, as the file had it.</summary>
+    private IReadOnlyList<string>? Needs()
+    {
+        var needs = (_original.Needs ?? []).Where(n => !n.Equals(GameNeeds.Microphone, StringComparison.OrdinalIgnoreCase)).ToList();
+        if (NeedsMicrophone) needs.Add(GameNeeds.Microphone);
+        return needs.Count > 0 ? needs : null;
     }
 
     /// <summary>Checks and writes gameshare.json. A definition an agent would refuse is not written, the problems say why.</summary>

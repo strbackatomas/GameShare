@@ -28,7 +28,9 @@ public sealed partial class GameCardViewModel : ViewModelBase
     /// <summary>The identity of this version, and its id in the agent's API.</summary>
     public string ContentHash { get; }
 
-    [ObservableProperty] public partial string Name { get; set; } = "";
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(MicrophoneText))]
+    public partial string Name { get; set; } = "";
     [ObservableProperty] public partial string Details { get; set; } = "";
     [ObservableProperty] public partial string PeersText { get; set; } = "";
     [ObservableProperty] public partial string? InstallPath { get; set; }
@@ -214,6 +216,16 @@ public sealed partial class GameCardViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(ShowInstallButton))]
     public partial bool IsChoosingInstallFolder { get; set; }
 
+    /// <summary>The game crashes without a recording device (its definition says so), checked each time it is started.</summary>
+    [ObservableProperty] public partial bool NeedsMicrophone { get; set; }
+
+    /// <summary>Play found no microphone and asks the player to plug one in, or to start the game anyway.</summary>
+    [ObservableProperty] public partial bool IsAskingForMicrophone { get; set; }
+
+    public string MicrophoneText => $"Připoj sluchátka s mikrofonem, {Name} bez něj po spuštění spadne. Pak klikni znovu na Hrát.";
+
+    private int _entryAfterMicrophone;
+
     /// <summary>The player is asked to confirm before the game's files are deleted.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowUninstallButton))]
@@ -331,7 +343,8 @@ public sealed partial class GameCardViewModel : ViewModelBase
         PeersText = g.State == GameState.AvailableOnLan && g.PeerNames.Count > 0 ? DescribePeers(g) : "";
         Launch = g.Launch;
         ApplyLaunchOptions(g.LaunchOptions);
-        HasSetup = g.Definition?.Setup is { IsEmpty: false } && g.Definition.Kind == GameKind.Game;
+        HasSetup = g.Definition?.HasSetup() == true;
+        NeedsMicrophone = g.Definition?.NeedsMicrophone() == true;
         NeedsSetup = g.NeedsSetup;
         if (g.HasIcon && !_iconRequested)
         {
@@ -398,7 +411,7 @@ public sealed partial class GameCardViewModel : ViewModelBase
         var others = options.Where(o => o.Index != 0).ToList();
         if (others.SequenceEqual(OtherLaunchOptions.Select(o => o.Option))) return;
         OtherLaunchOptions.Clear();
-        foreach (var o in others) OtherLaunchOptions.Add(new LaunchOptionViewModel(o, StartAsync));
+        foreach (var o in others) OtherLaunchOptions.Add(new LaunchOptionViewModel(o, entry => StartAsync(entry)));
         OtherLaunchOptionCount = OtherLaunchOptions.Count;
         RebuildMenu();
     }
@@ -423,10 +436,20 @@ public sealed partial class GameCardViewModel : ViewModelBase
     [RelayCommand(CanExecute = nameof(CanAct))]
     private Task PlayAsync() => StartAsync(0);
 
-    /// <summary>Starts one of the game's programs, 0 being the game itself. A game not prepared on this PC yet is prepared first.</summary>
-    private async Task StartAsync(int entry)
+    /// <summary>
+    /// Starts one of the game's programs, 0 being the game itself. A game that crashes without a microphone asks for one first, and a
+    /// game not prepared on this PC yet is prepared first.
+    /// </summary>
+    private async Task StartAsync(int entry, bool withoutMicrophone = false)
     {
         if (IsBusy) return;
+        IsAskingForMicrophone = false;
+        if (NeedsMicrophone && !withoutMicrophone && !_app.Devices.HasMicrophone())
+        {
+            _entryAfterMicrophone = entry;
+            IsAskingForMicrophone = true;
+            return;
+        }
         if (NeedsSetup)
         {
             await OpenSetupAsync(entry).ConfigureAwait(true);
@@ -520,6 +543,13 @@ public sealed partial class GameCardViewModel : ViewModelBase
         IsShowingSetup = false;
         await LaunchAsync(_entryAfterSetup).ConfigureAwait(true);
     }
+
+    /// <summary>For a player who knows better, a microphone Windows does not report, say. Asked again next time.</summary>
+    [RelayCommand(CanExecute = nameof(CanAct))]
+    private Task StartWithoutMicrophoneAsync() => StartAsync(_entryAfterMicrophone, withoutMicrophone: true);
+
+    [RelayCommand]
+    private void CancelMicrophone() => IsAskingForMicrophone = false;
 
     /// <summary>Plays without preparing, for a player who knows the game runs without it. Asked again next time.</summary>
     [RelayCommand]

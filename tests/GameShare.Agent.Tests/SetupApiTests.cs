@@ -48,8 +48,9 @@ public class SetupApiTests
 
         var plan = await pc.GetAsync<SetupPlanDto>($"/api/games/{game.ContentHash}/setup");
         Assert.Null(plan.Blocked);
-        Assert.Equal([SetupStepKind.RegistryImport, SetupStepKind.Compatibility, SetupStepKind.Profile], plan.Steps.Select(s => s.Kind));
-        Assert.False(plan.NeedsAdmin); // everything here is the player's own
+        Assert.Equal([SetupStepKind.RegistryImport, SetupStepKind.Compatibility, SetupStepKind.Profile, SetupStepKind.Firewall], plan.Steps.Select(s => s.Kind));
+        Assert.All(plan.Steps.SkipLast(1), s => Assert.False(s.NeedsAdmin)); // the player's own, only the firewall rule is the machine's
+        Assert.Equal(Path.Combine(pc.InstalledPath, "Game.exe"), plan.Steps[3].File);
         Assert.Contains(pc.InstalledPath.Replace("\\", "\\\\"), plan.Steps[0].Content); // pointed at this PC's folder
 
         var wrong = await pc.SendAsync(HttpMethod.Post, $"/api/games/{game.ContentHash}/setup/done", new SetupDoneRequest("not-the-plan"));

@@ -47,6 +47,40 @@ public sealed class WindowsSetupProbe : ISetupProbe
         return path;
     }
 
+    public bool FirewallAllows(string program)
+    {
+        if (!OperatingSystem.IsWindows()) return false;
+        try { return FirewallRulesAllow(Path.GetFullPath(program)); }
+        catch (Exception ex) when (ex is System.Runtime.InteropServices.COMException or InvalidCastException or ArgumentException)
+        {
+            return false; // unknown, so preparing makes the rule anyway
+        }
+    }
+
+    private const int ProfilePrivate = 2, ProtocolTcp = 6, ProtocolUdp = 17, ProtocolAny = 256;
+
+    /// <summary>
+    /// An enabled inbound rule for exactly this program lets in TCP and UDP on private networks, and none blocks it there: a block
+    /// rule wins, and one is what Windows leaves behind when a player cancels its question.
+    /// </summary>
+    [SupportedOSPlatform("windows")]
+    private static bool FirewallRulesAllow(string program)
+    {
+        dynamic policy = Activator.CreateInstance(Type.GetTypeFromProgID("HNetCfg.FwPolicy2", throwOnError: true)!)!;
+        bool tcp = false, udp = false;
+        foreach (dynamic r in policy.Rules)
+        {
+            if (!(bool)r.Enabled || (int)r.Direction != 1 || ((int)r.Profiles & ProfilePrivate) == 0) continue; // 1 is inbound
+            string? app = r.ApplicationName;
+            if (string.IsNullOrEmpty(app) || !string.Equals(Path.GetFullPath(Environment.ExpandEnvironmentVariables(app)), program, StringComparison.OrdinalIgnoreCase)) continue;
+            if ((int)r.Action != 1) return false;
+            int protocol = r.Protocol;
+            tcp |= protocol is ProtocolTcp or ProtocolAny;
+            udp |= protocol is ProtocolUdp or ProtocolAny;
+        }
+        return tcp && udp;
+    }
+
     [SupportedOSPlatform("windows")]
     private static bool RegistryHas(string key, string? value)
     {

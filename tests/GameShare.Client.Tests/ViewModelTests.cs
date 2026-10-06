@@ -456,6 +456,55 @@ public class LibraryTests
         Assert.Contains("spouští", main.Library.MyGames.Single().Message);
     }
 
+    private sealed class FakeDevices(bool microphone) : IDeviceCheck
+    {
+        public bool Microphone { get; set; } = microphone;
+        public bool HasMicrophone() => Microphone;
+    }
+
+    [Fact]
+    public async Task A_game_that_crashes_without_a_microphone_asks_for_one_and_starts_once_it_is_there_or_the_player_insists()
+    {
+        var agent = new FakeAgent
+        {
+            Games = [Installed() with { Name = "Call of Duty 2", Definition = new GameDefinition { GameId = "cod2", Name = "Call of Duty 2", Needs = [GameNeeds.Microphone] } }],
+            LaunchInfo = new LaunchInfoDto(@"D:\Hry\Call of Duty 2\CoD2MP_s.exe", null, @"D:\Hry\Call of Duty 2"),
+        };
+        var devices = new FakeDevices(microphone: false);
+        var app = new AppModel(agent, new FakeEvents(), new ImmediateDispatcher(), new FakeStarter(), devices: devices);
+        var main = new MainViewModel(app);
+        await app.StartAsync();
+        var card = main.Library.MyGames.Single();
+
+        await card.PlayCommand.ExecuteAsync(null);
+        Assert.True(card.IsAskingForMicrophone);
+        Assert.Contains("Call of Duty 2 bez něj po spuštění spadne", card.MicrophoneText);
+        Assert.DoesNotContain(agent.Calls, c => c.StartsWith("Launch"));
+
+        await card.StartWithoutMicrophoneCommand.ExecuteAsync(null);
+        Assert.False(card.IsAskingForMicrophone);
+        Assert.Single(StarterOf(app).Started);
+
+        devices.Microphone = true;                              // plugged in: Play just plays
+        await card.PlayCommand.ExecuteAsync(null);
+        Assert.False(card.IsAskingForMicrophone);
+        Assert.Equal(2, StarterOf(app).Started.Count);
+    }
+
+    [Fact]
+    public async Task A_game_that_does_not_need_a_microphone_never_asks_for_one()
+    {
+        var agent = new FakeAgent { Games = [Installed()], LaunchInfo = new LaunchInfoDto(@"D:\Games\BeamNG\Game.exe", null, @"D:\Games\BeamNG") };
+        var app = new AppModel(agent, new FakeEvents(), new ImmediateDispatcher(), new FakeStarter(), devices: new FakeDevices(microphone: false));
+        var main = new MainViewModel(app);
+        await app.StartAsync();
+
+        await main.Library.MyGames.Single().PlayCommand.ExecuteAsync(null);
+
+        Assert.False(main.Library.MyGames.Single().IsAskingForMicrophone);
+        Assert.Single(StarterOf(app).Started);
+    }
+
     [Fact]
     public async Task A_games_other_programs_are_offered_next_to_play_and_start_by_their_index()
     {

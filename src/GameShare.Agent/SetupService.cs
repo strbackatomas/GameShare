@@ -66,10 +66,13 @@ public sealed class SetupService
         var plan = await SetupPlanner.PlanAsync(manifest, installation.InstallPath, packages.Select(p => p.Package).ToList(), _probe, ct).ConfigureAwait(false);
 
         string? blocked = null, warning = null, missingHash = null;
+        // Letting a program of the game in from the LAN is no more than starting it, which an unsigned definition may do too. Only
+        // the other steps (installers, registry) need the administrator's signature.
+        var needsSignature = plan.Steps.Any(s => s.Kind != SetupStepKind.Firewall);
         var (gameVerdict, note) = _trust.Check(contentHash);
         if (gameVerdict == TrustVerdict.Revoked) blocked = $"Správce tuto verzi hry stáhl: {note}";
         else if (plan.Problems.Count > 0) blocked = "Definice hry obsahuje kroky, které GameShare neprovede: " + string.Join(" ", plan.Problems);
-        else if (_trust.Mode == TrustMode.Require && verdict != DefinitionVerdict.Verified)
+        else if (needsSignature && _trust.Mode == TrustMode.Require && verdict != DefinitionVerdict.Verified)
             blocked = verdict == DefinitionVerdict.Different
                 ? "Tahle definice hry není ta, kterou podepsal správce, a tento PC pouští jen ověřené. Počkej, až bude v síti PC s podepsanou verzí."
                 : "Správce definici této hry nepodepsal a tento PC pouští přípravu jen u ověřených her.";
@@ -83,7 +86,7 @@ public sealed class SetupService
         else if (_trust.Mode == TrustMode.Require && packages.Where(p => !p.DefinitionVerified).Select(p => p.Package).FirstOrDefault() is { } unverified)
             blocked = $"Balíček {unverified.Manifest.Name} nemá podepsanou definici a tento PC pouští přípravu jen u ověřených.";
 
-        if (blocked is null && verdict is DefinitionVerdict.NotSigned or DefinitionVerdict.Different && _trust.Mode != TrustMode.Off)
+        if (blocked is null && needsSignature && verdict is DefinitionVerdict.NotSigned or DefinitionVerdict.Different && _trust.Mode != TrustMode.Off)
             warning = verdict == DefinitionVerdict.Different
                 ? "Pozor: tahle definice hry není ta, kterou podepsal správce. Kroky níže přišly z jiného PC."
                 : "Správce definici této hry nepodepsal. Kroky níže přišly z PC, od kterého je hra.";

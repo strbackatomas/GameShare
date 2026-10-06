@@ -9,6 +9,11 @@ namespace GameShare.Storage;
 public interface ISetupProbe
 {
     bool IsInstalled(InstalledCheck check);
+
+    /// <summary>
+    /// Whether Windows Firewall lets this program in on private networks already and no rule blocks it there, so Windows will not ask.
+    /// </summary>
+    bool FirewallAllows(string program) => false;
 }
 
 /// <summary>A redistributables package installed on this PC, the kind other games' setup draws from.</summary>
@@ -35,14 +40,23 @@ public static partial class SetupPlanner
     private static partial Regex LayersPattern();
 
     /// <summary>
-    /// What was prepared: the setup section and the folder, since the registry points at the folder. A new version whose setup is
-    /// the same needs no preparing again, a game moved to another folder does.
+    /// What was prepared: the setup section, the programs let through the firewall, and the folder, since the registry and the
+    /// firewall rules point at the folder. A new version whose setup is the same needs no preparing again, a game moved to another
+    /// folder does.
     /// </summary>
-    public static string SetupHash(GameDefinition definition, string installPath) =>
-        Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(
-            GameShareJson.Serialize(definition.Setup) + "\n" + Path.GetFullPath(installPath).TrimEnd('\\').ToLowerInvariant())));
+    public static string SetupHash(GameDefinition definition, string installPath)
+    {
+        var firewall = definition.FirewallPrograms();
+        var text = GameShareJson.Serialize(definition.Setup) + "\n" + Path.GetFullPath(installPath).TrimEnd('\\').ToLowerInvariant();
+        // Only when there are any, so a game without programs keeps the hash it was prepared under before the firewall was part of it.
+        if (firewall.Count > 0) text += "\nfirewall:" + string.Join("|", firewall.Select(p => p.ToLowerInvariant()));
+        return Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(text)));
+    }
 
-    public static bool HasSetup(GameManifest manifest) => manifest.Definition?.Setup is { IsEmpty: false } && manifest.Definition.Kind == GameKind.Game;
+    public static bool HasSetup(GameManifest manifest) => manifest.Definition?.HasSetup() == true;
+
+    /// <summary>The name of the firewall rule for a program of a game, so it can be recognised, replaced and removed.</summary>
+    public static string FirewallRuleName(string gameName, string program) => $"GameShare – {gameName} – {program}";
 
     public static async Task<SetupPlan> PlanAsync(
         GameManifest game, string installPath, IReadOnlyList<InstalledPackage> packages, ISetupProbe probe, CancellationToken ct = default)
@@ -163,6 +177,56 @@ public static partial class SetupPlanner
             {
                 File = Inside(root, from), Target = profile.To,
                 Details = [$"{from} ({files} souborů). Když cílová složka už existuje, nechá se být, může v ní mít uložené hry."],
+            });
+        }
+
+        var volatileFiles = VolatileRules.Resolve(definition, game.VolatilePatterns);
+        foreach (var copy in setup.Defaults ?? [])
+        {
+            var file = LaunchRules.GameFile(game, copy.From, out var problem);
+            if (file is null) { problems.Add($"Výchozí soubor: {problem}"); continue; }
+            var to = copy.To.Trim().Replace('\\', '/').Trim('/');
+            if (copy.To.TrimStart() is ['/' or '\\', ..] || !ManifestValidator.IsSafeRelativePath(to))
+            {
+                problems.Add($"Výchozí soubor: '{copy.To}' is not a path inside the game folder.");
+                continue;
+            }
+            // Only over what the game rewrites: a file that is game content would be damaged, and the next repair would undo it.
+            if (!volatileFiles.IsMatch(to) || game.Files.Any(f => string.Equals(f.Path, to, StringComparison.OrdinalIgnoreCase)))
+            {
+                problems.Add($"Výchozí soubor: '{to}' is part of the game, not a file the game rewrites. Add it to volatile first.");
+                continue;
+            }
+            var target = Inside(root, to);
+            var there = File.Exists(target);
+            steps.Add(new SetupStepDto(SetupStepKind.DefaultFile, $"Výchozí nastavení {to}", NeedsAdmin: false)
+            {
+                File = Inside(root, file.Path), FileHash = file.Hash, Target = target, AlreadyDone = there,
+                Details = [there ? "Hra ho už má, nechá se být, může v něm mít hráčovo nastavení." : $"Zkopíruje se z {file.Path}, jen dokud tam žádný není."],
+            });
+        }
+
+        var named = (setup.Firewall?.Programs ?? []).Select(p => p.Trim().Replace('\\', '/').Trim('/')).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var program in definition.FirewallPrograms())
+        {
+            var file = LaunchRules.GameFile(game, program, out var problem);
+            if (file is null)
+            {
+                // A program the definition names for the firewall has to be the game's. One taken from launch is refused when it is
+                // started anyway, so preparing just leaves it out.
+                if (named.Contains(program)) problems.Add($"Firewall: {problem}");
+                continue;
+            }
+            var full = Inside(root, file.Path);
+            var done = probe.FirewallAllows(full);
+            // The path, not just the name: Bin32/FarCry.exe and Bin64/FarCry.exe are two steps, and results are matched by title.
+            steps.Add(new SetupStepDto(SetupStepKind.Firewall, $"Povolit {file.Path} ve firewallu", NeedsAdmin: true)
+            {
+                File = full, Target = FirewallRuleName(definition.Name, file.Path), AlreadyDone = done,
+                Details = [done
+                    ? "Firewall ho už pouští, Windows se ptát nebude."
+                    : "Příchozí spojení z místní sítě, jen v soukromých a doménových sítích, ve veřejných ne. Windows se pak při hře neptá. " +
+                      "Pravidla firewallu, která tento program blokují, se vypnou."],
             });
         }
 

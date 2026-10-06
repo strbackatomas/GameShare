@@ -231,6 +231,10 @@ public enum SetupStepKind
     Compatibility,
     /// <summary>A folder of the game copied into the player's profile, unless the target exists already.</summary>
     Profile,
+    /// <summary>A program of the game allowed in through Windows Firewall from the local network, on private and domain networks.</summary>
+    Firewall,
+    /// <summary>A shipped copy of the game's settings put in place, only when the game has none yet.</summary>
+    DefaultFile,
 }
 
 /// <summary>One thing preparing a PC for a game does, as the agent checked it and the player confirms it.</summary>
@@ -238,16 +242,22 @@ public enum SetupStepKind
 /// <param name="NeedsAdmin">Run in the one elevated process after the UAC prompt. Otherwise run by the client as the player.</param>
 public sealed record SetupStepDto(SetupStepKind Kind, string Title, bool NeedsAdmin)
 {
-    /// <summary>Redist: the installer. Compatibility: the program. Profile: the folder to copy. Absolute paths on this PC.</summary>
+    /// <summary>
+    /// Redist: the installer. Compatibility, Firewall: the program. Profile: the folder to copy. DefaultFile: the shipped copy.
+    /// Absolute paths on this PC.
+    /// </summary>
     public string? File { get; init; }
 
-    /// <summary>SHA-256 the installer must still have when it is started, the hash the game's manifest has for it.</summary>
+    /// <summary>SHA-256 the installer (or the shipped copy) must still have when it is used, the hash the game's manifest has for it.</summary>
     public string? FileHash { get; init; }
 
     /// <summary>Redist: the silent arguments. Compatibility: the Windows layers, such as "WINXPSP3".</summary>
     public string? Arguments { get; init; }
 
-    /// <summary>RegistryDelete: the key, HKLM\… or HKCU\…. Profile: the target, which may start with {Documents}, {AppData} or {LocalAppData}.</summary>
+    /// <summary>
+    /// RegistryDelete: the key, HKLM\… or HKCU\…. Profile: the target, which may start with {Documents}, {AppData} or {LocalAppData}.
+    /// Firewall: the name of the rule. DefaultFile: where the copy goes, an absolute path in the game folder.
+    /// </summary>
     public string? Target { get; init; }
 
     /// <summary>RegistryImport: the exact .reg text imported, already pointing at this PC's game folder.</summary>

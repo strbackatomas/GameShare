@@ -80,6 +80,7 @@ public class SetupPlannerTests : IDisposable
     private sealed class Probe(params string[] installed) : ISetupProbe
     {
         public bool IsInstalled(InstalledCheck check) => installed.Contains(check.File ?? check.Uninstall ?? check.RegistryKey);
+        public bool FirewallAllows(string program) => installed.Contains(Path.GetFileName(program));
     }
 
     private const string Reg = """
@@ -188,15 +189,119 @@ public class SetupPlannerTests : IDisposable
     }
 
     [Fact]
-    public async Task The_setup_hash_changes_with_the_setup_and_the_folder_but_not_with_anything_else()
+    public async Task The_setup_hash_changes_with_the_setup_the_firewalled_programs_and_the_folder_but_not_with_anything_else()
     {
         var setup = new GameSetup { Requires = ["directx9"] };
         var (game, root) = Battlefield(setup);
         var hash = (await SetupPlanner.PlanAsync(game, root, [Redist()], new Probe())).SetupHash;
+        var launched = game.Definition! with { Launch = [new LaunchEntry { Executable = "BF2.exe" }] };
 
-        Assert.Equal(hash, SetupPlanner.SetupHash(game.Definition! with { Launch = [new LaunchEntry { Executable = "BF2.exe" }] }, root));
+        Assert.Equal(hash, SetupPlanner.SetupHash(game.Definition! with { Volatile = ["*.ini"], Version = "1.5" }, root));
+        Assert.NotEqual(hash, SetupPlanner.SetupHash(launched, root));                // its program now gets a firewall rule
+        Assert.Equal(SetupPlanner.SetupHash(launched, root),
+            SetupPlanner.SetupHash(launched with { Launch = [new LaunchEntry { Executable = "BF2.exe", Arguments = "+menu 1", Name = "Hrát" }] }, root));
         Assert.NotEqual(hash, SetupPlanner.SetupHash(game.Definition!, Path.Combine(_dir, "elsewhere")));
         Assert.NotEqual(hash, SetupPlanner.SetupHash(game.Definition! with { Setup = setup with { Requires = ["directx9", "dotnet40"] } }, root));
+    }
+
+    [Fact]
+    public async Task Every_program_in_launch_is_let_through_the_firewall_once_and_one_already_allowed_is_shown_as_done()
+    {
+        var (game, root) = Game("Age of Empires 2", null, files: [("empires2.exe", [1]), ("Age2_x1/age2_x1.exe", [2]), ("readme.txt", [3])]);
+        game = game with
+        {
+            Definition = game.Definition! with
+            {
+                Launch =
+                [
+                    new LaunchEntry { Executable = "empires2.exe" }, new LaunchEntry { Executable = "Age2_X1/age2_x1.Exe", Arguments = "nosound" },
+                    new LaunchEntry { Executable = "Age2_X1/age2_x1.Exe", Arguments = "mfill" }, new LaunchEntry { Executable = "missing.exe" },
+                ],
+            },
+        };
+
+        var plan = await SetupPlanner.PlanAsync(game, root, [], new Probe("empires2.exe"));
+
+        Assert.True(SetupPlanner.HasSetup(game));                     // a game without a setup section is prepared for the firewall
+        Assert.Empty(plan.Problems);                                   // a launch entry that is not a file is refused at launch, not here
+        Assert.Equal([Path.Combine(root, "empires2.exe"), Path.Combine(root, "Age2_x1", "age2_x1.exe")], plan.Steps.Select(s => s.File));
+        Assert.All(plan.Steps, s => { Assert.Equal(SetupStepKind.Firewall, s.Kind); Assert.True(s.NeedsAdmin); });
+        Assert.True(plan.Steps[0].AlreadyDone);
+        Assert.False(plan.Steps[1].AlreadyDone);
+        Assert.Equal("GameShare – Age of Empires 2 – Age2_x1/age2_x1.exe", plan.Steps[1].Target);
+        Assert.Empty(plan.FilesToVerify);                              // nothing is run, so nothing is hashed
+    }
+
+    [Fact]
+    public async Task The_firewall_can_be_left_out_or_given_other_programs_of_the_game()
+    {
+        var files = new (string, byte[])[] { ("samp.exe", [1]), ("server/samp-server.exe", [2]), ("evil.txt", [3]) };
+        GameManifest With(FirewallSetup firewall)
+        {
+            var (game, _) = Game("GTA", new GameSetup { Firewall = firewall }, files: files);
+            return game with { Definition = game.Definition! with { Launch = [new LaunchEntry { Executable = "samp.exe" }] } };
+        }
+        var root = Path.Combine(_dir, "GTA");
+
+        var off = With(new FirewallSetup { Launch = false });
+        Assert.False(SetupPlanner.HasSetup(off));
+        Assert.Empty((await SetupPlanner.PlanAsync(off, root, [], new Probe())).Steps);
+
+        var server = await SetupPlanner.PlanAsync(With(new FirewallSetup { Programs = ["server\\samp-server.exe"] }), root, [], new Probe());
+        Assert.Equal(["samp.exe", "samp-server.exe"], server.Steps.Select(s => Path.GetFileName(s.File!)));
+
+        var outside = await SetupPlanner.PlanAsync(With(new FirewallSetup { Programs = ["../../Windows/System32/cmd.exe"] }), root, [], new Probe());
+        Assert.Contains(outside.Problems, p => p.StartsWith("Firewall:"));
+    }
+
+    [Fact]
+    public async Task A_default_file_goes_only_over_a_file_the_game_rewrites_and_is_done_where_the_game_has_one()
+    {
+        var files = new (string, byte[])[] { ("quake3.exe", [1]), ("_gameshare/q3config.cfg", [2]), ("baseq3/pak0.pk3", [3]) };
+        (GameManifest, string) Quake(string to, params string[] volatilePatterns)
+        {
+            var (game, root) = Game("Quake", new GameSetup
+            {
+                Firewall = new FirewallSetup { Launch = false }, Defaults = [new DefaultFileStep { From = "_gameshare/q3config.cfg", To = to }],
+            }, files: files);
+            return (game with { Definition = game.Definition! with { Volatile = volatilePatterns } }, root);
+        }
+
+        var (quake, root) = Quake("baseq3\\q3config.cfg", "baseq3/q3config.cfg");
+        var plan = await SetupPlanner.PlanAsync(quake, root, [], new Probe());
+        Assert.Empty(plan.Problems);
+        var step = Assert.Single(plan.Steps);
+        Assert.Equal(SetupStepKind.DefaultFile, step.Kind);
+        Assert.False(step.NeedsAdmin);
+        Assert.False(step.AlreadyDone);
+        Assert.Equal(Path.Combine(root, "baseq3", "q3config.cfg"), step.Target);
+        Assert.Equal(Path.Combine(root, "_gameshare", "q3config.cfg"), step.File);
+        Assert.NotNull(step.FileHash);
+
+        File.WriteAllText(Path.Combine(root, "baseq3", "q3config.cfg"), "the player's");
+        Assert.True(Assert.Single((await SetupPlanner.PlanAsync(quake, root, [], new Probe())).Steps).AlreadyDone);
+
+        foreach (var (to, pattern) in new[] { ("baseq3/q3config.cfg", ""), ("baseq3/pak0.pk3", "*.pk3"), ("../evil.cfg", "*.cfg") })
+        {
+            var (bad, badRoot) = Quake(to, pattern.Length > 0 ? [pattern] : []);
+            var refused = await SetupPlanner.PlanAsync(bad, badRoot, [], new Probe());
+            Assert.Contains(refused.Problems, p => p.StartsWith("Výchozí soubor:"));
+            Assert.Empty(refused.Steps);
+        }
+    }
+
+    [Fact]
+    public void A_definition_without_firewall_serialises_as_before_so_signed_definitions_keep_their_hash()
+    {
+        var setup = new GameSetup { Requires = ["directx9"] };
+
+        Assert.DoesNotContain("firewall", GameShareJson.Serialize(setup));
+        Assert.Contains("\"firewall\":{\"launch\":false", GameShareJson.Serialize(setup with { Firewall = new FirewallSetup { Launch = false } }));
+        Assert.False((setup with { Requires = [], Firewall = new FirewallSetup { Launch = false } }).IsEmpty); // kept when saved
+
+        var definition = new GameDefinition { GameId = "cod2", Name = "Call of Duty 2", Setup = setup };
+        Assert.DoesNotContain("needs", GameShareJson.Serialize(definition));
+        Assert.Contains("\"needs\":[\"microphone\"]", GameShareJson.Serialize(definition with { Needs = [GameNeeds.Microphone] }));
     }
 
     [Theory]

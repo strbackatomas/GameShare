@@ -44,6 +44,15 @@ public sealed record GameDefinition
     /// <summary>What has to happen on a PC once before the game is first started: redistributables, registry, compatibility, profile.</summary>
     public GameSetup? Setup { get; init; }
 
+    /// <summary>
+    /// What the PC must have plugged in for the game to start at all, such as <see cref="GameNeeds.Microphone"/>. The player is told
+    /// before the game is started without it. Left out of the JSON when null, so definitions signed before it existed keep their hash.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<string>? Needs { get; init; }
+
+    public bool NeedsMicrophone() => Needs?.Contains(GameNeeds.Microphone, StringComparer.OrdinalIgnoreCase) == true;
+
     /// <summary>For a <see cref="GameKind.Redist"/> package: the redistributables it holds, by the id games ask for, such as "directx9".</summary>
     public IReadOnlyDictionary<string, RedistPackage> Provides { get; init; } = new Dictionary<string, RedistPackage>();
 
@@ -55,6 +64,36 @@ public sealed record GameDefinition
         Launch.Count > 0 ? Launch
         : string.IsNullOrWhiteSpace(Executable) ? []
         : [new LaunchEntry { Executable = Executable, Arguments = Arguments, WorkingDirectory = WorkingDirectory }];
+
+    /// <summary>
+    /// The programs preparing lets through Windows Firewall, relative to the game root: the ones in <see cref="LaunchEntries"/> unless
+    /// <see cref="FirewallSetup.Launch"/> says not to, and any <see cref="FirewallSetup.Programs"/> adds. Each once, .exe only.
+    /// </summary>
+    public IReadOnlyList<string> FirewallPrograms()
+    {
+        if (Kind != GameKind.Game) return [];
+        var firewall = Setup?.Firewall ?? new FirewallSetup();
+        var named = (firewall.Launch ? LaunchEntries().Select(e => e.Executable) : []).Concat(firewall.Programs);
+        return named.Select(p => p.Trim().Replace('\\', '/').Trim('/'))
+            .Where(p => p.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+            .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
+    /// <summary>Whether a PC is prepared for the game before it is first played: setup steps, or programs to let through the firewall.</summary>
+    public bool HasSetup() =>
+        Kind == GameKind.Game && (Setup is { } setup && !(setup with { Firewall = null }).IsEmpty || FirewallPrograms().Count > 0);
+}
+
+/// <summary>The values <see cref="GameDefinition.Needs"/> knows.</summary>
+public static class GameNeeds
+{
+    /// <summary>
+    /// A recording device. Call of Duty 2 opens the microphone for voice chat as it starts and crashes when Windows has none,
+    /// whatever its settings say.
+    /// </summary>
+    public const string Microphone = "microphone";
+
+    public static readonly IReadOnlyList<string> All = [Microphone];
 }
 
 public enum GameKind
@@ -98,7 +137,48 @@ public sealed record GameSetup
 
     public IReadOnlyList<ProfileStep> Profile { get; init; } = [];
 
-    public bool IsEmpty => Requires.Count == 0 && Redist.Count == 0 && Registry.Count == 0 && Compatibility.Count == 0 && Profile.Count == 0;
+    /// <summary>
+    /// Which programs get a Windows Firewall rule, so a game's first network use does not stop on Windows' question. Null means
+    /// the programs in launch. Left out of the JSON when null, so definitions signed before it existed keep their hash.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public FirewallSetup? Firewall { get; init; }
+
+    /// <summary>
+    /// Settings the game rewrites while it is played, shipped as a copy and put in place on a PC that has none yet. Left out of the
+    /// JSON when null, so definitions signed before it existed keep their hash.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<DefaultFileStep>? Defaults { get; init; }
+
+    public bool IsEmpty => Requires.Count == 0 && Redist.Count == 0 && Registry.Count == 0 && Compatibility.Count == 0 && Profile.Count == 0
+        && Firewall is null && (Defaults?.Count ?? 0) == 0;
+}
+
+/// <summary>
+/// A file the game rewrites (its settings, so it is volatile and not shared) and the copy of it the game ships with: keys, a name,
+/// the LAN party's settings. Copied over only when the file is not there, so a player's own settings are never replaced.
+/// </summary>
+public sealed record DefaultFileStep
+{
+    /// <summary>The shipped copy, a file of the game, such as "_gameshare/q3config.cfg".</summary>
+    public required string From { get; init; }
+
+    /// <summary>Where the game reads it, relative to the game root, such as "baseq3/q3config.cfg". It has to be volatile.</summary>
+    public required string To { get; init; }
+}
+
+/// <summary>
+/// Programs of the game allowed in through Windows Firewall from the local network, on private and domain networks only.
+/// Without it a game that hosts or joins a LAN game stops on Windows' question the first time, and a player who cancels it is blocked.
+/// </summary>
+public sealed record FirewallSetup
+{
+    /// <summary>Every program in launch. False for a game that never touches the network.</summary>
+    public bool Launch { get; init; } = true;
+
+    /// <summary>Other programs of the game that listen, such as a dedicated server started by the game itself.</summary>
+    public IReadOnlyList<string> Programs { get; init; } = [];
 }
 
 /// <summary>An installer file of the game and the arguments that make it silent.</summary>
