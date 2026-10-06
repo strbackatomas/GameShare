@@ -8,6 +8,8 @@ this is wired into the build and where a peer's version shows up.
 
 ## [Unreleased]
 
+## [0.12.1] - 2026-10-06
+
 ### Added
 - The shield next to a game also says whether how it starts and is prepared (its gameshare.json) is the one the administrator
   signed, and a game whose files are verified but whose definition is not shows it on its card until the signed one arrives.
