@@ -193,8 +193,8 @@ For a game that does not say, the client lists the programs of the game and the 
 ]
 ```
 
-A game that does not start without something plugged in says so in `needs`. The only one known so far is `"microphone"`: Call of Duty 2
-opens the microphone for voice chat as it starts and crashes when Windows has none, whatever its settings say. **Hrát** then checks for a
+A game that does not start without something plugged in says so in `needs`. The only one known so far is `"microphone"`: some older games
+open the microphone for voice chat as they start and crash when Windows has none, whatever their settings say. **Hrát** then checks for a
 recording device first and, without one, asks the player to plug a headset in, with **Přesto spustit** for one who knows better.
 
 The first entry is the play button, the others are in the **▾** menu next to it. `runAsAdmin` starts that program through the UAC prompt,
@@ -238,10 +238,10 @@ settings in Documents. `setup` in `gameshare.json` says what, and **Hrát** does
   key first.
 - `compatibility` sets a Windows compatibility mode for the player, `profile` copies a folder of the game into the player's profile
   unless it is there already (it may hold saves).
-- `defaults` is for settings a game rewrites while it is played, such as Quake 3's `baseq3/q3config.cfg`: the file is volatile, so it
+- `defaults` is for settings a game rewrites while it is played, such as a config file with the keys: the file is volatile, so it
   is not shared and playing does not damage the game, and the game ships a copy of it (keys, a name, the LAN party's settings) that is
-  put in place on a PC that has none yet. A player's own file is never replaced. `{ "from": "_gameshare/q3config.cfg", "to":
-  "baseq3/q3config.cfg" }`; the target has to match a volatile pattern and must not be a file of the game.
+  put in place on a PC that has none yet. A player's own file is never replaced. `{ "from": "_gameshare/config.cfg", "to":
+  "settings/config.cfg" }`; the target has to match a volatile pattern and must not be a file of the game.
 - Every program in `launch` is let through Windows Firewall, so a game that hosts or joins a LAN game does not stop on Windows'
   question the first time (and is not left blocked when a player cancels it). The rule lets in the local network only, on private
   and domain networks, never on public ones, and is named `GameShare – <game> – <program>`. Rules that block that program are

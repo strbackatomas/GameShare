@@ -26,11 +26,10 @@ this is wired into the build and where a peer's version shows up.
   domain networks. It is done for every program in `launch`, also for games with no other preparation; a program the firewall
   lets in already needs no UAC prompt. `setup.firewall` in `gameshare.json` turns it off or adds other programs, and the admin GUI
   has a check box for it. Games prepared before ask to be prepared once more, for the rules.
-- `"needs": ["microphone"]` in `gameshare.json` for a game that crashes without a recording device, as Call of Duty 2 does: Hrát
+- `"needs": ["microphone"]` in `gameshare.json` for a game that crashes without a recording device, as some older games do: Hrát
   asks the player to plug a headset in instead of starting a game that disappears at once. **Přesto spustit** starts it anyway. The
   admin GUI has a check box for it.
-- `setup.defaults` in `gameshare.json`: a shipped copy of settings the game rewrites (Quake 3's `q3config.cfg`, Counter-Strike:
-  Source's `settings.scr`), put in place when preparing a PC that has none yet. The file itself can then be volatile, so playing no
+- `setup.defaults` in `gameshare.json`: a shipped copy of settings the game rewrites (a config file with the keys, say), put in place when preparing a PC that has none yet. The file itself can then be volatile, so playing no
   longer marks the game damaged, and new players still get the LAN party's keys and settings. A player's own file is never replaced.
 
 ### Changed

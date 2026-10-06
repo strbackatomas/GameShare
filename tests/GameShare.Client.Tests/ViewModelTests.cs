@@ -467,8 +467,8 @@ public class LibraryTests
     {
         var agent = new FakeAgent
         {
-            Games = [Installed() with { Name = "Call of Duty 2", Definition = new GameDefinition { GameId = "cod2", Name = "Call of Duty 2", Needs = [GameNeeds.Microphone] } }],
-            LaunchInfo = new LaunchInfoDto(@"D:\Hry\Call of Duty 2\CoD2MP_s.exe", null, @"D:\Hry\Call of Duty 2"),
+            Games = [Installed() with { Name = "Test Game", Definition = new GameDefinition { GameId = "testgame", Name = "Test Game", Needs = [GameNeeds.Microphone] } }],
+            LaunchInfo = new LaunchInfoDto(@"D:\Hry\Test Game\Game.exe", null, @"D:\Hry\Test Game"),
         };
         var devices = new FakeDevices(microphone: false);
         var app = new AppModel(agent, new FakeEvents(), new ImmediateDispatcher(), new FakeStarter(), devices: devices);
@@ -478,7 +478,7 @@ public class LibraryTests
 
         await card.PlayCommand.ExecuteAsync(null);
         Assert.True(card.IsAskingForMicrophone);
-        Assert.Contains("Call of Duty 2 bez něj po spuštění spadne", card.MicrophoneText);
+        Assert.Contains("Test Game bez něj po spuštění spadne", card.MicrophoneText);
         Assert.DoesNotContain(agent.Calls, c => c.StartsWith("Launch"));
 
         await card.StartWithoutMicrophoneCommand.ExecuteAsync(null);

@@ -207,48 +207,48 @@ public class SetupPlannerTests : IDisposable
     [Fact]
     public async Task Every_program_in_launch_is_let_through_the_firewall_once_and_one_already_allowed_is_shown_as_done()
     {
-        var (game, root) = Game("Age of Empires 2", null, files: [("empires2.exe", [1]), ("Age2_x1/age2_x1.exe", [2]), ("readme.txt", [3])]);
+        var (game, root) = Game("Test Game", null, files: [("game.exe", [1]), ("Addon/addon.exe", [2]), ("readme.txt", [3])]);
         game = game with
         {
             Definition = game.Definition! with
             {
                 Launch =
                 [
-                    new LaunchEntry { Executable = "empires2.exe" }, new LaunchEntry { Executable = "Age2_X1/age2_x1.Exe", Arguments = "nosound" },
-                    new LaunchEntry { Executable = "Age2_X1/age2_x1.Exe", Arguments = "mfill" }, new LaunchEntry { Executable = "missing.exe" },
+                    new LaunchEntry { Executable = "game.exe" }, new LaunchEntry { Executable = "ADDON/addon.Exe", Arguments = "nosound" },
+                    new LaunchEntry { Executable = "ADDON/addon.Exe", Arguments = "windowed" }, new LaunchEntry { Executable = "missing.exe" },
                 ],
             },
         };
 
-        var plan = await SetupPlanner.PlanAsync(game, root, [], new Probe("empires2.exe"));
+        var plan = await SetupPlanner.PlanAsync(game, root, [], new Probe("game.exe"));
 
         Assert.True(SetupPlanner.HasSetup(game));                     // a game without a setup section is prepared for the firewall
         Assert.Empty(plan.Problems);                                   // a launch entry that is not a file is refused at launch, not here
-        Assert.Equal([Path.Combine(root, "empires2.exe"), Path.Combine(root, "Age2_x1", "age2_x1.exe")], plan.Steps.Select(s => s.File));
+        Assert.Equal([Path.Combine(root, "game.exe"), Path.Combine(root, "Addon", "addon.exe")], plan.Steps.Select(s => s.File));
         Assert.All(plan.Steps, s => { Assert.Equal(SetupStepKind.Firewall, s.Kind); Assert.True(s.NeedsAdmin); });
         Assert.True(plan.Steps[0].AlreadyDone);
         Assert.False(plan.Steps[1].AlreadyDone);
-        Assert.Equal("GameShare – Age of Empires 2 – Age2_x1/age2_x1.exe", plan.Steps[1].Target);
+        Assert.Equal("GameShare – Test Game – Addon/addon.exe", plan.Steps[1].Target);
         Assert.Empty(plan.FilesToVerify);                              // nothing is run, so nothing is hashed
     }
 
     [Fact]
     public async Task The_firewall_can_be_left_out_or_given_other_programs_of_the_game()
     {
-        var files = new (string, byte[])[] { ("samp.exe", [1]), ("server/samp-server.exe", [2]), ("evil.txt", [3]) };
+        var files = new (string, byte[])[] { ("client.exe", [1]), ("server/server.exe", [2]), ("evil.txt", [3]) };
         GameManifest With(FirewallSetup firewall)
         {
-            var (game, _) = Game("GTA", new GameSetup { Firewall = firewall }, files: files);
-            return game with { Definition = game.Definition! with { Launch = [new LaunchEntry { Executable = "samp.exe" }] } };
+            var (game, _) = Game("Shooter", new GameSetup { Firewall = firewall }, files: files);
+            return game with { Definition = game.Definition! with { Launch = [new LaunchEntry { Executable = "client.exe" }] } };
         }
-        var root = Path.Combine(_dir, "GTA");
+        var root = Path.Combine(_dir, "Shooter");
 
         var off = With(new FirewallSetup { Launch = false });
         Assert.False(SetupPlanner.HasSetup(off));
         Assert.Empty((await SetupPlanner.PlanAsync(off, root, [], new Probe())).Steps);
 
-        var server = await SetupPlanner.PlanAsync(With(new FirewallSetup { Programs = ["server\\samp-server.exe"] }), root, [], new Probe());
-        Assert.Equal(["samp.exe", "samp-server.exe"], server.Steps.Select(s => Path.GetFileName(s.File!)));
+        var server = await SetupPlanner.PlanAsync(With(new FirewallSetup { Programs = ["server\\server.exe"] }), root, [], new Probe());
+        Assert.Equal(["client.exe", "server.exe"], server.Steps.Select(s => Path.GetFileName(s.File!)));
 
         var outside = await SetupPlanner.PlanAsync(With(new FirewallSetup { Programs = ["../../Windows/System32/cmd.exe"] }), root, [], new Probe());
         Assert.Contains(outside.Problems, p => p.StartsWith("Firewall:"));
@@ -257,33 +257,33 @@ public class SetupPlannerTests : IDisposable
     [Fact]
     public async Task A_default_file_goes_only_over_a_file_the_game_rewrites_and_is_done_where_the_game_has_one()
     {
-        var files = new (string, byte[])[] { ("quake3.exe", [1]), ("_gameshare/q3config.cfg", [2]), ("baseq3/pak0.pk3", [3]) };
-        (GameManifest, string) Quake(string to, params string[] volatilePatterns)
+        var files = new (string, byte[])[] { ("game.exe", [1]), ("_gameshare/config.cfg", [2]), ("settings/data.pak", [3]) };
+        (GameManifest, string) Shooter(string to, params string[] volatilePatterns)
         {
-            var (game, root) = Game("Quake", new GameSetup
+            var (game, root) = Game("Shooter", new GameSetup
             {
-                Firewall = new FirewallSetup { Launch = false }, Defaults = [new DefaultFileStep { From = "_gameshare/q3config.cfg", To = to }],
+                Firewall = new FirewallSetup { Launch = false }, Defaults = [new DefaultFileStep { From = "_gameshare/config.cfg", To = to }],
             }, files: files);
             return (game with { Definition = game.Definition! with { Volatile = volatilePatterns } }, root);
         }
 
-        var (quake, root) = Quake("baseq3\\q3config.cfg", "baseq3/q3config.cfg");
-        var plan = await SetupPlanner.PlanAsync(quake, root, [], new Probe());
+        var (shooter, root) = Shooter("settings\\config.cfg", "settings/config.cfg");
+        var plan = await SetupPlanner.PlanAsync(shooter, root, [], new Probe());
         Assert.Empty(plan.Problems);
         var step = Assert.Single(plan.Steps);
         Assert.Equal(SetupStepKind.DefaultFile, step.Kind);
         Assert.False(step.NeedsAdmin);
         Assert.False(step.AlreadyDone);
-        Assert.Equal(Path.Combine(root, "baseq3", "q3config.cfg"), step.Target);
-        Assert.Equal(Path.Combine(root, "_gameshare", "q3config.cfg"), step.File);
+        Assert.Equal(Path.Combine(root, "settings", "config.cfg"), step.Target);
+        Assert.Equal(Path.Combine(root, "_gameshare", "config.cfg"), step.File);
         Assert.NotNull(step.FileHash);
 
-        File.WriteAllText(Path.Combine(root, "baseq3", "q3config.cfg"), "the player's");
-        Assert.True(Assert.Single((await SetupPlanner.PlanAsync(quake, root, [], new Probe())).Steps).AlreadyDone);
+        File.WriteAllText(Path.Combine(root, "settings", "config.cfg"), "the player's");
+        Assert.True(Assert.Single((await SetupPlanner.PlanAsync(shooter, root, [], new Probe())).Steps).AlreadyDone);
 
-        foreach (var (to, pattern) in new[] { ("baseq3/q3config.cfg", ""), ("baseq3/pak0.pk3", "*.pk3"), ("../evil.cfg", "*.cfg") })
+        foreach (var (to, pattern) in new[] { ("settings/config.cfg", ""), ("settings/data.pak", "*.pak"), ("../evil.cfg", "*.cfg") })
         {
-            var (bad, badRoot) = Quake(to, pattern.Length > 0 ? [pattern] : []);
+            var (bad, badRoot) = Shooter(to, pattern.Length > 0 ? [pattern] : []);
             var refused = await SetupPlanner.PlanAsync(bad, badRoot, [], new Probe());
             Assert.Contains(refused.Problems, p => p.StartsWith("Výchozí soubor:"));
             Assert.Empty(refused.Steps);
@@ -299,7 +299,7 @@ public class SetupPlannerTests : IDisposable
         Assert.Contains("\"firewall\":{\"launch\":false", GameShareJson.Serialize(setup with { Firewall = new FirewallSetup { Launch = false } }));
         Assert.False((setup with { Requires = [], Firewall = new FirewallSetup { Launch = false } }).IsEmpty); // kept when saved
 
-        var definition = new GameDefinition { GameId = "cod2", Name = "Call of Duty 2", Setup = setup };
+        var definition = new GameDefinition { GameId = "testgame", Name = "Test Game", Setup = setup };
         Assert.DoesNotContain("needs", GameShareJson.Serialize(definition));
         Assert.Contains("\"needs\":[\"microphone\"]", GameShareJson.Serialize(definition with { Needs = [GameNeeds.Microphone] }));
     }

@@ -219,7 +219,7 @@ public static partial class SetupPlanner
             }
             var full = Inside(root, file.Path);
             var done = probe.FirewallAllows(full);
-            // The path, not just the name: Bin32/FarCry.exe and Bin64/FarCry.exe are two steps, and results are matched by title.
+            // The path, not just the name: Bin32/Game.exe and Bin64/Game.exe are two steps, and results are matched by title.
             steps.Add(new SetupStepDto(SetupStepKind.Firewall, $"Povolit {file.Path} ve firewallu", NeedsAdmin: true)
             {
                 File = full, Target = FirewallRuleName(definition.Name, file.Path), AlreadyDone = done,

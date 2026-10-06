@@ -96,7 +96,7 @@
                             </ItemsControl>
                             <Button Content="+ Spouštěč" Command="{Binding AddLaunchCommand}" />
                             <CheckBox Content="Bez mikrofonu hra spadne (klient před spuštěním upozorní)" IsChecked="{Binding NeedsMicrophone}"
-                                      ToolTip.Tip="Např. Call of Duty 2: při startu otevírá mikrofon pro hlasový chat a bez něj spadne." />
+                                      ToolTip.Tip="Pro hry, které při startu otevírají mikrofon pro hlasový chat a bez něj spadnou." />
 
                             <TextBlock Classes="muted" Text="Příprava PC před prvním spuštěním" Margin="0,6,0,0" />
                             <CheckBox Content="Povolit spouštěče ve firewallu (z místní sítě, jen soukromé sítě)" IsChecked="{Binding FirewallLaunch}"

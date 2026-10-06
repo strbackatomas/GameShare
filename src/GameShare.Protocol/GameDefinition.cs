@@ -88,8 +88,8 @@ public sealed record GameDefinition
 public static class GameNeeds
 {
     /// <summary>
-    /// A recording device. Call of Duty 2 opens the microphone for voice chat as it starts and crashes when Windows has none,
-    /// whatever its settings say.
+    /// A recording device. Some older games open the microphone for voice chat as they start and crash when Windows has none,
+    /// whatever their settings say.
     /// </summary>
     public const string Microphone = "microphone";
 
@@ -161,10 +161,10 @@ public sealed record GameSetup
 /// </summary>
 public sealed record DefaultFileStep
 {
-    /// <summary>The shipped copy, a file of the game, such as "_gameshare/q3config.cfg".</summary>
+    /// <summary>The shipped copy, a file of the game, such as "_gameshare/config.cfg".</summary>
     public required string From { get; init; }
 
-    /// <summary>Where the game reads it, relative to the game root, such as "baseq3/q3config.cfg". It has to be volatile.</summary>
+    /// <summary>Where the game reads it, relative to the game root, such as "settings/config.cfg". It has to be volatile.</summary>
     public required string To { get; init; }
 }
 

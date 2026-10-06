@@ -57,11 +57,11 @@ public class SetupStepsTests : IDisposable
     [Fact]
     public async Task A_default_file_is_put_in_place_only_where_the_game_has_none_and_only_as_it_was_verified()
     {
-        var shipped = Path.Combine(_dir, "_gameshare", "q3config.cfg");
+        var shipped = Path.Combine(_dir, "_gameshare", "config.cfg");
         Directory.CreateDirectory(Path.GetDirectoryName(shipped)!);
         File.WriteAllText(shipped, "bind w \"+forward\"");
-        var target = Path.Combine(_dir, "baseq3", "q3config.cfg");
-        SetupStepDto Step() => new(SetupStepKind.DefaultFile, "q3config", false) { File = shipped, FileHash = Sha(shipped), Target = target };
+        var target = Path.Combine(_dir, "settings", "config.cfg");
+        SetupStepDto Step() => new(SetupStepKind.DefaultFile, "config", false) { File = shipped, FileHash = Sha(shipped), Target = target };
 
         var first = await SetupSteps.RunAsync([Step()]);
         Assert.True(Assert.Single(first).Ok, first[0].Message);
