@@ -8,6 +8,8 @@ this is wired into the build and where a peer's version shows up.
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-10-06
+
 ### Added
 - Preparing a game lets its programs through Windows Firewall, so Windows no longer asks the first time a game hosts or joins a
   LAN game, and a player who cancelled that question is not left blocked. The rule lets in the local network only, on private and
