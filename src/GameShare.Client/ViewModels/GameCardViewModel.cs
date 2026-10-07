@@ -53,12 +53,17 @@ public sealed partial class GameCardViewModel : ViewModelBase
     private bool _iconRequested;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsInstalled), nameof(IsDamaged), nameof(IsDownloading), nameof(IsAvailable), nameof(CanInstall), nameof(CanUpdate), nameof(ShowInstallButton), nameof(StateText), nameof(CanPlay), nameof(NeedsExecutable), nameof(ShowUninstallButton), nameof(HasOtherLaunchOptions), nameof(CanSpread))]
+    [NotifyPropertyChangedFor(nameof(IsInstalled), nameof(IsDamaged), nameof(IsDamagedInPlace), nameof(IsDownloading), nameof(IsAvailable), nameof(CanInstall), nameof(CanUpdate), nameof(ShowInstallButton), nameof(StateText), nameof(CanPlay), nameof(NeedsExecutable), nameof(ShowUninstallButton), nameof(HasOtherLaunchOptions), nameof(CanSpread))]
     public partial GameState State { get; set; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanInstall), nameof(CanUpdate), nameof(ShowInstallButton))]
     public partial string? UpdatesContentHash { get; set; }
+
+    /// <summary>Another version of a game installed here that is not an update of it: older, or the same with other files. Not offered.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanInstall), nameof(ShowInstallButton), nameof(StateText), nameof(IsOtherVersion))]
+    public partial string? OtherVersionOfContentHash { get; set; }
 
     /// <summary>False when the PCs that are online do not have all of the game between them, so installing would stall.</summary>
     [ObservableProperty]
@@ -277,7 +282,7 @@ public sealed partial class GameCardViewModel : ViewModelBase
     public bool IsDamaged => State == GameState.Damaged;
     public bool IsDownloading => State == GameState.Downloading;
     public bool IsAvailable => State == GameState.AvailableOnLan;
-    public bool CanInstall => IsAvailable && FullyAvailable && UpdatesContentHash is null;
+    public bool CanInstall => IsAvailable && FullyAvailable && UpdatesContentHash is null && OtherVersionOfContentHash is null;
     public bool CanUpdate => IsAvailable && FullyAvailable && UpdatesContentHash is not null;
 
     /// <summary>Hidden while the player is picking which folder to install into.</summary>
@@ -341,13 +346,26 @@ public sealed partial class GameCardViewModel : ViewModelBase
     public bool HasMessage => !string.IsNullOrEmpty(Message);
     public bool HasSuggestion => IsLocal && !string.IsNullOrEmpty(Suggestion);
 
+    /// <summary>The game's folder is not there any more. Repair fetches it again, uninstall forgets it.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(StateText), nameof(IsDamagedInPlace))]
+    public partial bool FolderMissing { get; set; }
+
+    /// <summary>Damaged with its folder there: the parts that did not change are still offered.</summary>
+    public bool IsDamagedInPlace => IsDamaged && !FolderMissing;
+
+    public bool IsOtherVersion => OtherVersionOfContentHash is not null;
+
     public string StateText => State switch
     {
         GameState.Installed => "Nainstalováno",
+        GameState.Damaged when FolderMissing => "Složka hry chybí: Opravit ze sítě ji stáhne znovu, Odinstalovat hru zapomene",
         GameState.Damaged => "Soubory se změnily",
         GameState.Downloading => DownloadPhase ?? "Stahuje se",
         GameState.AvailableOnLan when !FullyAvailable => "Zatím nekompletní",
-        GameState.AvailableOnLan => UpdatesContentHash is null ? "Dostupné na LAN" : "Nová verze na LAN",
+        GameState.AvailableOnLan when UpdatesContentHash is not null => "Nová verze na LAN",
+        GameState.AvailableOnLan when OtherVersionOfContentHash is not null => "Jiná verze, než máš (starší nebo se stejným číslem), nenabízí se",
+        GameState.AvailableOnLan => "Dostupné na LAN",
         _ => "Nedostupné",
     };
 
@@ -361,6 +379,8 @@ public sealed partial class GameCardViewModel : ViewModelBase
             : g.SourceIntact ? $"Zdroj: {g.SourcePath}"
             : $"Zdroj: {g.SourcePath} · soubory se změnily, neposílá se. Nakopíruj do něj hru znovu.";
         UpdatesContentHash = g.UpdatesContentHash;
+        OtherVersionOfContentHash = g.OtherVersionOfContentHash;
+        FolderMissing = g.FolderMissing;
         Details = string.IsNullOrEmpty(g.Version) ? Format.Size(g.TotalSize) : $"{g.Version} · {Format.Size(g.TotalSize)}";
         PeersText = g.State == GameState.AvailableOnLan && g.PeerNames.Count > 0 ? DescribePeers(g) : "";
         Launch = g.Launch;

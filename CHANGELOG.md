@@ -8,6 +8,18 @@ this is wired into the build and where a peer's version shows up.
 
 ## [Unreleased]
 
+### Fixed
+- Repairing a game whose settings file the game had rewritten longer never finished: the transfer wrote the right bytes but did not
+  shorten the file, so the check after it failed every time, however many PCs had the file intact. Files of the game that grew are
+  cut back to their size before a repair or an update.
+- "Aktualizovat" was offered for any other version of an installed game, an older one too, and taking it replaced the newer version
+  and deleted its new files. Only a newer version is an update now (versions are compared as a person reads them, "lan-v3" after
+  "lan-v2"). With the same version number a version the administrator vouches for is never left for another one; without the
+  administrator's list it stays the player's call, as before. The agent refuses such an update even when asked directly. Another
+  version that is not an update is shown as such, with nothing to click.
+- A game whose folder was deleted shows "Složka hry chybí" instead of "Soubory se změnily": repairing fetches it again, uninstalling
+  forgets it. What is left of a game that is gone everywhere (not installed, not downloading, offered by no PC) is no longer listed.
+
 ## [0.12.1] - 2026-10-06
 
 ### Added

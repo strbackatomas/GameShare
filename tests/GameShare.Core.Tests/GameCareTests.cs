@@ -252,6 +252,28 @@ public class GameCareTests
     }
 
     [Fact]
+    public async Task Repair_cuts_a_file_the_game_rewrote_longer_back_to_its_size()
+    {
+        // A game rewriting its settings file with a few more lines: the transfer writes the right bytes but never shortens a file.
+        await using var source = await PcWithGameAsync(dir => WriteAsync(dir, "config/settings.cfg", "bind w forward").GetAwaiter().GetResult());
+        var offer = (await source.Library.ListAsync()).First(g => g.Installation is not null).Stored;
+        await source.Seeds.StartAllAsync();
+
+        await using var pc = await Pc.StartAsync();
+        var install = await pc.Downloads.StartInstallAsync(offer.Manifest, offer.TorrentBytes!, pc.GamesRoot);
+        await Poll.DownloadStateAsync(pc, install.Id, DownloadState.Completed);
+        await File.WriteAllTextAsync(Path.Combine(pc.GameDir, "config", "settings.cfg"), "bind w forward\nseta name player");
+        await pc.Library.CheckAsync(offer.Manifest.ContentHash);
+        var inst = (await pc.Db.ListInstallationsAsync()).Single();
+
+        var repair = await pc.Downloads.StartRepairAsync(inst.Id);
+        await Poll.DownloadStateAsync(pc, repair.Id, DownloadState.Completed);
+
+        Assert.Equal("bind w forward", await File.ReadAllTextAsync(Path.Combine(pc.GameDir, "config", "settings.cfg")));
+        Assert.NotNull(await pc.Db.FindInstalledAsync(offer.Manifest.ContentHash));
+    }
+
+    [Fact]
     public async Task Cancelling_a_repair_never_deletes_the_installed_game_even_when_asked_to()
     {
         await using var source = await PcWithGameAsync();

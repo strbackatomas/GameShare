@@ -283,6 +283,45 @@ public class AgentCareTests
     }
 
     [Fact]
+    public async Task A_deleted_game_folder_says_so_and_once_the_game_is_forgotten_nothing_of_it_is_left_in_the_list()
+    {
+        await using var pc = await TestAgent.StartAsync("PC-01", TestAgent.DiscoveryPort(), preloadGame: true);
+        var game = await InstalledGameAsync(pc);
+
+        Directory.Delete(pc.InstalledPath, recursive: true);
+        Assert.Equal(HttpStatusCode.OK, (await pc.SendAsync(HttpMethod.Post, "/api/games/scan")).StatusCode);
+        var gone = await pc.WaitForGameAsync(g => g.ContentHash == game.ContentHash && g.State == GameState.Damaged, "the game to be marked damaged");
+        Assert.True(gone.FolderMissing);
+
+        Assert.Equal(HttpStatusCode.NoContent, (await pc.SendAsync(HttpMethod.Delete, $"/api/games/{game.ContentHash}")).StatusCode);
+        Assert.DoesNotContain(await pc.GamesAsync(), g => g.ContentHash == game.ContentHash); // no orphan nobody can remove
+    }
+
+    [Fact]
+    public async Task An_older_version_is_not_offered_as_an_update_and_updating_to_it_is_refused()
+    {
+        int discovery = TestAgent.DiscoveryPort();
+        static Action<string> Version(string version) => dir => File.WriteAllText(Path.Combine(dir, "gameshare.json"),
+            $$"""{ "gameId": "testgame", "name": "TestGame", "version": "{{version}}" }""");
+        await using var pc01 = await TestAgent.StartAsync("PC-01", discovery, preloadGame: true, customiseGame: Version("1.0"));
+        var older = await InstalledGameAsync(pc01);
+        await using var pc02 = await TestAgent.StartAsync("PC-02", discovery, preloadGame: true, customiseGame: dir =>
+        {
+            Version("1.1")(dir);
+            File.AppendAllText(Path.Combine(dir, "readme.txt"), "patched"); // other files, so another version
+        });
+        await pc02.WaitForGameAsync(g => g.State == GameState.Installed, "PC-02 to scan version 1.1");
+
+        var offer = await pc02.WaitForGameAsync(g => g.ContentHash == older.ContentHash && g.State == GameState.AvailableOnLan, "PC-02 to see version 1.0");
+        Assert.Null(offer.UpdatesContentHash);
+        Assert.NotNull(offer.OtherVersionOfContentHash);
+
+        var refused = await pc02.SendAsync(HttpMethod.Post, $"/api/games/{older.ContentHash}/update");
+        Assert.Equal(HttpStatusCode.Conflict, refused.StatusCode);
+        Assert.Contains("not newer", await refused.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
     public async Task Updating_a_game_that_is_not_installed_or_repairing_an_unknown_one_says_why()
     {
         int discovery = TestAgent.DiscoveryPort();

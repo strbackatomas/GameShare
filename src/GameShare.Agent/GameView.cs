@@ -47,17 +47,26 @@ public sealed class GameView
 
         var result = new Dictionary<string, GameDto>(StringComparer.Ordinal);
 
-        // The version of each game that is installed here, so other versions can be offered as an update.
+        // The version of each game that is installed here, so other versions can be offered as an update, when they are one.
         var installedByGame = local
             .Where(g => g.Installation is { State: InstallationState.Installed })
             .GroupBy(g => g.Stored.Manifest.GameId)
-            .ToDictionary(g => g.Key, g => g.First().Stored.Manifest.ContentHash);
+            .ToDictionary(g => g.Key, g => g.First().Stored.Manifest);
+        (string? Updates, string? Other) Relation(string gameId, string? version, string contentHash)
+        {
+            if (!installedByGame.TryGetValue(gameId, out var installed) || installed.ContentHash == contentHash) return (null, null);
+            return GameVersion.IsUpdate(version, _trust.Check(contentHash).Verdict, installed.Version, _trust.Check(installed.ContentHash).Verdict)
+                ? (installed.ContentHash, null) : (null, installed.ContentHash);
+        }
 
         foreach (var g in local)
         {
             var m = g.Stored.Manifest;
             var download = downloads.FirstOrDefault(d => d.ContentHash == m.ContentHash && IsRunning(d.State));
             var peerNames = PeerNames(offers[m.ContentHash]);
+            // What is left of a game that is gone: not installed, not being downloaded, offered by no PC and not in the source folder.
+            // Nothing can be done with it, so it is not listed; it comes back by itself when a PC offers that version again.
+            if (g.Installation is null && download is null && peerNames.Count == 0 && !sources[m.ContentHash].Any()) continue;
             var state = g.Installation?.State switch
             {
                 InstallationState.Installed => GameState.Installed,
@@ -86,12 +95,14 @@ public sealed class GameView
                 HasIcon = await _icons.HasIconAsync(m, g.Installation, ct).ConfigureAwait(false),
                 NeedsSetup = await _setup.NeedsSetupAsync(m, g.Installation, ct).ConfigureAwait(false),
                 IsRunning = g.Installation is not null && _running.IsRunning(g.Installation),
-                UpdatesContentHash = g.Installation is null && installedByGame.TryGetValue(m.GameId, out var installed) ? installed : null,
+                UpdatesContentHash = g.Installation is null ? Relation(m.GameId, m.Version, m.ContentHash).Updates : null,
+                OtherVersionOfContentHash = g.Installation is null ? Relation(m.GameId, m.Version, m.ContentHash).Other : null,
                 PartialPeerNames = PartialNames(offers[m.ContentHash]),
                 FullyAvailable = fully,
                 CoveragePercent = coverage,
                 SourcePath = sources[m.ContentHash].FirstOrDefault()?.Path,
                 SourceIntact = sources[m.ContentHash].Any(c => c.State == InstallationState.Installed),
+                FolderMissing = g.Installation is not null && !Directory.Exists(g.Installation.InstallPath),
             };
         }
 
@@ -105,7 +116,8 @@ public sealed class GameView
                 o.ContentHash, o.GameId, o.Name, o.Version, o.TotalSize, GameState.AvailableOnLan,
                 null, PeerNames(group), null, null)
             {
-                UpdatesContentHash = installedByGame.TryGetValue(o.GameId, out var installed) ? installed : null,
+                UpdatesContentHash = Relation(o.GameId, o.Version, o.ContentHash).Updates,
+                OtherVersionOfContentHash = Relation(o.GameId, o.Version, o.ContentHash).Other,
                 Trust = trust,
                 TrustNote = trustNote,
                 PartialPeerNames = PartialNames(group),

@@ -397,6 +397,19 @@ public class LibraryTests
     }
 
     [Fact]
+    public async Task Another_version_that_is_not_an_update_is_neither_installed_beside_the_game_nor_put_in_its_place()
+    {
+        var (main, _, _, _) = await StartAsync(
+            Game(A, "Test Game", GameState.AvailableOnLan, peers: ["PC-01"], version: "1.1") with { OtherVersionOfContentHash = B },
+            Game(B, "Test Game", GameState.Installed, version: "1.2", installPath: @"D:\Games\Test"));
+        var older = main.Library.LanGames.Single();
+
+        Assert.False(older.CanInstall);
+        Assert.False(older.CanUpdate);
+        Assert.Contains("Jiná verze", older.StateText);
+    }
+
+    [Fact]
     public async Task A_check_that_finds_changes_explains_them_and_the_suggested_patterns_can_be_applied()
     {
         var (main, _, agent, _) = await StartAsync(Game(A, "BeamNG.drive", GameState.Installed, installPath: @"D:\Games\BeamNG"));

@@ -78,10 +78,22 @@ public sealed record GameDto(
     public bool SourceIntact { get; init; }
 
     /// <summary>
-    /// Set on a version that is not installed here while another version of the same game is. It is the content hash of that
-    /// installed version, so the client can offer "update" instead of "install".
+    /// The game is installed here, but its folder is not there any more: deleted, or on a drive that is not plugged in. Repairing
+    /// fetches it again into the same place, uninstalling forgets it.
+    /// </summary>
+    public bool FolderMissing { get; init; }
+
+    /// <summary>
+    /// Set on a version that is not installed here while another version of the same game is, and this one is an update of it
+    /// (see <see cref="GameVersion.IsUpdate"/>). It is the content hash of that installed version, so the client offers "update".
     /// </summary>
     public string? UpdatesContentHash { get; init; }
+
+    /// <summary>
+    /// Set on a version that is not installed here while another version of the same game is, and this one is not an update of it:
+    /// older, or the same version with other files. Neither installed beside it nor put in its place, so nothing is offered.
+    /// </summary>
+    public string? OtherVersionOfContentHash { get; init; }
 }
 
 /// <param name="AppVersion">The peer's GameShare version, for example "0.1.0". Null for a peer that predates this field.</param>

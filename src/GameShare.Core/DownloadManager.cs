@@ -257,6 +257,7 @@ public sealed class DownloadManager
         await _db.SaveInstallationResumeDataAsync(inst.Id, null, ct).ConfigureAwait(false);
         try
         {
+            TrimOverlongFiles(inst.InstallPath, manifest);
             return await BeginAsync(manifest, torrentBytes, root, kind, inst.Id, ct).ConfigureAwait(false);
         }
         catch
@@ -268,6 +269,30 @@ public sealed class DownloadManager
                 catch (Exception ex) when (ex is IOException or InvalidOperationException) { _log.LogWarning(ex, "Could not resume seeding {Name} after a failed {Kind}", manifest.Name, kind); }
             }
             throw;
+        }
+    }
+
+    /// <summary>
+    /// Cuts every file of the game that grew beyond what the manifest says back to that size. The transfer writes the right bytes into
+    /// a file but never shortens it, so a settings file the game rewrote longer stayed too long, and the repair failed its check on it
+    /// every time however many PCs had the file intact. What is left after the cut is checked and fetched like any damaged piece.
+    /// </summary>
+    private void TrimOverlongFiles(string installPath, GameManifest manifest)
+    {
+        foreach (var file in manifest.Files)
+        {
+            var full = Path.Combine(installPath, file.Path.Replace('/', Path.DirectorySeparatorChar));
+            try
+            {
+                var info = new FileInfo(full);
+                if (!info.Exists || info.Length <= file.Size) continue;
+                using (var stream = new FileStream(full, FileMode.Open, FileAccess.Write, FileShare.None)) stream.SetLength(file.Size);
+                _log.LogInformation("{Path} of {Name} was {Was:N0} bytes, cut to {Size:N0} before the transfer", file.Path, manifest.Name, info.Length, file.Size);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                _log.LogWarning(ex, "Could not cut {Path} of {Name} to its size, the check after the transfer will name it", file.Path, manifest.Name);
+            }
         }
     }
 

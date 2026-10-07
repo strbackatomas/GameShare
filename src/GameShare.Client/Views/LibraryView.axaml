@@ -76,8 +76,10 @@
                                     <TextBlock Text="{Binding InstallPath}" Classes="muted" FontSize="11" TextTrimming="CharacterEllipsis" />
                                     <TextBlock Text="{Binding SourceText}" IsVisible="{Binding HasSource}" Classes="muted" FontSize="11" TextWrapping="Wrap"
                                                ToolTip.Tip="Netknutá kopie ve zdrojové složce. Ostatním PC se posílá ona, ne kopie, ze které se hraje." />
-                                    <TextBlock IsVisible="{Binding IsDamaged}" Classes="muted" FontSize="12" TextWrapping="Wrap"
+                                    <TextBlock IsVisible="{Binding IsDamagedInPlace}" Classes="muted" FontSize="12" TextWrapping="Wrap"
                                                Text="Nezměněné části hry se dál nabízejí ostatním PC." />
+                                    <TextBlock IsVisible="{Binding FolderMissing}" Foreground="{StaticResource WarnBrush}" FontSize="12" TextWrapping="Wrap"
+                                               Text="Složka hry chybí. Opravit ze sítě ji stáhne znovu na stejné místo, Odinstalovat hru jen zapomene." />
                                     <TextBlock IsVisible="{Binding IsTrustRevoked}" Foreground="{StaticResource DangerBrush}" FontSize="12" TextWrapping="Wrap" Text="{Binding TrustNote}" />
                                     <TextBlock IsVisible="{Binding IsDefinitionDifferent}" Foreground="{StaticResource WarnBrush}" FontSize="12" TextWrapping="Wrap"
                                                Text="{x:Static vm:GameCardViewModel.DefinitionDifferentText}" />
@@ -203,6 +205,8 @@
                                     <TextBlock Text="{Binding SourceText}" IsVisible="{Binding HasSource}" Classes="muted" FontSize="11" TextWrapping="Wrap" />
                                     <TextBlock IsVisible="{Binding IsTrustRevoked}" Foreground="{StaticResource DangerBrush}" FontSize="12" TextWrapping="Wrap" Text="{Binding TrustNote}" />
                                     <TextBlock Text="{Binding CoverageText}" IsVisible="{Binding IsWaitingForParts}" Foreground="{StaticResource WarnBrush}" FontSize="12" TextWrapping="Wrap" />
+                                    <TextBlock IsVisible="{Binding IsOtherVersion}" Classes="muted" FontSize="12" TextWrapping="Wrap"
+                                               Text="Jiná verze, než máš nainstalovanou: starší, nebo se stejným číslem a jinými soubory. Nenabízí se, aby nepřepsala tu tvou." />
                                 </StackPanel>
 
                                 <StackPanel Grid.Row="0" Grid.Column="1" VerticalAlignment="Center">

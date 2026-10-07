@@ -237,6 +237,12 @@ public static partial class LocalApi
             if (installs.Count == 0) throw new InvalidOperationException($"{manifest.Name} is not installed on this PC, so there is nothing to update. Install it instead.");
             if (installs.Count > 1) throw new InvalidOperationException($"{manifest.Name} is installed in {installs.Count} places, GameShare cannot tell which one to update.");
             await RequireNotRunningAsync(running, installs[0], ct);
+            var current = (await db.GetManifestAsync(installs[0].ContentHash, ct))!.Manifest;
+            if (current.ContentHash != manifest.ContentHash // the same version is refused below, in its own words
+                && !GameVersion.IsUpdate(manifest.Version, trust.Check(contentHash).Verdict, current.Version, trust.Check(current.ContentHash).Verdict))
+                throw new InvalidOperationException(
+                    $"{manifest.Name} {manifest.Version} is not newer than the version installed here ({current.Version}), so it would replace it with an older " +
+                    "or a different one, undoing whatever was changed in it. Uninstall it first to take this one.");
 
             var status = await downloads.StartUpdateAsync(installs[0].Id, manifest, torrent, ct);
             return Results.Accepted($"/api/downloads/{status.Id}", view.ToDto(status));
