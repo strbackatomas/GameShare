@@ -8,6 +8,8 @@ this is wired into the build and where a peer's version shows up.
 
 ## [Unreleased]
 
+## [0.12.2] - 2026-10-07
+
 ### Fixed
 - Repairing a game whose settings file the game had rewritten longer never finished: the transfer wrote the right bytes but did not
   shorten the file, so the check after it failed every time, however many PCs had the file intact. Files of the game that grew are
