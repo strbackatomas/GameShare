@@ -8,6 +8,8 @@ this is wired into the build and where a peer's version shows up.
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-10-07
+
 ### Added
 - Programs ("Programy"): software every PC wants, not only games, shared as a package with its installer (`"kind": "app"`). The
   client lists them apart from games; **Stáhnout do PC** fetches the package, **Nainstalovat do PC** runs the installer silently after
