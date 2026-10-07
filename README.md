@@ -255,6 +255,27 @@ each step, with the keys and values a `.reg` writes, and the player confirms. Th
 client after one UAC prompt, and it checks each installer's hash again right before starting it. The player's own steps run in the
 client. The PC remembers the preparation for that setup in that folder; the ▾ menu has **Znovu připravit hru** for another player.
 
+## Programs ("Programy")
+
+Other software that every PC wants, a remote desktop tool say, is shared the same way: a folder in a game root with the installer and
+a `gameshare.json` of `"kind": "app"`.
+
+```json
+{ "gameId": "remote-tool", "name": "Remote Tool", "version": "1.5.0", "kind": "app",
+  "app": { "file": "remote-tool-1.5.0.exe", "args": "--silent-install", "installedIf": { "uninstall": "Remote Tool" } } }
+```
+
+The client lists programs apart from games. **Stáhnout do PC** fetches the package from the LAN, **Nainstalovat do PC** runs its
+installer silently after one UAC prompt, the way the shared libraries are installed. Whether the program is on the PC, and in which
+version, is read from Apps and Features by `installedIf.uninstall`: an older version is installed over, the same or a newer one is left
+alone. A newer package on the LAN is offered as an update like a game's, and then the program as an install again.
+
+An installer runs with administrator rights on every PC that takes it, so a program is installed only when the administrator signed it,
+files and definition, whatever the trust mode (in `Warn` a game that is not on the list still installs, a program does not). The
+installer's hash is checked right before it starts. The admin GUI has **Program k instalaci do PC** in the definition editor; for an
+`.msi` it fills in the silent arguments, the version and the name Apps and Features will show. Programs are installed, never started from
+their folder, and uninstalling one is left to Windows.
+
 ## Moving from the old LAN party installer
 
 `scripts\import-lan-installer.ps1 -Source 'D:\Instalace V2\hry_install_v2' -Target C:\Hry` turns the old `LAN_PARTY_INSTALACE_V2.bat`

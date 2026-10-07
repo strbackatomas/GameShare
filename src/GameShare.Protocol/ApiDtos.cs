@@ -83,6 +83,16 @@ public sealed record GameDto(
     /// </summary>
     public bool FolderMissing { get; init; }
 
+    /// <summary>A game, the shared libraries, or a program to install. Known before the version is downloaded, from the offer.</summary>
+    public GameKind Kind { get; init; } = GameKind.Game;
+
+    /// <summary>
+    /// For a program: whether it is installed on this PC, whatever version, and that version as Apps and Features reports it.
+    /// Null for anything else.
+    /// </summary>
+    public bool? AppInstalled { get; init; }
+    public string? AppInstalledVersion { get; init; }
+
     /// <summary>
     /// Set on a version that is not installed here while another version of the same game is, and this one is an update of it
     /// (see <see cref="GameVersion.IsUpdate"/>). It is the content hash of that installed version, so the client offers "update".
@@ -391,6 +401,9 @@ public sealed record PeerHelloDto(
 /// <summary>A game this PC is willing to serve: installed, verified and seeding.</summary>
 public sealed record OfferedGameDto(string ContentHash, string GameId, string Name, string? Version, long TotalSize)
 {
+    /// <summary>A game, the shared libraries, or a program to install. A PC from before programs sends none, which reads as a game.</summary>
+    public GameKind Kind { get; init; } = GameKind.Game;
+
     /// <summary>False for a game whose files changed here. Only the pieces that still match are served.</summary>
     public bool IsComplete { get; init; } = true;
 

@@ -47,7 +47,9 @@ public sealed class DefinitionSync
         {
             while (true)
             {
-                await _wake.WaitAsync(ct).ConfigureAwait(false);
+                // Also every so often by itself: a PC that offered an old definition when it was asked may have the signed one now,
+                // and nothing else on the LAN may change to say so.
+                await _wake.WaitAsync(AskAgainAfter, ct).ConfigureAwait(false);
                 await Task.Delay(Settle, ct).ConfigureAwait(false);
                 if (_wake.CurrentCount > 0) await _wake.WaitAsync(ct).ConfigureAwait(false); // what came meanwhile is this round
                 try { await SyncAsync(ct).ConfigureAwait(false); }

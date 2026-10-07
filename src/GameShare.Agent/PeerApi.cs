@@ -38,6 +38,7 @@ public static partial class PeerApi
             {
                 IsComplete = o.IsComplete,
                 PercentIntact = o.PercentIntact,
+                Kind = o.Stored.Manifest.Definition?.Kind ?? GameKind.Game,
             }).ToList());
 
         peer.MapGet("/games/{contentHash}/manifest", async (string contentHash, GameShareDb db, SettingsService settings, SeedManager seeds, CancellationToken ct) =>

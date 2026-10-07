@@ -37,6 +37,30 @@ public class DefinitionEditorTests : IDisposable
     }
 
     [Fact]
+    public async Task A_program_package_is_saved_with_its_installer_and_how_to_tell_it_is_installed_and_needs_that()
+    {
+        var folder = Path.Combine(_dir, "Hry", "Remote Tool");
+        Directory.CreateDirectory(folder);
+        File.WriteAllBytes(Path.Combine(folder, "remote-tool-setup.exe"), [1]);
+        var editor = await DefinitionEditorViewModel.OpenAsync(folder);
+
+        editor.IsApp = true;
+        editor.AppFile = editor.AppInstallers.Single();
+        editor.AppArgs = "/S";
+        Assert.Contains("Program musí říct", string.Join(" ", await DefinitionChecks.ValidateAsync(editor.Build(), folder)));
+
+        editor.AppUninstall = "Remote Tool*";
+        var definition = editor.Build();
+
+        Assert.Equal(GameKind.App, definition.Kind);
+        Assert.Equal("remote-tool-setup.exe", definition.App!.File);
+        Assert.Equal("/S", definition.App.Args);
+        Assert.Equal("Remote Tool*", definition.App.InstalledIf!.Uninstall);
+        Assert.Empty(definition.Launch); // a program is installed, not started from the folder
+        Assert.Empty(await DefinitionChecks.ValidateAsync(definition, folder));
+    }
+
+    [Fact]
     public async Task A_folder_without_a_definition_starts_from_its_name_and_offers_only_what_is_in_it()
     {
         var editor = await DefinitionEditorViewModel.OpenAsync(Battlefield());

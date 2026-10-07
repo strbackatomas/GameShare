@@ -78,8 +78,18 @@
                                 <TextBox Grid.Column="2" Text="{Binding GameVersion}" PlaceholderText="Verze" />
                             </Grid>
 
-                            <TextBlock Classes="muted" Text="Spouštěče: název · program · argumenty · pracovní složka. První je tlačítko Hrát, ostatní jsou v nabídce vedle něj." Margin="0,6,0,0" TextWrapping="Wrap" />
-                            <ItemsControl ItemsSource="{Binding Launch}">
+                            <CheckBox Content="Program k instalaci do PC (ne hra): spustí se jeho instalátor, jen podepsaný" IsChecked="{Binding IsApp}" />
+                            <StackPanel IsVisible="{Binding IsApp}" Spacing="4">
+                                <TextBlock Classes="muted" FontSize="11" Text="Instalátor · tiché parametry · název v Aplikacích a funkcích (* jako zástupný znak), podle něj se pozná, že je nainstalovaný a v jaké verzi" TextWrapping="Wrap" />
+                                <Grid ColumnDefinitions="*,200,*" ColumnSpacing="6">
+                                    <ComboBox Grid.Column="0" ItemsSource="{Binding AppInstallers}" SelectedItem="{Binding AppFile}" HorizontalAlignment="Stretch" />
+                                    <TextBox Grid.Column="1" Text="{Binding AppArgs}" PlaceholderText="/qn, /S, /VERYSILENT…"
+                                             ToolTip.Tip="Tiché parametry: .msi /qn /norestart, NSIS /S, Inno Setup /VERYSILENT /NORESTART, jinak podle výrobce" />
+                                    <TextBox Grid.Column="2" Text="{Binding AppUninstall}" PlaceholderText="Název v Aplikacích a funkcích, např. Program*" />
+                                </Grid>
+                            </StackPanel>
+                            <TextBlock Classes="muted" Text="Spouštěče: název · program · argumenty · pracovní složka. První je tlačítko Hrát, ostatní jsou v nabídce vedle něj." Margin="0,6,0,0" TextWrapping="Wrap" IsVisible="{Binding !IsApp}" />
+                            <ItemsControl ItemsSource="{Binding Launch}" IsVisible="{Binding !IsApp}">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate x:DataType="vm:LaunchRow">
                                         <Grid ColumnDefinitions="110,*,*,90,Auto,Auto,Auto" ColumnSpacing="6" Margin="0,2">
@@ -94,7 +104,7 @@
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
-                            <Button Content="+ Spouštěč" Command="{Binding AddLaunchCommand}" />
+                            <Button Content="+ Spouštěč" Command="{Binding AddLaunchCommand}" IsVisible="{Binding !IsApp}" />
                             <CheckBox Content="Bez mikrofonu hra spadne (klient před spuštěním upozorní)" IsChecked="{Binding NeedsMicrophone}"
                                       ToolTip.Tip="Pro hry, které při startu otevírají mikrofon pro hlasový chat a bez něj spadnou." />
 

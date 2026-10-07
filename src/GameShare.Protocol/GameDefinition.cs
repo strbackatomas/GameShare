@@ -57,6 +57,14 @@ public sealed record GameDefinition
     public IReadOnlyDictionary<string, RedistPackage> Provides { get; init; } = new Dictionary<string, RedistPackage>();
 
     /// <summary>
+    /// For a <see cref="GameKind.App"/> package: its installer, silent arguments and how to tell it is installed. The version installed
+    /// is read from Apps and Features when <see cref="InstalledCheck.Uninstall"/> names it, and compared with <see cref="Version"/>.
+    /// Left out of the JSON when null, so definitions signed before it existed keep their hash.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public RedistPackage? App { get; init; }
+
+    /// <summary>
     /// The programs to offer, first the game itself. <see cref="Launch"/> when it has entries, else the single
     /// <see cref="Executable"/>, else none.
     /// </summary>
@@ -81,7 +89,8 @@ public sealed record GameDefinition
 
     /// <summary>Whether a PC is prepared for the game before it is first played: setup steps, or programs to let through the firewall.</summary>
     public bool HasSetup() =>
-        Kind == GameKind.Game && (Setup is { } setup && !(setup with { Firewall = null }).IsEmpty || FirewallPrograms().Count > 0);
+        Kind == GameKind.Game && (Setup is { } setup && !(setup with { Firewall = null }).IsEmpty || FirewallPrograms().Count > 0)
+        || Kind == GameKind.App && App is not null;
 }
 
 /// <summary>The values <see cref="GameDefinition.Needs"/> knows.</summary>
@@ -101,6 +110,11 @@ public enum GameKind
     Game,
     /// <summary>Redistributables (DirectX, Visual C++, .NET) shared like a game. Not played, only installed from by other games' setup.</summary>
     Redist,
+    /// <summary>
+    /// A program installed on the PC rather than played from its folder, such as a remote desktop tool: an installer of
+    /// <see cref="GameDefinition.App"/> shared like a game, run once with administrator rights, and only when the administrator signed it.
+    /// </summary>
+    App,
 }
 
 /// <summary>One program of a game a player can start.</summary>

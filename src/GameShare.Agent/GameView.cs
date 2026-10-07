@@ -77,6 +77,7 @@ public sealed class GameView
             };
 
             var (fully, coverage) = _catalog.Availability(m.ContentHash);
+            var app = _setup.AppState(m);
             var seen = state == GameState.Damaged ? _changes.Get(g.Installation!.Id) : ObservedChanges.None;
             var (trust, trustNote) = _trust.Check(m.ContentHash);
             // The list vouches for the files of this version. Files that changed since are not those, so do not claim it. A revocation still stands.
@@ -103,6 +104,9 @@ public sealed class GameView
                 SourcePath = sources[m.ContentHash].FirstOrDefault()?.Path,
                 SourceIntact = sources[m.ContentHash].Any(c => c.State == InstallationState.Installed),
                 FolderMissing = g.Installation is not null && !Directory.Exists(g.Installation.InstallPath),
+                Kind = m.Definition?.Kind ?? GameKind.Game,
+                AppInstalled = app.Installed,
+                AppInstalledVersion = app.Version,
             };
         }
 
@@ -116,6 +120,7 @@ public sealed class GameView
                 o.ContentHash, o.GameId, o.Name, o.Version, o.TotalSize, GameState.AvailableOnLan,
                 null, PeerNames(group), null, null)
             {
+                Kind = o.Kind,
                 UpdatesContentHash = Relation(o.GameId, o.Version, o.ContentHash).Updates,
                 OtherVersionOfContentHash = Relation(o.GameId, o.Version, o.ContentHash).Other,
                 Trust = trust,

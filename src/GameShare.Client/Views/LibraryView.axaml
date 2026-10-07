@@ -35,6 +35,174 @@
         </DataTemplate>
     </UserControl.DataTemplates>
 
+    <UserControl.Resources>
+        <DataTemplate x:Key="LocalCard" x:DataType="vm:GameCardViewModel">
+            <Border Classes="card">
+                <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto">
+
+                    <StackPanel Grid.Row="0" Grid.Column="0" Spacing="3">
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <Image Source="{Binding IconData, Converter={x:Static views:IconConverter.Instance}}" IsVisible="{Binding HasIconImage}"
+                                   Width="32" Height="32" VerticalAlignment="Center" RenderOptions.BitmapInterpolationMode="HighQuality" />
+                            <TextBlock Text="{Binding Name}" Classes="title" VerticalAlignment="Center" />
+                            <Border Classes="sym" Background="{StaticResource WarnBrush}" IsVisible="{Binding IsDamaged}" ToolTip.Tip="Hra změnila své soubory. Opravit ji jde v nabídce ▾."><TextBlock Text="✎" /></Border>
+                            <Border Classes="sym" Background="{StaticResource BadgeBrush}" IsVisible="{Binding IsDownloading}" ToolTip.Tip="{Binding StateText}"><TextBlock Text="↓" /></Border>
+                            <Border Classes="sym" Background="{StaticResource BadgeBrush}" IsVisible="{Binding IsRunning}" ToolTip.Tip="Hra běží"><TextBlock Text="▶" FontSize="10" /></Border>
+                            <views:TrustShield Verdict="{Binding Trust}" ToolTip.Tip="{Binding TrustTip}" />
+                        </StackPanel>
+                        <TextBlock Text="{Binding Details}" Classes="muted" />
+                        <TextBlock Text="{Binding InstallPath}" Classes="muted" FontSize="11" TextTrimming="CharacterEllipsis" />
+                        <TextBlock Text="{Binding SourceText}" IsVisible="{Binding HasSource}" Classes="muted" FontSize="11" TextWrapping="Wrap"
+                                   ToolTip.Tip="Netknutá kopie ve zdrojové složce. Ostatním PC se posílá ona, ne kopie, ze které se hraje." />
+                        <TextBlock IsVisible="{Binding IsDamagedInPlace}" Classes="muted" FontSize="12" TextWrapping="Wrap"
+                                   Text="Nezměněné části hry se dál nabízejí ostatním PC." />
+                        <TextBlock IsVisible="{Binding FolderMissing}" Foreground="{StaticResource WarnBrush}" FontSize="12" TextWrapping="Wrap"
+                                   Text="Složka hry chybí. Opravit ze sítě ji stáhne znovu na stejné místo, Odinstalovat hru jen zapomene." />
+                        <TextBlock IsVisible="{Binding IsTrustRevoked}" Foreground="{StaticResource DangerBrush}" FontSize="12" TextWrapping="Wrap" Text="{Binding TrustNote}" />
+                        <TextBlock IsVisible="{Binding IsDefinitionDifferent}" Foreground="{StaticResource WarnBrush}" FontSize="12" TextWrapping="Wrap"
+                                   Text="{x:Static vm:GameCardViewModel.DefinitionDifferentText}" />
+                        <TextBlock IsVisible="{Binding HasAppText}" FontSize="12" TextWrapping="Wrap" Text="{Binding AppText}" />
+                    </StackPanel>
+
+                    <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Top">
+                        <Button Classes="primary" Command="{Binding PlayCommand}" IsVisible="{Binding CanPlay}" MinWidth="90" HorizontalContentAlignment="Center"
+                                ToolTip.Tip="{Binding PlayTip}">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <TextBlock Text="🛡" IsVisible="{Binding PlayNeedsAdmin}" />
+                                <TextBlock Text="{Binding PlayText}" />
+                            </StackPanel>
+                        </Button>
+                        <Button Content="Vybrat spouštěcí soubor" Command="{Binding ChooseExecutableCommand}" IsVisible="{Binding NeedsExecutable}" />
+                        <Button Content="▾" IsVisible="{Binding HasMenu}" ToolTip.Tip="Další možnosti" Padding="10,5">
+                            <Button.Flyout>
+                                <MenuFlyout Placement="BottomEdgeAlignedRight" ItemsSource="{Binding MenuEntries}">
+                                    <MenuFlyout.ItemContainerTheme>
+                                        <ControlTheme TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}" x:DataType="vm:CardMenuEntry">
+                                            <Setter Property="Header" Value="{Binding Header}" />
+                                            <Setter Property="Command" Value="{Binding Command}" />
+                                        </ControlTheme>
+                                    </MenuFlyout.ItemContainerTheme>
+                                </MenuFlyout>
+                            </Button.Flyout>
+                        </Button>
+                    </StackPanel>
+
+                    <StackPanel Grid.Row="1" Grid.ColumnSpan="2" Spacing="4" Margin="0,10,0,0" IsVisible="{Binding IsDownloading}">
+                        <ProgressBar Value="{Binding Percent}" Maximum="100" IsIndeterminate="{Binding IsVerifying}" />
+                        <TextBlock Text="{Binding ProgressText}" Classes="muted" FontSize="12" />
+                    </StackPanel>
+
+                    <TextBlock Grid.Row="2" Grid.ColumnSpan="2" Text="{Binding Message}" IsVisible="{Binding HasMessage}" Margin="0,10,0,0" TextWrapping="Wrap" />
+
+                    <Grid Grid.Row="3" Grid.ColumnSpan="2" ColumnDefinitions="*,Auto,Auto" Margin="0,8,0,0" IsVisible="{Binding IsChoosingExecutable}">
+                        <ComboBox Grid.Column="0" ItemsSource="{Binding Executables}" SelectedItem="{Binding SelectedExecutable}" HorizontalAlignment="Stretch" />
+                        <Button Grid.Column="1" Classes="primary" Content="Použít" Command="{Binding SaveExecutableCommand}" Margin="8,0,0,0" />
+                        <Button Grid.Column="2" Content="Zrušit" Command="{Binding CancelChoosingExecutableCommand}" Margin="8,0,0,0" />
+                    </Grid>
+
+                    <Grid Grid.Row="4" Grid.ColumnSpan="2" ColumnDefinitions="*,Auto" Margin="0,6,0,0" IsVisible="{Binding HasSuggestion}">
+                        <TextBlock Grid.Column="0" Text="{Binding Suggestion}" Classes="muted" TextWrapping="Wrap" VerticalAlignment="Center" />
+                        <Button Grid.Column="1" Content="Označit jako proměnné" Command="{Binding MarkVolatileCommand}" Margin="12,0,0,0" />
+                    </Grid>
+
+                    <Grid Grid.Row="5" Grid.ColumnSpan="2" ColumnDefinitions="*,Auto,Auto" Margin="0,8,0,0" IsVisible="{Binding IsAskingForMicrophone}">
+                        <TextBlock Grid.Column="0" Text="{Binding MicrophoneText}" Foreground="{StaticResource WarnBrush}" TextWrapping="Wrap" VerticalAlignment="Center" />
+                        <Button Grid.Column="1" Content="Přesto spustit" Command="{Binding StartWithoutMicrophoneCommand}" Margin="8,0,0,0" />
+                        <Button Grid.Column="2" Content="Zrušit" Command="{Binding CancelMicrophoneCommand}" Margin="8,0,0,0" />
+                    </Grid>
+
+                    <Grid Grid.Row="5" Grid.ColumnSpan="2" ColumnDefinitions="*,Auto,Auto" Margin="0,8,0,0" IsVisible="{Binding IsConfirmingUninstall}">
+                        <TextBlock Grid.Column="0" Text="Opravdu odinstalovat? Smažou se i soubory hry na disku." Classes="muted" TextWrapping="Wrap" VerticalAlignment="Center" />
+                        <Button Grid.Column="1" Classes="danger" Content="Ano, odinstalovat" Command="{Binding ConfirmUninstallCommand}" Margin="8,0,0,0" />
+                        <Button Grid.Column="2" Content="Zrušit" Command="{Binding CancelUninstallCommand}" Margin="8,0,0,0" />
+                    </Grid>
+
+                    <Border Grid.Row="6" Grid.ColumnSpan="2" Margin="0,12,0,0" Padding="14" CornerRadius="8" Background="{StaticResource PanelBrush}"
+                            BorderBrush="{StaticResource LineBrush}" BorderThickness="1" IsVisible="{Binding IsShowingSetup}">
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="Příprava hry" FontWeight="SemiBold" FontSize="15" />
+                            <TextBlock Classes="muted" TextWrapping="Wrap"
+                                       Text="Před prvním spuštěním na tomto PC GameShare udělá tohle. Kroky se štítem potřebují oprávnění správce, Windows se zeptá jednou pro všechny." />
+                            <TextBlock Text="{Binding SetupWarning}" IsVisible="{Binding HasSetupWarning}" Foreground="{StaticResource WarnBrush}" TextWrapping="Wrap" />
+                            <ItemsControl ItemsSource="{Binding SetupSteps}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:SetupStepViewModel">
+                                        <Grid ColumnDefinitions="24,*" RowDefinitions="Auto,Auto,Auto" Margin="0,3">
+                                            <TextBlock Grid.Column="0" Text="🛡" IsVisible="{Binding NeedsAdmin}" ToolTip.Tip="Potřebuje oprávnění správce" />
+                                            <TextBlock Grid.Column="0" Text="✓" IsVisible="{Binding AlreadyDone}" Foreground="{StaticResource SuccessBrush}" ToolTip.Tip="Na tomto PC už je" />
+                                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10">
+                                                <TextBlock Text="{Binding Title}" TextWrapping="Wrap" />
+                                                <ToggleButton Classes="link" IsChecked="{Binding ShowDetails}" IsVisible="{Binding HasDetails}"
+                                                              VerticalAlignment="Center">
+                                                    <TextBlock Text="podrobnosti" Classes="muted" FontSize="12" TextDecorations="Underline" />
+                                                </ToggleButton>
+                                            </StackPanel>
+                                            <Border Grid.Row="1" Grid.Column="1" IsVisible="{Binding ShowDetails}" Background="{StaticResource BgBrush}" CornerRadius="4" Padding="8,6" Margin="0,4,0,0">
+                                                <SelectableTextBlock Text="{Binding Details}" FontFamily="Consolas,Cascadia Mono,monospace" FontSize="11" TextWrapping="Wrap" />
+                                            </Border>
+                                            <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding Outcome}" IsVisible="{Binding HasOutcome}" Classes="muted" FontSize="12" TextWrapping="Wrap" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <TextBlock Text="{Binding SetupBlocked}" IsVisible="{Binding HasSetupBlocked}" Foreground="{StaticResource DangerBrush}" TextWrapping="Wrap" />
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Button Classes="primary" Command="{Binding RunSetupCommand}">
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <TextBlock Text="🛡" IsVisible="{Binding SetupNeedsAdmin}" />
+                                        <TextBlock Text="Připravit a hrát" />
+                                    </StackPanel>
+                                </Button>
+                                <Button Content="Nainstalovat balíček knihoven" Command="{Binding InstallRedistCommand}" IsVisible="{Binding HasMissingRedist}" />
+                                <Button Content="Hrát bez přípravy" Command="{Binding SkipSetupCommand}" />
+                                <Button Content="Zrušit" Command="{Binding CancelSetupCommand}" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+                    <ContentControl Grid.Row="7" Grid.ColumnSpan="2" Content="{Binding Spread}" IsVisible="{Binding IsSpreading}" Margin="0,12,0,0" />
+                </Grid>
+            </Border>
+        </DataTemplate>
+        <DataTemplate x:Key="LanCard" x:DataType="vm:GameCardViewModel">
+            <Border Classes="card">
+                <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto,Auto">
+                    <StackPanel Grid.Row="0" Grid.Column="0" Spacing="3">
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <TextBlock Text="{Binding Name}" Classes="title" />
+                            <Border Classes="sym" Background="{StaticResource BadgeBrush}" IsVisible="{Binding CanUpdate}" ToolTip.Tip="{Binding StateText}"><TextBlock Text="↑" /></Border>
+                            <Border Classes="sym" Background="{StaticResource WarnBrush}" IsVisible="{Binding IsWaitingForParts}" ToolTip.Tip="{Binding StateText}"><TextBlock Text="…" /></Border>
+                            <views:TrustShield Verdict="{Binding Trust}" ToolTip.Tip="{Binding TrustTip}" />
+                        </StackPanel>
+                        <TextBlock Text="{Binding Details}" Classes="muted" />
+                        <TextBlock Text="{Binding PeersText}" Classes="muted" FontSize="12" TextWrapping="Wrap" />
+                        <TextBlock Text="{Binding SourceText}" IsVisible="{Binding HasSource}" Classes="muted" FontSize="11" TextWrapping="Wrap" />
+                        <TextBlock IsVisible="{Binding IsTrustRevoked}" Foreground="{StaticResource DangerBrush}" FontSize="12" TextWrapping="Wrap" Text="{Binding TrustNote}" />
+                        <TextBlock Text="{Binding CoverageText}" IsVisible="{Binding IsWaitingForParts}" Foreground="{StaticResource WarnBrush}" FontSize="12" TextWrapping="Wrap" />
+                        <TextBlock IsVisible="{Binding IsOtherVersion}" Classes="muted" FontSize="12" TextWrapping="Wrap"
+                                   Text="Jiná verze, než máš nainstalovanou: starší, nebo se stejným číslem a jinými soubory. Nenabízí se, aby nepřepsala tu tvou." />
+                    </StackPanel>
+
+                    <StackPanel Grid.Row="0" Grid.Column="1" VerticalAlignment="Center">
+                        <Button Classes="primary" Content="{Binding InstallText}" Command="{Binding InstallCommand}" IsVisible="{Binding ShowInstallButton}" MinWidth="120" HorizontalContentAlignment="Center" />
+                        <Button Classes="primary" Content="Aktualizovat" Command="{Binding UpdateCommand}" IsVisible="{Binding CanUpdate}" MinWidth="120" HorizontalContentAlignment="Center" />
+                        <Button Content="Na další PC…" Command="{Binding OpenSpreadCommand}" IsVisible="{Binding CanSpread}" MinWidth="120"
+                                HorizontalContentAlignment="Center" Margin="0,6,0,0" />
+                    </StackPanel>
+
+                    <TextBlock Grid.Row="1" Grid.ColumnSpan="2" Text="{Binding Message}" IsVisible="{Binding HasMessage}" Margin="0,10,0,0" TextWrapping="Wrap" />
+
+                    <Grid Grid.Row="2" Grid.ColumnSpan="2" ColumnDefinitions="*,Auto,Auto" Margin="0,8,0,0" IsVisible="{Binding IsChoosingInstallFolder}">
+                        <ComboBox Grid.Column="0" ItemsSource="{Binding InstallRoots}" SelectedItem="{Binding SelectedInstallRoot}"
+                                  DisplayMemberBinding="{Binding Text}" HorizontalAlignment="Stretch" />
+                        <Button Grid.Column="1" Classes="primary" Content="Instalovat sem" Command="{Binding ConfirmInstallCommand}" Margin="8,0,0,0" />
+                        <Button Grid.Column="2" Content="Zrušit" Command="{Binding CancelChoosingInstallFolderCommand}" Margin="8,0,0,0" />
+                    </Grid>
+                    <ContentControl Grid.Row="3" Grid.ColumnSpan="2" Content="{Binding Spread}" IsVisible="{Binding IsSpreading}" Margin="0,12,0,0" />
+                </Grid>
+            </Border>
+        </DataTemplate>
+    </UserControl.Resources>
+
     <ScrollViewer>
         <StackPanel Margin="24,8,24,24" MaxWidth="980" HorizontalAlignment="Stretch">
 
@@ -56,180 +224,14 @@
                        Text="Zatím tu nejsou žádné hry. Přidej složku s hrami v Nastavení, nebo počkej, až se objeví ostatní PC v síti." />
 
             <TextBlock Classes="section" Text="MOJE HRY" IsVisible="{Binding HasMyGames}" />
-            <ItemsControl ItemsSource="{Binding MyGames}">
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate x:DataType="vm:GameCardViewModel">
-                        <Border Classes="card">
-                            <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto">
-
-                                <StackPanel Grid.Row="0" Grid.Column="0" Spacing="3">
-                                    <StackPanel Orientation="Horizontal" Spacing="10">
-                                        <Image Source="{Binding IconData, Converter={x:Static views:IconConverter.Instance}}" IsVisible="{Binding HasIconImage}"
-                                               Width="32" Height="32" VerticalAlignment="Center" RenderOptions.BitmapInterpolationMode="HighQuality" />
-                                        <TextBlock Text="{Binding Name}" Classes="title" VerticalAlignment="Center" />
-                                        <Border Classes="sym" Background="{StaticResource WarnBrush}" IsVisible="{Binding IsDamaged}" ToolTip.Tip="Hra změnila své soubory. Opravit ji jde v nabídce ▾."><TextBlock Text="✎" /></Border>
-                                        <Border Classes="sym" Background="{StaticResource BadgeBrush}" IsVisible="{Binding IsDownloading}" ToolTip.Tip="{Binding StateText}"><TextBlock Text="↓" /></Border>
-                                        <Border Classes="sym" Background="{StaticResource BadgeBrush}" IsVisible="{Binding IsRunning}" ToolTip.Tip="Hra běží"><TextBlock Text="▶" FontSize="10" /></Border>
-                                        <views:TrustShield Verdict="{Binding Trust}" ToolTip.Tip="{Binding TrustTip}" />
-                                    </StackPanel>
-                                    <TextBlock Text="{Binding Details}" Classes="muted" />
-                                    <TextBlock Text="{Binding InstallPath}" Classes="muted" FontSize="11" TextTrimming="CharacterEllipsis" />
-                                    <TextBlock Text="{Binding SourceText}" IsVisible="{Binding HasSource}" Classes="muted" FontSize="11" TextWrapping="Wrap"
-                                               ToolTip.Tip="Netknutá kopie ve zdrojové složce. Ostatním PC se posílá ona, ne kopie, ze které se hraje." />
-                                    <TextBlock IsVisible="{Binding IsDamagedInPlace}" Classes="muted" FontSize="12" TextWrapping="Wrap"
-                                               Text="Nezměněné části hry se dál nabízejí ostatním PC." />
-                                    <TextBlock IsVisible="{Binding FolderMissing}" Foreground="{StaticResource WarnBrush}" FontSize="12" TextWrapping="Wrap"
-                                               Text="Složka hry chybí. Opravit ze sítě ji stáhne znovu na stejné místo, Odinstalovat hru jen zapomene." />
-                                    <TextBlock IsVisible="{Binding IsTrustRevoked}" Foreground="{StaticResource DangerBrush}" FontSize="12" TextWrapping="Wrap" Text="{Binding TrustNote}" />
-                                    <TextBlock IsVisible="{Binding IsDefinitionDifferent}" Foreground="{StaticResource WarnBrush}" FontSize="12" TextWrapping="Wrap"
-                                               Text="{x:Static vm:GameCardViewModel.DefinitionDifferentText}" />
-                                </StackPanel>
-
-                                <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Top">
-                                    <Button Classes="primary" Command="{Binding PlayCommand}" IsVisible="{Binding CanPlay}" MinWidth="90" HorizontalContentAlignment="Center"
-                                            ToolTip.Tip="{Binding PlayTip}">
-                                        <StackPanel Orientation="Horizontal" Spacing="6">
-                                            <TextBlock Text="🛡" IsVisible="{Binding PlayNeedsAdmin}" />
-                                            <TextBlock Text="Hrát" />
-                                        </StackPanel>
-                                    </Button>
-                                    <Button Content="Vybrat spouštěcí soubor" Command="{Binding ChooseExecutableCommand}" IsVisible="{Binding NeedsExecutable}" />
-                                    <Button Content="▾" IsVisible="{Binding HasMenu}" ToolTip.Tip="Další možnosti" Padding="10,5">
-                                        <Button.Flyout>
-                                            <MenuFlyout Placement="BottomEdgeAlignedRight" ItemsSource="{Binding MenuEntries}">
-                                                <MenuFlyout.ItemContainerTheme>
-                                                    <ControlTheme TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}" x:DataType="vm:CardMenuEntry">
-                                                        <Setter Property="Header" Value="{Binding Header}" />
-                                                        <Setter Property="Command" Value="{Binding Command}" />
-                                                    </ControlTheme>
-                                                </MenuFlyout.ItemContainerTheme>
-                                            </MenuFlyout>
-                                        </Button.Flyout>
-                                    </Button>
-                                </StackPanel>
-
-                                <StackPanel Grid.Row="1" Grid.ColumnSpan="2" Spacing="4" Margin="0,10,0,0" IsVisible="{Binding IsDownloading}">
-                                    <ProgressBar Value="{Binding Percent}" Maximum="100" IsIndeterminate="{Binding IsVerifying}" />
-                                    <TextBlock Text="{Binding ProgressText}" Classes="muted" FontSize="12" />
-                                </StackPanel>
-
-                                <TextBlock Grid.Row="2" Grid.ColumnSpan="2" Text="{Binding Message}" IsVisible="{Binding HasMessage}" Margin="0,10,0,0" TextWrapping="Wrap" />
-
-                                <Grid Grid.Row="3" Grid.ColumnSpan="2" ColumnDefinitions="*,Auto,Auto" Margin="0,8,0,0" IsVisible="{Binding IsChoosingExecutable}">
-                                    <ComboBox Grid.Column="0" ItemsSource="{Binding Executables}" SelectedItem="{Binding SelectedExecutable}" HorizontalAlignment="Stretch" />
-                                    <Button Grid.Column="1" Classes="primary" Content="Použít" Command="{Binding SaveExecutableCommand}" Margin="8,0,0,0" />
-                                    <Button Grid.Column="2" Content="Zrušit" Command="{Binding CancelChoosingExecutableCommand}" Margin="8,0,0,0" />
-                                </Grid>
-
-                                <Grid Grid.Row="4" Grid.ColumnSpan="2" ColumnDefinitions="*,Auto" Margin="0,6,0,0" IsVisible="{Binding HasSuggestion}">
-                                    <TextBlock Grid.Column="0" Text="{Binding Suggestion}" Classes="muted" TextWrapping="Wrap" VerticalAlignment="Center" />
-                                    <Button Grid.Column="1" Content="Označit jako proměnné" Command="{Binding MarkVolatileCommand}" Margin="12,0,0,0" />
-                                </Grid>
-
-                                <Grid Grid.Row="5" Grid.ColumnSpan="2" ColumnDefinitions="*,Auto,Auto" Margin="0,8,0,0" IsVisible="{Binding IsAskingForMicrophone}">
-                                    <TextBlock Grid.Column="0" Text="{Binding MicrophoneText}" Foreground="{StaticResource WarnBrush}" TextWrapping="Wrap" VerticalAlignment="Center" />
-                                    <Button Grid.Column="1" Content="Přesto spustit" Command="{Binding StartWithoutMicrophoneCommand}" Margin="8,0,0,0" />
-                                    <Button Grid.Column="2" Content="Zrušit" Command="{Binding CancelMicrophoneCommand}" Margin="8,0,0,0" />
-                                </Grid>
-
-                                <Grid Grid.Row="5" Grid.ColumnSpan="2" ColumnDefinitions="*,Auto,Auto" Margin="0,8,0,0" IsVisible="{Binding IsConfirmingUninstall}">
-                                    <TextBlock Grid.Column="0" Text="Opravdu odinstalovat? Smažou se i soubory hry na disku." Classes="muted" TextWrapping="Wrap" VerticalAlignment="Center" />
-                                    <Button Grid.Column="1" Classes="danger" Content="Ano, odinstalovat" Command="{Binding ConfirmUninstallCommand}" Margin="8,0,0,0" />
-                                    <Button Grid.Column="2" Content="Zrušit" Command="{Binding CancelUninstallCommand}" Margin="8,0,0,0" />
-                                </Grid>
-
-                                <Border Grid.Row="6" Grid.ColumnSpan="2" Margin="0,12,0,0" Padding="14" CornerRadius="8" Background="{StaticResource PanelBrush}"
-                                        BorderBrush="{StaticResource LineBrush}" BorderThickness="1" IsVisible="{Binding IsShowingSetup}">
-                                    <StackPanel Spacing="8">
-                                        <TextBlock Text="Příprava hry" FontWeight="SemiBold" FontSize="15" />
-                                        <TextBlock Classes="muted" TextWrapping="Wrap"
-                                                   Text="Před prvním spuštěním na tomto PC GameShare udělá tohle. Kroky se štítem potřebují oprávnění správce, Windows se zeptá jednou pro všechny." />
-                                        <TextBlock Text="{Binding SetupWarning}" IsVisible="{Binding HasSetupWarning}" Foreground="{StaticResource WarnBrush}" TextWrapping="Wrap" />
-                                        <ItemsControl ItemsSource="{Binding SetupSteps}">
-                                            <ItemsControl.ItemTemplate>
-                                                <DataTemplate x:DataType="vm:SetupStepViewModel">
-                                                    <Grid ColumnDefinitions="24,*" RowDefinitions="Auto,Auto,Auto" Margin="0,3">
-                                                        <TextBlock Grid.Column="0" Text="🛡" IsVisible="{Binding NeedsAdmin}" ToolTip.Tip="Potřebuje oprávnění správce" />
-                                                        <TextBlock Grid.Column="0" Text="✓" IsVisible="{Binding AlreadyDone}" Foreground="{StaticResource SuccessBrush}" ToolTip.Tip="Na tomto PC už je" />
-                                                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10">
-                                                            <TextBlock Text="{Binding Title}" TextWrapping="Wrap" />
-                                                            <ToggleButton Classes="link" IsChecked="{Binding ShowDetails}" IsVisible="{Binding HasDetails}"
-                                                                          VerticalAlignment="Center">
-                                                                <TextBlock Text="podrobnosti" Classes="muted" FontSize="12" TextDecorations="Underline" />
-                                                            </ToggleButton>
-                                                        </StackPanel>
-                                                        <Border Grid.Row="1" Grid.Column="1" IsVisible="{Binding ShowDetails}" Background="{StaticResource BgBrush}" CornerRadius="4" Padding="8,6" Margin="0,4,0,0">
-                                                            <SelectableTextBlock Text="{Binding Details}" FontFamily="Consolas,Cascadia Mono,monospace" FontSize="11" TextWrapping="Wrap" />
-                                                        </Border>
-                                                        <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding Outcome}" IsVisible="{Binding HasOutcome}" Classes="muted" FontSize="12" TextWrapping="Wrap" />
-                                                    </Grid>
-                                                </DataTemplate>
-                                            </ItemsControl.ItemTemplate>
-                                        </ItemsControl>
-                                        <TextBlock Text="{Binding SetupBlocked}" IsVisible="{Binding HasSetupBlocked}" Foreground="{StaticResource DangerBrush}" TextWrapping="Wrap" />
-                                        <StackPanel Orientation="Horizontal" Spacing="8">
-                                            <Button Classes="primary" Command="{Binding RunSetupCommand}">
-                                                <StackPanel Orientation="Horizontal" Spacing="6">
-                                                    <TextBlock Text="🛡" IsVisible="{Binding SetupNeedsAdmin}" />
-                                                    <TextBlock Text="Připravit a hrát" />
-                                                </StackPanel>
-                                            </Button>
-                                            <Button Content="Nainstalovat balíček knihoven" Command="{Binding InstallRedistCommand}" IsVisible="{Binding HasMissingRedist}" />
-                                            <Button Content="Hrát bez přípravy" Command="{Binding SkipSetupCommand}" />
-                                            <Button Content="Zrušit" Command="{Binding CancelSetupCommand}" />
-                                        </StackPanel>
-                                    </StackPanel>
-                                </Border>
-                                <ContentControl Grid.Row="7" Grid.ColumnSpan="2" Content="{Binding Spread}" IsVisible="{Binding IsSpreading}" Margin="0,12,0,0" />
-                            </Grid>
-                        </Border>
-                    </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
+            <ItemsControl ItemsSource="{Binding MyGames}" ItemTemplate="{StaticResource LocalCard}" />
 
             <TextBlock Classes="section" Text="NA LAN" IsVisible="{Binding HasLanGames}" />
-            <ItemsControl ItemsSource="{Binding LanGames}">
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate x:DataType="vm:GameCardViewModel">
-                        <Border Classes="card">
-                            <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto,Auto">
-                                <StackPanel Grid.Row="0" Grid.Column="0" Spacing="3">
-                                    <StackPanel Orientation="Horizontal" Spacing="10">
-                                        <TextBlock Text="{Binding Name}" Classes="title" />
-                                        <Border Classes="sym" Background="{StaticResource BadgeBrush}" IsVisible="{Binding CanUpdate}" ToolTip.Tip="{Binding StateText}"><TextBlock Text="↑" /></Border>
-                                        <Border Classes="sym" Background="{StaticResource WarnBrush}" IsVisible="{Binding IsWaitingForParts}" ToolTip.Tip="{Binding StateText}"><TextBlock Text="…" /></Border>
-                                        <views:TrustShield Verdict="{Binding Trust}" ToolTip.Tip="{Binding TrustTip}" />
-                                    </StackPanel>
-                                    <TextBlock Text="{Binding Details}" Classes="muted" />
-                                    <TextBlock Text="{Binding PeersText}" Classes="muted" FontSize="12" TextWrapping="Wrap" />
-                                    <TextBlock Text="{Binding SourceText}" IsVisible="{Binding HasSource}" Classes="muted" FontSize="11" TextWrapping="Wrap" />
-                                    <TextBlock IsVisible="{Binding IsTrustRevoked}" Foreground="{StaticResource DangerBrush}" FontSize="12" TextWrapping="Wrap" Text="{Binding TrustNote}" />
-                                    <TextBlock Text="{Binding CoverageText}" IsVisible="{Binding IsWaitingForParts}" Foreground="{StaticResource WarnBrush}" FontSize="12" TextWrapping="Wrap" />
-                                    <TextBlock IsVisible="{Binding IsOtherVersion}" Classes="muted" FontSize="12" TextWrapping="Wrap"
-                                               Text="Jiná verze, než máš nainstalovanou: starší, nebo se stejným číslem a jinými soubory. Nenabízí se, aby nepřepsala tu tvou." />
-                                </StackPanel>
+            <ItemsControl ItemsSource="{Binding LanGames}" ItemTemplate="{StaticResource LanCard}" />
 
-                                <StackPanel Grid.Row="0" Grid.Column="1" VerticalAlignment="Center">
-                                    <Button Classes="primary" Content="Instalovat" Command="{Binding InstallCommand}" IsVisible="{Binding ShowInstallButton}" MinWidth="120" HorizontalContentAlignment="Center" />
-                                    <Button Classes="primary" Content="Aktualizovat" Command="{Binding UpdateCommand}" IsVisible="{Binding CanUpdate}" MinWidth="120" HorizontalContentAlignment="Center" />
-                                    <Button Content="Na další PC…" Command="{Binding OpenSpreadCommand}" IsVisible="{Binding CanSpread}" MinWidth="120"
-                                            HorizontalContentAlignment="Center" Margin="0,6,0,0" />
-                                </StackPanel>
-
-                                <TextBlock Grid.Row="1" Grid.ColumnSpan="2" Text="{Binding Message}" IsVisible="{Binding HasMessage}" Margin="0,10,0,0" TextWrapping="Wrap" />
-
-                                <Grid Grid.Row="2" Grid.ColumnSpan="2" ColumnDefinitions="*,Auto,Auto" Margin="0,8,0,0" IsVisible="{Binding IsChoosingInstallFolder}">
-                                    <ComboBox Grid.Column="0" ItemsSource="{Binding InstallRoots}" SelectedItem="{Binding SelectedInstallRoot}"
-                                              DisplayMemberBinding="{Binding Text}" HorizontalAlignment="Stretch" />
-                                    <Button Grid.Column="1" Classes="primary" Content="Instalovat sem" Command="{Binding ConfirmInstallCommand}" Margin="8,0,0,0" />
-                                    <Button Grid.Column="2" Content="Zrušit" Command="{Binding CancelChoosingInstallFolderCommand}" Margin="8,0,0,0" />
-                                </Grid>
-                                <ContentControl Grid.Row="3" Grid.ColumnSpan="2" Content="{Binding Spread}" IsVisible="{Binding IsSpreading}" Margin="0,12,0,0" />
-                            </Grid>
-                        </Border>
-                    </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
+            <TextBlock Classes="section" Text="PROGRAMY" IsVisible="{Binding HasApps}" />
+            <ItemsControl ItemsSource="{Binding MyApps}" ItemTemplate="{StaticResource LocalCard}" />
+            <ItemsControl ItemsSource="{Binding LanApps}" ItemTemplate="{StaticResource LanCard}" />
         </StackPanel>
     </ScrollViewer>
 </UserControl>

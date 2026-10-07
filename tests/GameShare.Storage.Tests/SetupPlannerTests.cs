@@ -290,6 +290,59 @@ public class SetupPlannerTests : IDisposable
         }
     }
 
+    private sealed class AppProbe(string? installedVersion) : ISetupProbe
+    {
+        public bool IsInstalled(InstalledCheck check) => installedVersion is not null && check.Uninstall == "Remote Tool*";
+        public string? InstalledVersion(InstalledCheck check) => installedVersion;
+    }
+
+    private (GameManifest, string) RemoteTool(string version = "1.4.2", string file = "remote-tool.msi")
+    {
+        var (game, root) = Game("Remote Tool", null, files: [("remote-tool.msi", [7]), ("readme.txt", [8])]);
+        return (game with
+        {
+            Definition = game.Definition! with
+            {
+                Kind = GameKind.App, Version = version,
+                App = new RedistPackage { File = file, Args = "/qn", InstalledIf = new InstalledCheck { Uninstall = "Remote Tool*" } },
+            },
+        }, root);
+    }
+
+    [Theory]
+    [InlineData(null, false)]        // not on the PC
+    [InlineData("1.4.0", false)]     // older: installed over it
+    [InlineData("1.4.2", true)]      // the package's version
+    [InlineData("1.5.0", true)]      // newer than the package: never downgraded
+    public async Task A_program_is_installed_by_its_installer_unless_the_pc_has_it_at_the_packages_version_or_newer(string? installed, bool current)
+    {
+        var (app, root) = RemoteTool();
+        var probe = new AppProbe(installed);
+
+        var plan = await SetupPlanner.PlanAsync(app, root, [], probe);
+
+        Assert.True(SetupPlanner.HasSetup(app));
+        Assert.Equal(current, SetupPlanner.AppIsCurrent(app.Definition!, probe));
+        var step = Assert.Single(plan.Steps);
+        Assert.Equal(SetupStepKind.Redist, step.Kind);
+        Assert.True(step.NeedsAdmin);
+        Assert.Equal(current, step.AlreadyDone);
+        Assert.Equal("/qn", step.Arguments);
+        Assert.Equal(current ? 0 : 1, plan.FilesToVerify.Count); // checked again before it runs, when it runs
+        Assert.Equal(current ? [] : ["Remote Tool 1.4.2"], SetupPlanner.NotInstalled(app, [], probe));
+    }
+
+    [Fact]
+    public async Task A_program_whose_installer_is_not_a_file_of_the_package_is_refused()
+    {
+        var (app, root) = RemoteTool(file: "../../Windows/System32/cmd.exe");
+
+        var plan = await SetupPlanner.PlanAsync(app, root, [], new AppProbe(null));
+
+        Assert.Contains(plan.Problems, p => p.StartsWith("Program:"));
+        Assert.Empty(plan.Steps);
+    }
+
     [Fact]
     public void A_definition_without_firewall_serialises_as_before_so_signed_definitions_keep_their_hash()
     {
@@ -301,6 +354,7 @@ public class SetupPlannerTests : IDisposable
 
         var definition = new GameDefinition { GameId = "testgame", Name = "Test Game", Setup = setup };
         Assert.DoesNotContain("needs", GameShareJson.Serialize(definition));
+        Assert.DoesNotContain("\"app\"", GameShareJson.Serialize(definition));
         Assert.Contains("\"needs\":[\"microphone\"]", GameShareJson.Serialize(definition with { Needs = [GameNeeds.Microphone] }));
     }
 

@@ -47,6 +47,27 @@ public sealed class WindowsSetupProbe : ISetupProbe
         return path;
     }
 
+    public string? InstalledVersion(InstalledCheck check)
+    {
+        if (!OperatingSystem.IsWindows() || check.Uninstall is not { Length: > 0 } pattern) return null;
+        var regex = new Regex("^" + Regex.Escape(pattern).Replace("\\*", ".*") + "$", RegexOptions.IgnoreCase);
+        string? newest = null;
+        foreach (var view in new[] { RegistryView.Registry64, RegistryView.Registry32 })
+        {
+            using var root = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, view);
+            using var uninstall = root.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall");
+            if (uninstall is null) continue;
+            foreach (var name in uninstall.GetSubKeyNames())
+            {
+                using var app = uninstall.OpenSubKey(name);
+                if (app?.GetValue("DisplayName") is not string display || !regex.IsMatch(display)) continue;
+                // An old entry left behind next to the current one happens: the newest is what runs.
+                if (app.GetValue("DisplayVersion") is string version && (newest is null || GameVersion.Compare(version, newest) > 0)) newest = version;
+            }
+        }
+        return newest;
+    }
+
     public bool FirewallAllows(string program)
     {
         if (!OperatingSystem.IsWindows()) return false;

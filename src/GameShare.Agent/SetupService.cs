@@ -39,9 +39,17 @@ public sealed class SetupService
     public async Task<bool> NeedsSetupAsync(GameManifest manifest, Installation? installation, CancellationToken ct = default)
     {
         if (installation is null || !SetupPlanner.HasSetup(manifest)) return false;
+        // A program is what is on the PC, not what was run here once: uninstalled since, or a newer package, and it is needed again.
+        if (manifest.Definition is { Kind: GameKind.App } app) return !SetupPlanner.AppIsCurrent(app, _probe);
         var hash = SetupPlanner.SetupHash(manifest.Definition!, installation.InstallPath);
         return await DoneHashAsync(manifest.GameId, ct).ConfigureAwait(false) != hash;
     }
+
+    /// <summary>For a program package: whether its program is on this PC, and in which version. Nulls for anything else.</summary>
+    public (bool? Installed, string? Version) AppState(GameManifest manifest) =>
+        manifest.Definition is { Kind: GameKind.App, App.InstalledIf: { } check }
+            ? (_probe.IsInstalled(check), _probe.InstalledVersion(check))
+            : (null, null);
 
     /// <summary>The checked plan for this PC, including why it must not run when it must not.</summary>
     public async Task<SetupPlanDto> PlanAsync(string contentHash, CancellationToken ct = default)
@@ -71,6 +79,11 @@ public sealed class SetupService
         var needsSignature = plan.Steps.Any(s => s.Kind != SetupStepKind.Firewall);
         var (gameVerdict, note) = _trust.Check(contentHash);
         if (gameVerdict == TrustVerdict.Revoked) blocked = $"Správce tuto verzi hry stáhl: {note}";
+        // A program's installer runs with administrator rights on every PC that takes it: only one the administrator signed, whatever
+        // the trust settings say for games.
+        else if (manifest.Definition?.Kind == GameKind.App && (gameVerdict != TrustVerdict.Verified || verdict != DefinitionVerdict.Verified))
+            blocked = "Programy se instalují jen ověřené správcem: soubory i definice balíčku musí být na jeho podepsaném seznamu. " +
+                (gameVerdict != TrustVerdict.Verified ? "Tahle verze na něm není." : "Definice balíčku není ta, kterou podepsal.");
         else if (plan.Problems.Count > 0) blocked = "Definice hry obsahuje kroky, které GameShare neprovede: " + string.Join(" ", plan.Problems);
         else if (needsSignature && _trust.Mode == TrustMode.Require && verdict != DefinitionVerdict.Verified)
             blocked = verdict == DefinitionVerdict.Different
@@ -123,6 +136,7 @@ public sealed class SetupService
                 $"Instalátor skončil, ale {string.Join(", ", notInstalled)} na tomto PC pořád není. Instalace možná ještě běží, " +
                 "nebo potichu selhala. Počkej chvíli a zkus přípravu znovu.");
         }
+        if (manifest.Definition?.Kind == GameKind.App) return; // what is on the PC says it, see NeedsSetupAsync
         await _db.SetSettingAsync(KeyPrefix + manifest.GameId, setupHash, ct).ConfigureAwait(false);
         _done[manifest.GameId] = setupHash;
         _log.LogInformation("Setup of {Name} done", manifest.Name);

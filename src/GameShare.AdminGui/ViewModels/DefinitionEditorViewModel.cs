@@ -24,6 +24,7 @@ public sealed partial class DefinitionEditorViewModel : ObservableObject
         Programs = DefinitionChecks.Programs(files);
         RegFiles = DefinitionChecks.RegFiles(files);
         Installers = DefinitionChecks.Installers(files);
+        AppInstallers = DefinitionChecks.AppInstallers(files);
         Folders = folders;
 
         GameId = original.GameId;
@@ -41,6 +42,10 @@ public sealed partial class DefinitionEditorViewModel : ObservableObject
         foreach (var p in setup.Profile) Profile.Add(new ProfileRow(this) { From = p.From, To = p.To });
         FirewallLaunch = setup.Firewall?.Launch ?? true;
         NeedsMicrophone = original.NeedsMicrophone();
+        IsApp = original.Kind == GameKind.App;
+        AppFile = original.App?.File ?? "";
+        AppArgs = original.App?.Args ?? "";
+        AppUninstall = original.App?.InstalledIf?.Uninstall ?? "";
     }
 
     /// <summary>Opens the folder's gameshare.json, or starts a new one named after the folder.</summary>
@@ -70,6 +75,30 @@ public sealed partial class DefinitionEditorViewModel : ObservableObject
 
     /// <summary>Preparing lets the programs in the list through Windows Firewall. Off for a game that never uses the network.</summary>
     [ObservableProperty] public partial bool FirewallLaunch { get; set; } = true;
+
+    public IReadOnlyList<string> AppInstallers { get; }
+
+    /// <summary>A program installed on the PC by its installer, not a game played from the folder.</summary>
+    [ObservableProperty] public partial bool IsApp { get; set; }
+
+    [ObservableProperty] public partial string AppFile { get; set; } = "";
+    [ObservableProperty] public partial string AppArgs { get; set; } = "";
+
+    /// <summary>The name in Apps and Features, * as a wildcard: how a PC tells the program is installed, and in which version.</summary>
+    [ObservableProperty] public partial string AppUninstall { get; set; } = "";
+
+    /// <summary>
+    /// The silent arguments installers of that kind take, and for an .msi what it says about itself: the name Apps and Features
+    /// will show and the version. Only fills what is empty, the administrator's own text stays.
+    /// </summary>
+    partial void OnAppFileChanged(string value)
+    {
+        if (!value.EndsWith(".msi", StringComparison.OrdinalIgnoreCase)) return;
+        if (AppArgs.Length == 0) AppArgs = "/qn /norestart";
+        if (MsiInfo.Read(Path.Combine(_folder, value.Replace('/', Path.DirectorySeparatorChar))) is not { } info) return;
+        if (AppUninstall.Length == 0 && info.ProductName is { Length: > 0 } product) AppUninstall = product + "*";
+        if (GameVersion.Length == 0 && info.ProductVersion is { Length: > 0 } version) GameVersion = version;
+    }
 
     /// <summary>The game crashes without a recording device, so the client asks for one before starting it.</summary>
     [ObservableProperty] public partial bool NeedsMicrophone { get; set; }
@@ -132,14 +161,23 @@ public sealed partial class DefinitionEditorViewModel : ObservableObject
             Firewall = _original.Setup?.Firewall is { Programs.Count: > 0 } kept ? kept with { Launch = FirewallLaunch }
                 : FirewallLaunch ? null : new FirewallSetup { Launch = false },
         };
+        var app = IsApp && Blank(AppFile) is { } file
+            ? new RedistPackage
+            {
+                Name = Name.Trim(), File = file, Args = Blank(AppArgs),
+                InstalledIf = Blank(AppUninstall) is { } uninstall ? new InstalledCheck { Uninstall = uninstall } : _original.App?.InstalledIf,
+            }
+            : null;
         return _original with
         {
+            Kind = IsApp ? GameKind.App : _original.Kind == GameKind.App ? GameKind.Game : _original.Kind,
+            App = app,
             GameId = GameId.Trim(),
             Name = Name.Trim(),
             Version = Blank(GameVersion),
             // The list replaces the old single-program fields, so there is one place that says what starts the game.
             Executable = null, Arguments = null, WorkingDirectory = ".",
-            Launch = Launch.Where(l => Blank(l.Executable) is not null).Select(l => new LaunchEntry
+            Launch = IsApp ? [] : Launch.Where(l => Blank(l.Executable) is not null).Select(l => new LaunchEntry
             {
                 Name = Blank(l.Name), Executable = l.Executable.Trim(), Arguments = Blank(l.Arguments),
                 WorkingDirectory = Blank(l.WorkingDirectory) ?? ".", RunAsAdmin = l.RunAsAdmin,

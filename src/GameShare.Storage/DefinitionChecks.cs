@@ -20,6 +20,11 @@ public static class DefinitionChecks
 
     public static IReadOnlyList<string> RegFiles(IEnumerable<string> files) => Pick(files, ".reg");
 
+    /// <summary>Every installer in the folder, for a program package: the ones at the top first.</summary>
+    public static IReadOnlyList<string> AppInstallers(IEnumerable<string> files) =>
+        files.Where(f => f.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) || f.EndsWith(".msi", StringComparison.OrdinalIgnoreCase))
+            .OrderBy(f => f.Count(c => c == '/')).ThenBy(f => f, StringComparer.OrdinalIgnoreCase).ToList();
+
     public static IReadOnlyList<string> Installers(IEnumerable<string> files) =>
         files.Where(f => f.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) || f.EndsWith(".msi", StringComparison.OrdinalIgnoreCase))
             .Where(f => f.StartsWith("_redist/", StringComparison.OrdinalIgnoreCase)).OrderBy(f => f, StringComparer.OrdinalIgnoreCase).ToList();
@@ -67,6 +72,17 @@ public static class DefinitionChecks
 
         foreach (var need in (definition.Needs ?? []).Where(n => !GameNeeds.All.Contains(n, StringComparer.OrdinalIgnoreCase)))
             problems.Add($"Hra potřebuje '{need}', tomu GameShare nerozumí. Zná jen: {string.Join(", ", GameNeeds.All)}.");
+
+        if (definition.Kind == GameKind.App)
+        {
+            if (definition.App is not { } app) problems.Add("Program nemá vybraný instalátor.");
+            else
+            {
+                if (LaunchRules.GameFile(manifest, app.File, out var problem) is null) problems.Add($"Program: {problem}");
+                if (app.InstalledIf is null)
+                    problems.Add("Program musí říct, podle čeho se pozná, že je na PC (název v Aplikacích a funkcích), jinak by se instaloval pořád dokola.");
+            }
+        }
 
         var setup = definition.Setup ?? new GameSetup();
         foreach (var r in setup.Redist)

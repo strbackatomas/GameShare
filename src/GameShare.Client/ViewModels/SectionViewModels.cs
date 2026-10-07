@@ -27,6 +27,11 @@ public sealed partial class LibraryViewModel : ViewModelBase
     /// <summary>Offered by other PCs and not on this one, including newer versions of games that are.</summary>
     public ObservableCollection<GameCardViewModel> LanGames { get; } = [];
 
+    /// <summary>Programs to install on the PC: those whose package is here, and those only other PCs have.</summary>
+    public ObservableCollection<GameCardViewModel> MyApps { get; } = [];
+    public ObservableCollection<GameCardViewModel> LanApps { get; } = [];
+    [ObservableProperty] public partial bool HasApps { get; set; }
+
     [ObservableProperty] public partial bool IsEmpty { get; set; }
 
     /// <summary>"No games yet" is only true when the agent answered. Without an agent the banner says what is wrong, not this.</summary>
@@ -47,11 +52,15 @@ public sealed partial class LibraryViewModel : ViewModelBase
 
     private void Rebuild()
     {
-        Replace(MyGames, _app.Games.Where(g => g.State is GameState.Installed or GameState.Damaged or GameState.Downloading));
-        Replace(LanGames, _app.Games.Where(g => g.State == GameState.AvailableOnLan));
+        static bool Here(GameCardViewModel g) => g.State is GameState.Installed or GameState.Damaged or GameState.Downloading;
+        Replace(MyGames, _app.Games.Where(g => !g.IsApp && Here(g)));
+        Replace(LanGames, _app.Games.Where(g => !g.IsApp && g.State == GameState.AvailableOnLan));
+        Replace(MyApps, _app.Games.Where(g => g.IsApp && Here(g)));
+        Replace(LanApps, _app.Games.Where(g => g.IsApp && g.State == GameState.AvailableOnLan));
         HasMyGames = MyGames.Count > 0;
         HasLanGames = LanGames.Count > 0;
-        IsEmpty = !HasMyGames && !HasLanGames;
+        HasApps = MyApps.Count > 0 || LanApps.Count > 0;
+        IsEmpty = !HasMyGames && !HasLanGames && !HasApps;
         UpdateHint();
     }
 

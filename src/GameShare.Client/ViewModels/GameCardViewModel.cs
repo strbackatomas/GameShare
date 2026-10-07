@@ -53,7 +53,7 @@ public sealed partial class GameCardViewModel : ViewModelBase
     private bool _iconRequested;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsInstalled), nameof(IsDamaged), nameof(IsDamagedInPlace), nameof(IsDownloading), nameof(IsAvailable), nameof(CanInstall), nameof(CanUpdate), nameof(ShowInstallButton), nameof(StateText), nameof(CanPlay), nameof(NeedsExecutable), nameof(ShowUninstallButton), nameof(HasOtherLaunchOptions), nameof(CanSpread))]
+    [NotifyPropertyChangedFor(nameof(IsInstalled), nameof(IsDamaged), nameof(IsDamagedInPlace), nameof(AppText), nameof(HasAppText), nameof(IsDownloading), nameof(IsAvailable), nameof(CanInstall), nameof(CanUpdate), nameof(ShowInstallButton), nameof(StateText), nameof(CanPlay), nameof(NeedsExecutable), nameof(ShowUninstallButton), nameof(HasOtherLaunchOptions), nameof(CanSpread))]
     public partial GameState State { get; set; }
 
     [ObservableProperty]
@@ -162,7 +162,40 @@ public sealed partial class GameCardViewModel : ViewModelBase
     [ObservableProperty] public partial bool HasSetup { get; set; }
 
     /// <summary>The setup did not run on this PC for this version and folder yet. Play shows the preparation first.</summary>
-    [ObservableProperty] public partial bool NeedsSetup { get; set; }
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanPlay), nameof(AppText), nameof(HasAppText))]
+    public partial bool NeedsSetup { get; set; }
+
+    // ---- a program to install on the PC rather than a game ----
+
+    /// <summary>A program package: installed on the PC by running its installer, not played from its folder.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsApp), nameof(CanPlay), nameof(PlayText), nameof(InstallText), nameof(AppText), nameof(HasAppText))]
+    public partial GameKind Kind { get; set; }
+
+    public bool IsApp => Kind == GameKind.App;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(AppText), nameof(HasAppText))]
+    public partial bool? AppInstalled { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(AppText), nameof(HasAppText))]
+    public partial string? AppInstalledVersion { get; set; }
+
+    /// <summary>For a program: on the main button, what it does.</summary>
+    public string PlayText => IsApp ? "Nainstalovat do PC" : "Hrát";
+
+    /// <summary>For a program on the LAN only its package is downloaded first, the installer runs once it is here.</summary>
+    public string InstallText => IsApp ? "Stáhnout do PC" : "Instalovat";
+
+    /// <summary>For a program whose package is here: whether the program itself is on the PC, and in which version.</summary>
+    public string? AppText => !IsApp || !IsInstalled ? null
+        : NeedsSetup && AppInstalled == true ? $"Na tomto PC je verze {AppInstalledVersion ?? "?"}, balíček má novější. Nainstaluj ji."
+        : NeedsSetup ? "Balíček je stažený, program na tomto PC zatím není."
+        : $"Nainstalováno na tomto PC{(AppInstalledVersion is { } v ? $", verze {v}" : "")}.";
+
+    public bool HasAppText => AppText is not null;
 
     /// <summary>The preparation is shown for the player to confirm.</summary>
     [ObservableProperty]
@@ -336,7 +369,8 @@ public sealed partial class GameCardViewModel : ViewModelBase
     };
 
     /// <summary>A damaged game can be played too: playing changes files, which is what marks it. Whether the program itself is intact is the agent's call.</summary>
-    public bool CanPlay => IsLocal && (IsInstalled || IsDamaged) && Launch == LaunchState.Ready && !IsRunning && !IsChoosingExecutable;
+    public bool CanPlay => IsApp ? IsLocal && IsInstalled && NeedsSetup
+        : IsLocal && (IsInstalled || IsDamaged) && Launch == LaunchState.Ready && !IsRunning && !IsChoosingExecutable;
     public bool NeedsExecutable => IsLocal && (IsInstalled || IsDamaged) && Launch == LaunchState.NeedsExecutable && !IsChoosingExecutable;
 
     /// <summary>Repairing, updating and registering rewrite the files, which a running game holds.</summary>
@@ -381,6 +415,9 @@ public sealed partial class GameCardViewModel : ViewModelBase
         UpdatesContentHash = g.UpdatesContentHash;
         OtherVersionOfContentHash = g.OtherVersionOfContentHash;
         FolderMissing = g.FolderMissing;
+        Kind = g.Kind;
+        AppInstalled = g.AppInstalled;
+        AppInstalledVersion = g.AppInstalledVersion;
         Details = string.IsNullOrEmpty(g.Version) ? Format.Size(g.TotalSize) : $"{g.Version} · {Format.Size(g.TotalSize)}";
         PeersText = g.State == GameState.AvailableOnLan && g.PeerNames.Count > 0 ? DescribePeers(g) : "";
         Launch = g.Launch;
@@ -584,6 +621,12 @@ public sealed partial class GameCardViewModel : ViewModelBase
         if (!await TryAsync(() => _app.Client.SetupDoneAsync(ContentHash, plan.SetupHash), m => Message = m).ConfigureAwait(true)) return;
         NeedsSetup = false;
         IsShowingSetup = false;
+        if (IsApp)
+        {
+            Message = $"{Name} je nainstalovaný.";
+            await _app.RefreshGamesAsync().ConfigureAwait(true); // the version Windows now reports
+            return;
+        }
         await LaunchAsync(_entryAfterSetup).ConfigureAwait(true);
     }
 

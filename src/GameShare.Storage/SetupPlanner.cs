@@ -14,6 +14,9 @@ public interface ISetupProbe
     /// Whether Windows Firewall lets this program in on private networks already and no rule blocks it there, so Windows will not ask.
     /// </summary>
     bool FirewallAllows(string program) => false;
+
+    /// <summary>The version Apps and Features reports for what <see cref="InstalledCheck.Uninstall"/> names, null when it names nothing or no version.</summary>
+    string? InstalledVersion(InstalledCheck check) => null;
 }
 
 /// <summary>A redistributables package installed on this PC, the kind other games' setup draws from.</summary>
@@ -55,6 +58,16 @@ public static partial class SetupPlanner
 
     public static bool HasSetup(GameManifest manifest) => manifest.Definition?.HasSetup() == true;
 
+    /// <summary>
+    /// Whether a program package's program is on this PC at least at the package's version. Without a version to compare, being
+    /// installed at all is enough: the package cannot say it is newer.
+    /// </summary>
+    public static bool AppIsCurrent(GameDefinition definition, ISetupProbe probe)
+    {
+        if (definition.App?.InstalledIf is not { } check || !probe.IsInstalled(check)) return false;
+        return GameVersion.Compare(definition.Version, probe.InstalledVersion(check)) <= 0;
+    }
+
     /// <summary>The name of the firewall rule for a program of a game, so it can be recognised, replaced and removed.</summary>
     public static string FirewallRuleName(string gameName, string program) => $"GameShare – {gameName} – {program}";
 
@@ -68,6 +81,27 @@ public static partial class SetupPlanner
         var problems = new List<string>();
         var missing = new List<string>();
         var verify = new List<(string, string)>();
+
+        if (definition is { Kind: GameKind.App, App: { } app })
+        {
+            var file = LaunchRules.GameFile(game, app.File, out var problem);
+            if (file is null) problems.Add($"Program: {problem}");
+            else if (!IsInstaller(file.Path)) problems.Add($"'{app.File}' is not an installer (.exe or .msi).");
+            else
+            {
+                var current = AppIsCurrent(definition, probe);
+                var installed = app.InstalledIf is { } check ? probe.InstalledVersion(check) : null;
+                var full = Inside(root, file.Path);
+                steps.Add(new SetupStepDto(SetupStepKind.Redist, $"Nainstalovat {definition.Name} {definition.Version}".TrimEnd(), NeedsAdmin: true)
+                {
+                    File = full, FileHash = file.Hash, Arguments = app.Args, AlreadyDone = current,
+                    Details = [current ? $"Na tomto PC už je{(installed is null ? "" : $" ve verzi {installed}")}."
+                        : installed is not null ? $"Na tomto PC je verze {installed}, nainstaluje se {definition.Version}. {file.Path} {app.Args}".Trim()
+                        : $"{file.Path} {app.Args}".Trim()],
+                });
+                if (!current) verify.Add((full, file.Hash));
+            }
+        }
 
         foreach (var id in setup.Requires.Distinct(StringComparer.OrdinalIgnoreCase))
         {
@@ -239,10 +273,11 @@ public static partial class SetupPlanner
     /// installation does, or fails without saying so.
     /// </summary>
     public static IReadOnlyList<string> NotInstalled(GameManifest game, IReadOnlyList<InstalledPackage> packages, ISetupProbe probe) =>
-        (game.Definition?.Setup?.Requires ?? []).Distinct(StringComparer.OrdinalIgnoreCase)
-            .Select(id => (id, Provider(packages, id).Entry))
-            .Where(x => x.Entry?.InstalledIf is { } check && !probe.IsInstalled(check))
-            .Select(x => x.Entry!.Name ?? x.id)
+        (game.Definition is { Kind: GameKind.App, App.InstalledIf: not null } app && !AppIsCurrent(app, probe) ? [$"{app.Name} {app.Version}".TrimEnd()] : (IEnumerable<string>)[])
+            .Concat((game.Definition?.Setup?.Requires ?? []).Distinct(StringComparer.OrdinalIgnoreCase)
+                .Select(id => (id, Provider(packages, id).Entry))
+                .Where(x => x.Entry?.InstalledIf is { } check && !probe.IsInstalled(check))
+                .Select(x => x.Entry!.Name ?? x.id))
             .ToList();
 
     private static (InstalledPackage? Package, RedistPackage? Entry) Provider(IReadOnlyList<InstalledPackage> packages, string id) =>

@@ -8,6 +8,20 @@ this is wired into the build and where a peer's version shows up.
 
 ## [Unreleased]
 
+### Added
+- Programs ("Programy"): software every PC wants, not only games, shared as a package with its installer (`"kind": "app"`). The
+  client lists them apart from games; **Stáhnout do PC** fetches the package, **Nainstalovat do PC** runs the installer silently after
+  one UAC prompt. Whether the program is on the PC, and in which version, comes from Apps and Features, so an older version is
+  installed over and a newer package on the LAN shows up as an update. Only a package the administrator signed is installed, whatever
+  the trust mode. The admin GUI edits such a package and fills in what an `.msi` says about itself.
+
+### Fixed
+- A PC that asked for a game's signed definition while the PC offering the game still had an old one did not ask again until the
+  list or the offers on the LAN changed, which on a quiet LAN could be never. It asks again every 10 minutes by itself now.
+
+### Changed
+- A PC with an older version does not understand a program package: it does not list it and cannot install it. Update every PC first.
+
 ## [0.12.2] - 2026-10-07
 
 ### Fixed

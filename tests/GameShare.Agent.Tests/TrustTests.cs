@@ -186,6 +186,36 @@ public class TrustTests : IDisposable
         Assert.Equal(DefinitionVerdict.Verified, signed.DefinitionTrust);
     }
 
+    [Fact]
+    public async Task A_program_is_installed_only_when_the_administrator_signed_it_whatever_the_trust_mode()
+    {
+        const string definition = """
+            { "gameId": "remote-tool", "name": "Remote Tool", "version": "1.0", "kind": "app",
+              "app": { "file": "Game.exe", "args": "/S", "installedIf": { "uninstall": "GameShare test program that is not installed*" } } }
+            """;
+        WriteList(1, []);
+        await using var pc = await TestAgent.StartAsync("PC-01", TestAgent.DiscoveryPort(), preloadGame: true, bigFileBytes: SmallGame,
+            tweak: Trust(TrustMode.Warn), customiseGame: dir => File.WriteAllText(Path.Combine(dir, "gameshare.json"), definition));
+        var app = await pc.WaitForGameAsync(g => g.State == GameState.Installed, "the package to be scanned");
+
+        Assert.Equal(GameKind.App, app.Kind);
+        Assert.False(app.AppInstalled);
+        Assert.True(app.NeedsSetup);                    // the program is not on the PC, so Install is offered
+        Assert.Equal(LaunchState.None, app.Launch);    // installed from, never started from its folder
+        Assert.Contains("\"kind\":\"App\"", await pc.PeerApi.GetStringAsync("/peer/games"));
+
+        var unsigned = await pc.GetAsync<SetupPlanDto>($"/api/games/{app.ContentHash}/setup");
+        Assert.Contains("jen ověřené", unsigned.Blocked); // Warn lets games through, not an installer run as administrator
+
+        File.WriteAllBytes(ListPath, TrustSigning.Serialize(TrustSigning.Sign(new TrustPayload(2, Now, null,
+            [new TrustedGame(app.ContentHash, "remote-tool", "Remote Tool", "1.0") { DefinitionHash = DefinitionHasher.Compute(app.Definition!) }], []), _keys.PrivateKey)));
+        await RefreshAsync(pc);
+        var signed = await pc.GetAsync<SetupPlanDto>($"/api/games/{app.ContentHash}/setup");
+
+        Assert.Null(signed.Blocked);
+        Assert.Equal("/S", Assert.Single(signed.Steps).Arguments);
+    }
+
     /// <summary>A game that requires "vc2005", and next to it the same redistributables package on every PC, with these arguments.</summary>
     private static Action<string> WithPackage(string args) => game =>
     {

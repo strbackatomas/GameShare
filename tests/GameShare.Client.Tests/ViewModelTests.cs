@@ -640,6 +640,39 @@ public class LibraryTests
             DefinitionVerdict.Verified, blocked);
 
     [Fact]
+    public async Task A_program_is_listed_apart_from_games_installs_through_its_preparation_and_starts_nothing()
+    {
+        var program = Installed() with { Name = "Remote Tool", Kind = GameKind.App, NeedsSetup = true, AppInstalled = false, Launch = LaunchState.None };
+        var onLan = Game(B, "Other Tool", GameState.AvailableOnLan, peers: ["PC-01"]) with { Kind = GameKind.App };
+        var agent = new FakeAgent
+        {
+            Games = [program, onLan],
+            SetupPlan = new(A, "Remote Tool", "", [new SetupStepDto(SetupStepKind.Redist, "Nainstalovat Remote Tool 1.4.2", true)], DefinitionVerdict.Verified),
+        };
+        var runner = new FakeSetupRunner();
+        var app = new AppModel(agent, new FakeEvents(), new ImmediateDispatcher(), new FakeStarter(), setupRunner: runner);
+        var main = new MainViewModel(app);
+        await app.StartAsync();
+
+        Assert.Empty(main.Library.MyGames);
+        Assert.Empty(main.Library.LanGames);
+        Assert.True(main.Library.HasApps);
+        Assert.Equal("Stáhnout do PC", main.Library.LanApps.Single().InstallText);
+        var card = main.Library.MyApps.Single();
+        Assert.True(card.CanPlay);
+        Assert.Equal("Nainstalovat do PC", card.PlayText);
+        Assert.Contains("zatím není", card.AppText);
+
+        await card.PlayCommand.ExecuteAsync(null);
+        await card.RunSetupCommand.ExecuteAsync(null);
+
+        Assert.Single(runner.Ran);
+        Assert.Empty(StarterOf(app).Started);           // nothing is started after installing a program
+        Assert.DoesNotContain(agent.Calls, c => c.StartsWith("Launch"));
+        Assert.Contains("je nainstalovaný", card.Message);
+    }
+
+    [Fact]
     public async Task Play_on_a_game_that_needs_preparing_shows_the_steps_and_runs_nothing_yet()
     {
         var (card, app, agent, runner) = await WithSetupAsync(Plan());
